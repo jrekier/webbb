@@ -1,0 +1,18 @@
+{
+    "name": "Reavers",
+    "colour": [200, 40, 40],
+    "players": [
+        { "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "av": 8,
+          "skills": [], "count": 4,
+          "sprite": { "sheet": "assets/sprites/human.gif", "x": 0, "y": 162, "w": 25, "h": 27 } },
+        { "pos": "Blitzer", "ma": 7, "st": 3, "ag": 3, "av": 8,
+          "skills": ["Block"], "count": 1,
+          "sprite": { "sheet": "assets/sprites/human.gif", "x": 0, "y": 190, "w": 25, "h": 26 } },
+        { "pos": "Thrower", "ma": 6, "st": 3, "ag": 3, "av": 7,
+          "skills": ["Pass", "Sure Hands"], "count": 1,
+          "sprite": { "sheet": "assets/sprites/human.gif", "x": 0, "y": 108, "w": 25, "h": 26 } },
+        { "pos": "Catcher", "ma": 8, "st": 2, "ag": 4, "av": 7,
+          "skills": ["Dodge", "Catch"], "count": 1,
+          "sprite": { "sheet": "assets/sprites/human.gif", "x": 0, "y": 27, "w": 25, "h": 26 } }
+    ]
+}

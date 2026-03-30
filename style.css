@@ -1,0 +1,279 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+/* ── Reset ────────────────────────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ── Palette ──────────────────────────────────────────────────── */
+:root {
+    --bg:        #f0ead8;
+    --border:    #ccc0a0;
+    --text:      #2a1f0e;
+    --text-dim:  #8a7a60;
+    --home:      #b02020;
+    --away:      #1a3a99;
+    --gold:      #8a6a20;
+    --sidebar-w: 200px;
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+}
+
+/* ── Layout ───────────────────────────────────────────────────── */
+#layout {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    /* No max-width — pitch will self-limit via sizePitch() */
+}
+
+/* Canvas wrapper — takes all remaining horizontal space,
+   centres the canvas inside it */
+#pitch-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-width: 0;
+}
+
+canvas {
+    display: block;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+/* ── Sidebars ─────────────────────────────────────────────────── */
+.sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    height: 100vh;
+    overflow: hidden;
+}
+
+#sidebar-left  { border-right: 1px solid var(--border); }
+#sidebar-right { border-left:  1px solid var(--border); }
+
+.section {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+}
+
+/* ── Roster ───────────────────────────────────────────────────── */
+#section-spacer {
+    flex: 1;
+    border-bottom: 1px solid var(--border);
+}
+
+.player-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.1s;
+    user-select: none;
+}
+
+.player-row:hover    { background: rgba(0,0,0,0.05); }
+.player-row.selected { background: rgba(0,0,0,0.07); }
+.player-row.done     { opacity: 0.4; }
+
+.player-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dot-home { background: var(--home); }
+.dot-away { background: var(--away); }
+
+.player-name { flex: 1; font-size: 10px; color: var(--text); }
+.player-ma   { font-size: 9px; color: var(--text-dim); }
+
+/* ── Turn banner ──────────────────────────────────────────────── */
+#turn-banner {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 4px;
+    line-height: 1;
+}
+
+.team-home { color: var(--home); }
+.team-away { color: var(--away); }
+.turn-num  { color: var(--text-dim); font-size: 11px; letter-spacing: 2px; }
+
+/* ── Detail ───────────────────────────────────────────────────── */
+#detail { min-height: 70px; line-height: 1.9; color: var(--text-dim); }
+
+#detail .name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 2px;
+    line-height: 1.1;
+    margin-bottom: 4px;
+}
+
+#detail .stat-row   { color: var(--text-dim); font-size: 11px; }
+#detail .stat-row b { color: var(--text); font-weight: 700; }
+
+.status {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+
+.status-ready  { background: rgba(60,120,60,0.15);  color: #3a8a3a; }
+.status-moving { background: rgba(180,120,0,0.15);   color: #aa7000; }
+.status-done   { background: rgba(0,0,0,0.08);        color: var(--text-dim); }
+
+/* ── Log ──────────────────────────────────────────────────────── */
+#section-log {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 2px;
+    min-height: 0;
+}
+
+#log::-webkit-scrollbar       { width: 3px; }
+#log::-webkit-scrollbar-track { background: transparent; }
+#log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.log-line {
+    padding: 2px 0;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.log-line.turn-marker {
+    color: var(--gold);
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding-top: 6px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+/* ── Action bar ───────────────────────────────────────────────── */
+#action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.action-btn {
+    flex: 1;
+    min-width: 70px;
+    padding: 7px 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.1s;
+}
+
+.action-btn:hover            { background: rgba(0,0,0,0.05); }
+.action-btn.primary          { border-color: #4a6aaa; color: #4a6aaa; }
+.action-btn.primary:hover    { background: rgba(74,106,170,0.08); }
+.action-btn.danger           { border-color: #aa4444; color: #aa4444; }
+.action-btn.danger:hover     { background: rgba(170,68,68,0.08); }
+.action-btn.success          { border-color: #4a8a4a; color: #4a8a4a; }
+.action-btn.success:hover    { background: rgba(74,138,74,0.08); }
+.action-btn.end-turn         { border-color: var(--gold); color: var(--gold); flex-basis: 100%; }
+.action-btn.end-turn:hover   { background: rgba(138,106,32,0.08); }
+
+/* ── Online strip ─────────────────────────────────────────────── */
+#online-strip {
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+#online-strip.hidden { display: none; }
+
+#net-status {
+    flex: 1;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+}
+
+#net-status.connected { color: #4a8a4a; }
+
+#btn-connect {
+    padding: 5px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#btn-connect:hover { border-color: var(--text-dim); color: var(--text); }
+
+/* ── Responsive ───────────────────────────────────────────────── */
+
+/* Medium: left sidebar hidden — pitch + right sidebar only */
+@media (max-width: 700px) {
+    #sidebar-left { display: none; }
+}
+
+/* Wide: cap the pitch size so it doesn't sprawl on very wide screens */
+@media (min-width: 1400px) {
+    :root { --sidebar-w: 220px; }
+}

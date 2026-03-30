@@ -1,0 +1,15 @@
+{
+    "name": "Warbosses",
+    "colour": [40, 120, 40],
+    "players": [
+        { "pos": "Lineman", "ma": 5, "st": 3, "ag": 3, "av": 9,
+          "skills": [], "count": 4,
+          "sprite": { "sheet": "assets/sprites/human.gif", "x": 0, "y": 162, "w": 25, "h": 27 } },
+        { "pos": "Blitzer", "ma": 6, "st": 3, "ag": 3, "av": 9,
+          "skills": ["Block"], "count": 2,
+          "sprite": { "sheet": "assets/sprites/human.gif", "x": 0, "y": 190, "w": 25, "h": 26 } },
+        { "pos": "Black Orc", "ma": 4, "st": 4, "ag": 2, "av": 9,
+          "skills": [], "count": 1,
+          "sprite": { "sheet": "assets/sprites/human.gif", "x": 0, "y": 135, "w": 25, "h": 27 } }
+    ]
+}

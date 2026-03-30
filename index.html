@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blood Bowl</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="layout">
+
+  <!-- Left: rosters -->
+  <div class="sidebar" id="sidebar-left">
+    <div class="section">
+      <div class="section-title" id="lbl-away-team">Away</div>
+      <div id="roster-away"></div>
+    </div>
+    <div id="section-spacer"></div>
+    <div class="section">
+      <div class="section-title" id="lbl-home-team">Home</div>
+      <div id="roster-home"></div>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div id="pitch-wrap">
+    <canvas id="pitch"></canvas>
+  </div>
+
+  <!-- Right: info + log + actions -->
+  <div class="sidebar" id="sidebar-right">
+
+    <div class="section">
+      <div id="turn-banner">
+        <span id="lbl-active">HOME</span><br>
+        <span class="turn-num">TURN <span id="lbl-turn">1</span></span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Selected</div>
+      <div id="detail"><span style="color:#aaa;font-size:10px;">Click a player.</span></div>
+    </div>
+
+    <div class="section" id="section-log">
+      <div class="section-title">Match Log</div>
+      <div id="log"></div>
+    </div>
+
+    <div id="action-bar">
+      <button id="btn-move"     class="action-btn primary" onclick="onClickMove();">Move</button>
+      <button id="btn-block"    class="action-btn danger"  onclick="onClickBlock();" style="display:none;">Block</button>
+      <button id="btn-blitz"    class="action-btn danger"  onclick="onClickBlitz();" style="display:none;">Blitz</button>
+      <button id="btn-cancel"   class="action-btn"         onclick="onClickCancel();" style="display:none;">Cancel</button>
+      <button id="btn-stop"     class="action-btn success" onclick="onClickStop();"   style="display:none;">Stop</button>
+      <button id="btn-end-turn" class="action-btn end-turn" onclick="onClickEndTurn();">End Turn</button>
+    </div>
+
+    <div id="online-strip">
+      <div id="net-status">Offline</div>
+      <button id="btn-connect" onclick="connect();">Play Online</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Hidden file input for team loading -->
+<input type="file" id="file-home" accept=".json" style="display:none">
+<input type="file" id="file-away" accept=".json" style="display:none">
+
+<script src="constants.js"></script>
+<script src="state.js"></script>
+<script src="logic.js"></script>
+<script src="sprites.js"></script>
+<script src="render.js"></script>
+<script src="input.js"></script>
+<script src="network.js"></script>
+
+<script>
+  // ── Team definitions ──────────────────────────────────────────
+  var homeTeamDef = null;
+  var awayTeamDef = null;
+
+  // ── Load default teams then start ────────────────────────────
+  // Default teams embedded as fallback — used if JSON files can't be fetched
+  var DEFAULT_HUMANS = {"name": "Reavers", "colour": [200, 40, 40], "players": [{"pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "av": 8, "skills": [], "count": 4, "sprite": {"sheet": "assets/sprites/human.gif", "x": 0, "y": 162, "w": 25, "h": 27}}, {"pos": "Blitzer", "ma": 7, "st": 3, "ag": 3, "av": 8, "skills": ["Block"], "count": 1, "sprite": {"sheet": "assets/sprites/human.gif", "x": 0, "y": 190, "w": 25, "h": 26}}, {"pos": "Thrower", "ma": 6, "st": 3, "ag": 3, "av": 7, "skills": ["Pass", "Sure Hands"], "count": 1, "sprite": {"sheet": "assets/sprites/human.gif", "x": 0, "y": 108, "w": 25, "h": 26}}, {"pos": "Catcher", "ma": 8, "st": 2, "ag": 4, "av": 7, "skills": ["Dodge", "Catch"], "count": 1, "sprite": {"sheet": "assets/sprites/human.gif", "x": 0, "y": 27, "w": 25, "h": 26}}]};
+  var DEFAULT_ORCS   = {"name": "Warbosses", "colour": [40, 120, 40], "players": [{"pos": "Lineman", "ma": 5, "st": 3, "ag": 3, "av": 9, "skills": [], "count": 4, "sprite": {"sheet": "assets/sprites/human.gif", "x": 0, "y": 162, "w": 25, "h": 27}}, {"pos": "Blitzer", "ma": 6, "st": 3, "ag": 3, "av": 9, "skills": ["Block"], "count": 2, "sprite": {"sheet": "assets/sprites/human.gif", "x": 0, "y": 190, "w": 25, "h": 26}}, {"pos": "Black Orc", "ma": 4, "st": 4, "ag": 2, "av": 9, "skills": [], "count": 1, "sprite": {"sheet": "assets/sprites/human.gif", "x": 0, "y": 135, "w": 25, "h": 27}}]};
+
+  function initWithTeams(humans, orcs) {
+      homeTeamDef = loadTeamFromJSON(humans);
+      awayTeamDef = loadTeamFromJSON(orcs);
+      startLocalGame();
+  }
+
+  // Try to load from JSON files first; fall back to embedded defaults
+  Promise.all([
+      fetch('team-humans.json').then(r => r.ok ? r.json() : DEFAULT_HUMANS).catch(() => DEFAULT_HUMANS),
+      fetch('team-orcs.json').then(r =>   r.ok ? r.json() : DEFAULT_ORCS  ).catch(() => DEFAULT_ORCS),
+  ]).then(([humans, orcs]) => initWithTeams(humans, orcs));
+
+  function startLocalGame() {
+      if (!homeTeamDef || !awayTeamDef) return;
+      buildPitch();
+      setupInput();
+      loadSpriteSheet();
+      initFormations();  // sets FORMATION_HOME/AWAY from active RULESET
+
+      const homePlayers = buildRosterFromTeam(homeTeamDef, 'home', 0,   FORMATION_HOME);
+      const awayPlayers = buildRosterFromTeam(awayTeamDef, 'away', 100, FORMATION_AWAY);
+      G.players = [...homePlayers, ...awayPlayers];
+      G.players[1].hasBall = true;
+      G.ball.carrier = G.players[1];
+
+      document.getElementById('lbl-home-team').textContent = homeTeamDef.name.toUpperCase();
+      document.getElementById('lbl-away-team').textContent = awayTeamDef.name.toUpperCase();
+
+      log('Match begins', 'turn-marker');
+      render();
+  }
+
+  // ── Team file loading ──────────────────────────────────────────
+  function onLoadTeam(side) {
+      document.getElementById('file-' + side).click();
+  }
+
+  document.getElementById('file-home').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+          try {
+              const def = loadTeamFromJSON(JSON.parse(evt.target.result));
+              homeTeamDef = def;
+              startLocalGame();
+          } catch(err) {
+              alert('Invalid team file: ' + err);
+          }
+      };
+      reader.readAsText(file);
+  });
+
+  document.getElementById('file-away').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+          try {
+              const def = loadTeamFromJSON(JSON.parse(evt.target.result));
+              awayTeamDef = def;
+              startLocalGame();
+          } catch(err) {
+              alert('Invalid team file: ' + err);
+          }
+      };
+      reader.readAsText(file);
+  });
+</script>
+</body>
+</html>
