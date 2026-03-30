@@ -295,11 +295,11 @@ function countAssists(G, att, def) {
 // chooser is 'att' or 'def'.
 
 function blockDiceCount(attStr, defStr) {
-    if      (attStr >= defStr * 2) return { dice: 3, chooser: 'att' };
-    else if (defStr >= attStr * 2) return { dice: 3, chooser: 'def' };
-    else if (attStr > defStr)      return { dice: 2, chooser: 'att' };
-    else if (defStr > attStr)      return { dice: 2, chooser: 'def' };
-    else                           return { dice: 1, chooser: 'att' };
+    if      (attStr > defStr * 2) return { dice: 3, chooser: 'att' };
+    else if (defStr > attStr * 2) return { dice: 3, chooser: 'def' };
+    else if (attStr > defStr)     return { dice: 2, chooser: 'att' };
+    else if (defStr > attStr)     return { dice: 2, chooser: 'def' };
+    else                          return { dice: 1, chooser: 'att' };
 }
 
 // ── getBlockTargets ──────────────────────────────────────────────
