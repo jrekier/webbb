@@ -71,6 +71,7 @@
 <script src="constants.js"></script>
 <script src="state.js"></script>
 <script src="logic.js"></script>
+<script src="teams.js"></script>
 <script src="sprites.js"></script>
 <script src="render.js"></script>
 <script src="input.js"></script>
@@ -89,6 +90,8 @@
   function initWithTeams(humans, orcs) {
       homeTeamDef = loadTeamFromJSON(humans);
       awayTeamDef = loadTeamFromJSON(orcs);
+      prewarmSprites(homeTeamDef);
+      prewarmSprites(awayTeamDef);
       startLocalGame();
   }
 
@@ -129,8 +132,8 @@
       const reader = new FileReader();
       reader.onload = evt => {
           try {
-              const def = loadTeamFromJSON(JSON.parse(evt.target.result));
-              homeTeamDef = def;
+              homeTeamDef = loadTeamFromJSON(JSON.parse(evt.target.result));
+              prewarmSprites(homeTeamDef);
               startLocalGame();
           } catch(err) {
               alert('Invalid team file: ' + err);
@@ -145,8 +148,8 @@
       const reader = new FileReader();
       reader.onload = evt => {
           try {
-              const def = loadTeamFromJSON(JSON.parse(evt.target.result));
-              awayTeamDef = def;
+              awayTeamDef = loadTeamFromJSON(JSON.parse(evt.target.result));
+              prewarmSprites(awayTeamDef);
               startLocalGame();
           } catch(err) {
               alert('Invalid team file: ' + err);

@@ -96,8 +96,12 @@ function clickPlayer(player) {
     // Blitz targeting — declare the target, then player moves freely
     if (G.blitz === 'targeting') {
         if (player.side !== G.active) {
-            G.blitz = { att: G.activated, def: player, phase: 'moving' };
-            log(`${G.activated.pos} targets ${player.pos} — move into range`);
+            if (NET.online) {
+                sendAction({ type: 'BLITZ_TARGET', defId: player.id });
+            } else {
+                const msg = setBlitzTarget(G, player.id);
+                if (msg) log(msg);
+            }
         }
         return;
     }
@@ -108,7 +112,7 @@ function clickPlayer(player) {
             if (NET.online) {
                 sendAction({ type: 'BLITZ_START', attId: G.activated.id, defId: player.id });
             } else {
-                const msg = declareBlitz(G, G.activated, player);
+                const msg = blitzBlock(G, G.activated, player);
                 if (msg) log(msg);
             }
         }
@@ -171,10 +175,13 @@ function onClickBlock() {
 function onClickBlitz() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (G.sel.usedAction || G.activated) return;
-    G.activated = G.sel;
-    G.blitz     = 'targeting';
-    log(`${G.sel.pos} declares blitz — click a target`);
-    render();
+    if (NET.online) {
+        sendAction({ type: 'BLITZ_DECLARE', playerId: G.sel.id });
+    } else {
+        const msg = activateBlitz(G, G.sel.id);
+        if (msg) log(msg);
+        render();
+    }
 }
 
 function onClickCancel() {
@@ -193,9 +200,9 @@ function onClickCancel() {
 
 function onClickStop() {
     if (NET.online) {
-        sendAction({ type: 'COMMIT' });
+        sendAction({ type: 'STOP' });
     } else {
-        const msg = commitActivation(G);
+        const msg = endActivation(G);
         if (msg) log(msg);
         render();
     }

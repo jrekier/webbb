@@ -97,63 +97,12 @@ function loadSpriteSheet() {
     });
 }
 
-// ── buildRosterFromTeam ───────────────────────────────────────────
-// Expands a team JSON into individual player objects.
-// Each player gets p.sprite and p.colour from the team definition.
+// ── prewarmSprites ────────────────────────────────────────────────
+// Pre-loads sprite sheets for a team definition so they're ready
+// before the first render. Optional — getSprite loads lazily anyway.
 
-function buildRosterFromTeam(teamDef, side, startId, formation) {
-    const players = [];
-    let id  = startId;
-    let pos = 0;
-
-    teamDef.players.forEach(posData => {
-        for (let i = 0; i < posData.count; i++) {
-            const [col, row] = formation[pos] || [7, side === 'home' ? 20 : 5];
-            players.push({
-                id,
-                side,
-                pos:        posData.pos,
-                ma:         posData.ma,
-                st:         posData.st,
-                ag:         posData.ag || 3,
-                av:         posData.av,
-                skills:     posData.skills || [],
-                maLeft:     posData.ma,
-                col,
-                row,
-                hasBall:    false,
-                usedAction: false,
-                status:     'active',
-                // Sprite coordinates — player carries its own drawing info
-                sprite:     posData.sprite || null,
-                colour:     teamDef.colour,
-            });
-            id++;
-            pos++;
-        }
+function prewarmSprites(teamDef) {
+    teamDef.players.forEach(p => {
+        if (p.sprite) loadSheet(p.sprite.sheet, () => render());
     });
-
-    return players;
-}
-
-// ── loadTeamFromJSON ──────────────────────────────────────────────
-// Validates and returns a team definition.
-
-function loadTeamFromJSON(json) {
-    if (!json.name)    throw 'Team must have a name';
-    if (!json.colour)  throw 'Team must have a colour [r,g,b]';
-    if (!json.players) throw 'Team must have a players array';
-    json.players.forEach(p => {
-        if (!p.pos)   throw `Player missing pos`;
-        if (!p.ma)    throw `${p.pos} missing ma`;
-        if (!p.st)    throw `${p.pos} missing st`;
-        if (!p.count) throw `${p.pos} missing count`;
-    });
-    // Pre-warm sprites for this team
-    if (typeof loadSheet !== 'undefined') {
-        json.players.forEach(p => {
-            if (p.sprite) loadSheet(p.sprite.sheet, () => render());
-        });
-    }
-    return json;
 }

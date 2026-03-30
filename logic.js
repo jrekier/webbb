@@ -63,8 +63,10 @@ function cancelActivation(G) {
     if (hasMovedYet(G)) return null;
     const name  = G.activated.pos;
     G.activated  = null;
-    G.blitz      = null;
-    G.hasBlitzed = false;
+    if (G.blitz !== null) {
+        G.hasBlitzed = false;  // return blitz token — only consumed once you move
+        G.blitz      = null;
+    }
     return `${name} — action cancelled`;
 }
 
@@ -76,12 +78,12 @@ function movePlayer(G, col, row) {
     G.activated.maLeft -= 1;
     G.sel = G.activated;
     // const msg = `${G.activated.pos} moves to (${col},${row}) · ${G.activated.maLeft} MA left`;
-    if (G.activated.maLeft === 0) commitActivation(G);
+    if (G.activated.maLeft === 0) endActivation(G);
     // return msg;
     return null;
 }
 
-function commitActivation(G) {
+function endActivation(G) {
     if (!G.activated) return null;
     const name = G.activated.pos;
     G.activated.usedAction = true;
@@ -91,7 +93,7 @@ function commitActivation(G) {
 }
 
 function endTurn(G) {
-    if (G.activated) commitActivation(G);
+    if (G.activated) endActivation(G);
     for (const p of G.players) {
         if (p.side === G.active) {
             p.usedAction = false;
@@ -201,13 +203,13 @@ if (typeof module !== 'undefined') {
         createInitialState,
         playerAt, canMoveTo, hasMovedYet, fixReferences,
         activatePlayer, cancelActivation,
-        movePlayer, commitActivation,
+        movePlayer, endActivation,
         endTurn,
         isAdjacent, isStanding, inTackleZoneOf,
         countAssists, blockDiceCount, getBlockTargets,
         BLOCK_FACES, rollBlockDice, getPushSquares,
         declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, knockDown,
-        declareBlitz,
+        activateBlitz, setBlitzTarget, blitzBlock,
     };
 }
 
@@ -527,12 +529,36 @@ function knockDown(G, p) {
 //  BLITZ RESOLUTION
 // ═══════════════════════════════════════════════════════════════
 
-// ── declareBlitz ─────────────────────────────────────────────────
-// Called when the player clicks Blitz then clicks a target.
+// ── activateBlitz ─────────────────────────────────────────────────
+// Step 1: player declares a blitz action. Activates the player and
+// enters targeting mode — no target yet, no movement, no dice.
+// Cancel is still available until the first step is taken.
 
-function declareBlitz(G, att, target) {
-    att.maLeft = Math.max(0, att.maLeft - 1);  // block costs 1 MA, paid when declared
-    G.blitz    = { att, def: target };
-    G.hasBlitzed = true; // Mark that we've blitzed this turn so we can't blitz again
+function activateBlitz(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
+    G.activated  = p;
+    G.blitz      = 'targeting';
+    G.hasBlitzed = true;  // committed on declaration; persists even if MA runs out before blocking
+    return `${p.pos} declares blitz — click a target`;
+}
+
+// ── setBlitzTarget ────────────────────────────────────────────────
+// Step 2: player picks the enemy to blitz. Records the target so
+// movement highlights and adjacency checks work. Cancel still open.
+
+function setBlitzTarget(G, defId) {
+    const def = G.players.find(p => p.id === defId);
+    if (!def || !G.activated || G.blitz !== 'targeting' || def.side === G.active) return null;
+    G.blitz = { att: G.activated, def, phase: 'moving' };
+    return `${G.activated.pos} targets ${def.pos} — move into range`;
+}
+
+// ── blitzBlock ───────────────────────────────────────────────────
+// Step 3: attacker is adjacent — execute the block.
+// Costs 1 MA (the block itself); hasBlitzed and G.blitz already set upstream.
+
+function blitzBlock(G, att, target) {
+    att.maLeft = Math.max(0, att.maLeft - 1);
     return declareBlock(G, att, target);
 }

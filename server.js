@@ -47,6 +47,7 @@ const httpServer = http.createServer((req, res) => {
 // 'require' is Node's way of loading another JS file.
 
 const GL   = require('./logic.js');
+const TM   = require('./teams.js');
 
 // Mirror of constants.js — server needs ruleset config too
 const RULESETS = {
@@ -68,6 +69,8 @@ const RULESETS = {
     },
 };
 const RULESET = RULESETS.sevens;
+global.COLS = RULESET.COLS;
+global.ROWS = RULESET.ROWS;
 const fs2  = require('fs');
 const path2 = require('path');
 
@@ -170,8 +173,8 @@ function startGame() {
     GL.initFormations('sevens');
 
     // Build rosters from team definitions
-    const homePlayers = buildServerRoster(DEFAULT_HOME, 'home', 0,   GL.FORMATION_HOME);
-    const awayPlayers = buildServerRoster(DEFAULT_AWAY, 'away', 100, GL.FORMATION_AWAY);
+    const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   GL.FORMATION_HOME);
+    const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, GL.FORMATION_AWAY);
     G.players = [...homePlayers, ...awayPlayers];
     G.players[1].hasBall = true;
     G.ball.carrier = G.players[1];
@@ -188,49 +191,27 @@ function startGame() {
     });
 }
 
-// Mirror of buildRosterFromTeam from sprites.js
-function buildServerRoster(teamDef, side, startId, formation) {
-    const players = [];
-    let id  = startId;
-    let pos = 0;
-    teamDef.players.forEach(posData => {
-        for (let i = 0; i < posData.count; i++) {
-            const [col, row] = formation[pos] || [7, side === 'home' ? 20 : 5];
-            players.push({
-                id,
-                side,
-                pos:        posData.pos,
-                ma:         posData.ma,
-                st:         posData.st,
-                ag:         posData.ag || 3,
-                av:         posData.av,
-                skills:     posData.skills || [],
-                maLeft:     posData.ma,
-                col,
-                row,
-                hasBall:    false,
-                usedAction: false,
-                status:     'active',
-                sprite:     posData.sprite || null,
-                colour:     teamDef.colour,
-            });
-            id++;
-            pos++;
-        }
-    });
-    return players;
-}
 
 
 let lastLogMsg = null;
 
+// Mirror the onClick handlers in input.js, but run on the server.
+// uses const GL = require('./logic.js') loaded above
 function handleAction(msg) {
     switch (msg.type) {
-        case 'ACTIVATE':    lastLogMsg = GL.activatePlayer(G, msg.playerId);       break;
-        case 'MOVE':        lastLogMsg = GL.movePlayer(G, msg.col, msg.row);       break;
-        case 'CANCEL':      lastLogMsg = GL.cancelActivation(G);                   break;
-        case 'COMMIT':      lastLogMsg = GL.commitActivation(G);                   break;
-        case 'END_TURN':    lastLogMsg = GL.endTurn(G);                            break;
+        case 'ACTIVATE':        lastLogMsg = GL.activatePlayer(G, msg.playerId);       break;
+        case 'MOVE':            lastLogMsg = GL.movePlayer(G, msg.col, msg.row);       break;
+        case 'CANCEL':          lastLogMsg = GL.cancelActivation(G);                   break;
+        case 'STOP':            lastLogMsg = GL.endActivation(G);                      break;
+        case 'END_TURN':        lastLogMsg = GL.endTurn(G);                            break;
+        case 'BLITZ_DECLARE':   lastLogMsg = GL.activateBlitz(G, msg.playerId);       break;
+        case 'BLITZ_TARGET':    lastLogMsg = GL.setBlitzTarget(G, msg.defId);        break;
+        case 'BLITZ_START': {
+            const att = G.players.find(p => p.id === msg.attId);
+            const def = G.players.find(p => p.id === msg.defId);
+            if (att && def) lastLogMsg = GL.blitzBlock(G, att, def);
+            break;
+        }
         case 'BLOCK_START': {
             const att = G.players.find(p => p.id === msg.attId);
             const def = G.players.find(p => p.id === msg.defId);
