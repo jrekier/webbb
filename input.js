@@ -151,6 +151,18 @@ function clickCell(col, row) {
 }
 
 // ── Button handlers ──────────────────────────────────────────────
+function onClickStandUp() {
+    if (!G.sel || G.sel.side !== G.active || G.sel.status !== 'prone') return;
+    if (G.sel.usedAction || G.activated) return;
+    if (NET.online) {
+        sendAction({ type: 'STAND_UP', playerId: G.sel.id });
+    } else {
+        const msg = standUp(G, G.sel.id);
+        if (msg) log(msg);
+        render();
+    }
+}
+
 function onClickMove() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (G.sel.usedAction || G.activated) return;
@@ -222,16 +234,24 @@ function onClickEndTurn() {
 function updateButtons() {
     const myTurn     = !NET.online || NET.side === G.active;
     const noAction   = !G.activated && !G.block;
+    const selProne   = G.sel && G.sel.status === 'prone';
     const canDeclare = myTurn && G.sel
         && G.sel.side    === G.active
         && !G.sel.usedAction
-        && noAction;
+        && noAction
+        && !selProne;
+    const canStand   = myTurn && G.sel
+        && G.sel.side    === G.active
+        && !G.sel.usedAction
+        && noAction
+        && selProne;
     const hasTargets = canDeclare && G.sel
         && getBlockTargets(G, G.sel).length > 0;
 
     show('btn-move',     canDeclare);
     show('btn-block',    hasTargets);
     show('btn-blitz',    canDeclare && !G.hasBlitzed && G.players.some(p => p.side !== G.active && isStanding(p)));
+    show('btn-stand-up', canStand);
     show('btn-cancel',   myTurn && (G.block === 'targeting'
                             || (G.activated && !hasMovedYet(G) && !G.block)));
     show('btn-stop',     myTurn && G.activated && hasMovedYet(G) && !G.block);

@@ -73,14 +73,36 @@ function cancelActivation(G) {
 function movePlayer(G, col, row) {
     if (!G.activated) return null;
     if (!canMoveTo(G, G.activated, col, row)) return null;
-    G.activated.col    = col;
-    G.activated.row    = row;
-    G.activated.maLeft -= 1;
-    G.sel = G.activated;
-    // const msg = `${G.activated.pos} moves to (${col},${row}) · ${G.activated.maLeft} MA left`;
-    if (G.activated.maLeft === 0) endActivation(G);
-    // return msg;
-    return null;
+
+    const p = G.activated;
+    let msg = null;
+
+    // Dodge required if leaving a tackle zone
+    const needsDodge = G.players.some(enemy =>
+        enemy.side !== p.side && isStanding(enemy) && isAdjacent(p, enemy)
+    );
+
+    if (needsDodge) {
+        const { roll, target, failed } = dodge(G, p, col, row);
+        if (failed) {
+            p.usedAction = true;
+            G.activated  = null;
+            G.blitz      = null;
+            p.col    = col; // falls over on target square
+            p.row    = row;
+            return `${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`;
+        }
+        else {
+            msg = `${p.pos} dodges (rolled ${roll}, needed ${target}+)`;
+        }
+    }
+
+    p.col    = col;
+    p.row    = row;
+    p.maLeft -= 1;
+    G.sel = p;
+    if (p.maLeft === 0) endActivation(G);
+    return msg;
 }
 
 function endActivation(G) {
@@ -210,6 +232,7 @@ if (typeof module !== 'undefined') {
         BLOCK_FACES, rollBlockDice, getPushSquares,
         declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, knockDown,
         activateBlitz, setBlitzTarget, blitzBlock,
+        dodge, rush, standUp,
     };
 }
 
@@ -511,6 +534,80 @@ function resolveFollowUp(G, followUp) {
     att.usedAction = true;
     G.activated    = null;
     return followUp ? `${att.pos} follows up` : `${att.pos} stays`;
+}
+
+// ── rush ─────────────────────────────────────────────────────────
+// One Go-For-It roll: roll a d6, needs 2+ to succeed.
+// On failure, knocks the player down (caller handles turnover).
+// Returns { roll, failed }.
+
+function rush(G, player) {
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    const failed = roll === 1;
+    if (failed) knockDown(G, player);
+    return { roll, failed };
+}
+
+// ── dodge ─────────────────────────────────────────────────────────
+// Roll to leave a square that is in a tackle zone.
+// Target: player's AG + 1, +1 per tackle zone covering the destination.
+// A roll of 6 always succeeds. On failure, knocks the player down.
+// Returns { roll, target, failed }.
+
+function dodge(G, player, destCol, destRow) {
+    const destTZs = G.players.filter(enemy =>
+        enemy.side !== player.side
+        && isStanding(enemy)
+        && Math.abs(enemy.col - destCol) <= 1
+        && Math.abs(enemy.row - destRow) <= 1
+        && !(enemy.col === destCol && enemy.row === destRow)
+    ).length;
+
+    const target = player.ag + destTZs;
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    const failed = roll !== 6 && roll < target;
+
+    if (failed) knockDown(G, player);
+    return { roll, target, failed };
+}
+
+// ── standUp ──────────────────────────────────────────────────────
+// Activates a prone player and attempts to stand them up.
+// Costs 3 MA. If maLeft < 3 the shortfall must be covered by rush
+// rolls (one per missing MA point), each stopping on the first 1.
+
+function standUp(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.active || p.usedAction || G.activated || p.status !== 'prone') return null;
+
+    G.activated = p;
+    G.sel       = p;
+
+    const rushesNeeded = Math.max(0, 3 - p.maLeft);
+
+    if (rushesNeeded === 0) {
+        p.maLeft -= 3;
+        p.status  = 'active';
+        if (p.maLeft === 0) endActivation(G);
+        return `${p.pos} stands up · ${p.maLeft} MA left`;
+    }
+
+    // Not enough base MA — cover the gap with rush rolls
+    const rolls = [];
+    for (let i = 0; i < rushesNeeded; i++) {
+        const { roll, failed } = rush(G, p);
+        rolls.push(roll);
+        if (failed) {
+            p.usedAction = true;
+            G.activated  = null;
+            return `${p.pos} fails to stand (rolled ${rolls.join(', ')}) — TURNOVER`;
+        }
+    }
+
+    p.maLeft = 0;
+    p.status  = 'active';
+    endActivation(G);
+    return `${p.pos} stands up on a rush (rolled ${rolls.join(', ')})`;
 }
 
 // ── knockDown ─────────────────────────────────────────────────────
