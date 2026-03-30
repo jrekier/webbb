@@ -1,17 +1,14 @@
-// server.js
-// Two jobs:
-//   1. Serve static files (html, js, css) to the browser
-//   2. Handle WebSocket connections between the two players
-
 'use strict';
 
-const http = require('http');   // built into Node.js — no install needed
-const fs   = require('fs');     // file system — also built in
-const path = require('path');   // file path utilities — also built in
-const { WebSocketServer } = require('ws');  // the one library we installed
+const http = require('http');
+const fs   = require('fs');
+const path = require('path');
+const { WebSocketServer } = require('ws');
 
-// ── File server ──────────────────────────────────────────────────
-// When a browser asks for a file, find it and send it back.
+const GL = require('./logic.js');
+const TM = require('./teams.js');
+
+// ── Static file server ───────────────────────────────────────────
 
 const MIME_TYPES = {
     '.html': 'text/html',
@@ -23,33 +20,20 @@ const MIME_TYPES = {
 };
 
 const httpServer = http.createServer((req, res) => {
-    // req.url is what the browser asked for, e.g. '/index.html' or '/logic.js'
-    // Default to index.html if they just asked for '/'
     const filePath = req.url === '/' ? '/index.html' : req.url;
     const fullPath = path.join(__dirname, filePath);
     const ext      = path.extname(filePath);
     const mimeType = MIME_TYPES[ext] || 'text/plain';
 
     fs.readFile(fullPath, (err, data) => {
-        if (err) {
-            res.writeHead(404);
-            res.end('Not found');
-            return;
-        }
+        if (err) { res.writeHead(404); res.end('Not found'); return; }
         res.writeHead(200, { 'Content-Type': mimeType });
         res.end(data);
     });
 });
 
-// ── Game state ───────────────────────────────────────────────────
-// The server has its own copy of G — the single source of truth.
-// We load logic.js so we can call the same game functions.
-// 'require' is Node's way of loading another JS file.
+// ── Rulesets ─────────────────────────────────────────────────────
 
-const GL   = require('./logic.js');
-const TM   = require('./teams.js');
-
-// Mirror of constants.js — server needs ruleset config too
 const RULESETS = {
     sevens: {
         name: 'Blood Bowl Sevens',
@@ -68,178 +52,233 @@ const RULESETS = {
         PLAYERS_PER_TEAM: 11,
     },
 };
-const RULESET = RULESETS.sevens;
-global.COLS = RULESET.COLS;
-global.ROWS = RULESET.ROWS;
-const fs2  = require('fs');
-const path2 = require('path');
 
-// Load team definitions from JSON files
+// ── Default teams ─────────────────────────────────────────────────
+
 function loadTeamDef(filename) {
-    const raw = fs2.readFileSync(path2.join(__dirname, filename), 'utf8');
+    const raw = fs.readFileSync(path.join(__dirname, filename), 'utf8');
     return JSON.parse(raw);
 }
 
 const DEFAULT_HOME = loadTeamDef('team-humans.json');
 const DEFAULT_AWAY = loadTeamDef('team-orcs.json');
 
-let G = GL.createInitialState();
+// ── Lobby ─────────────────────────────────────────────────────────
+// Clients in the lobby are waiting to create or join a room.
 
-// ── Room ─────────────────────────────────────────────────────────
-// A room holds the two connected players.
-// 'null' means that slot is not yet filled.
+const lobby = new Set();  // WebSocket connections currently in the lobby
 
-const room = {
-    home: null,   // WebSocket connection for home player
-    away: null,   // WebSocket connection for away player
-};
+function enterLobby(ws) {
+    lobby.add(ws);
+    sendLobbyState(ws);
+}
 
-function broadcast(msg) {
-    // Send the same message to both players
+function leaveLobby(ws) {
+    lobby.delete(ws);
+}
+
+function lobbySnapshot() {
+    // Only expose what the lobby needs to display
+    return Array.from(rooms.values()).map(r => ({
+        id:     r.id,
+        status: r.G ? 'playing' : 'waiting',
+    }));
+}
+
+function sendLobbyState(ws) {
+    ws.send(JSON.stringify({ type: 'LOBBY_UPDATE', rooms: lobbySnapshot() }));
+}
+
+function broadcastLobbyUpdate() {
+    const msg = JSON.stringify({ type: 'LOBBY_UPDATE', rooms: lobbySnapshot() });
+    for (const ws of lobby) ws.send(msg);
+}
+
+// ── Room manager ──────────────────────────────────────────────────
+// Each room is fully isolated: own game state, own sockets.
+
+const rooms = new Map();
+
+function generateRoomId() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let id;
+    do { id = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); }
+    while (rooms.has(id));
+    return id;
+}
+
+function createRoom(ws) {
+    const id   = generateRoomId();
+    const room = { id, home: ws, away: null, G: null, lastLogMsg: null };
+    rooms.set(id, room);
+    leaveLobby(ws);
+    console.log(`Room ${id} created`);
+    broadcastLobbyUpdate();
+    return room;
+}
+
+function joinRoom(ws, roomId) {
+    const room = rooms.get(roomId);
+    if (!room)       return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
+    if (room.away)   return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room is full' }));
+    room.away = ws;
+    leaveLobby(ws);
+    // Tell away player their side before START arrives so NET.side is set in time
+    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away' }));
+    console.log(`Room ${roomId}: away joined — starting game`);
+    startGame(room);
+    broadcastLobbyUpdate();
+}
+
+function roomOf(ws) {
+    for (const room of rooms.values()) {
+        if (room.home === ws || room.away === ws) return room;
+    }
+    return null;
+}
+
+function sideOf(room, ws) {
+    if (room.home === ws) return 'home';
+    if (room.away === ws) return 'away';
+    return null;
+}
+
+function broadcast(room, msg) {
     const text = JSON.stringify(msg);
     if (room.home) room.home.send(text);
     if (room.away) room.away.send(text);
 }
 
-function sideOf(ws) {
-    // Which side is this WebSocket connection?
-    if (ws === room.home) return 'home';
-    if (ws === room.away) return 'away';
-    return null;
+function destroyRoom(room) {
+    rooms.delete(room.id);
+    console.log(`Room ${room.id} destroyed`);
+    broadcastLobbyUpdate();
 }
 
-// ── WebSocket server ─────────────────────────────────────────────
+// ── Game initialisation ───────────────────────────────────────────
+
+function startGame(room, rulesetKey) {
+    rulesetKey    = rulesetKey || 'sevens';
+    const ruleset = RULESETS[rulesetKey];
+
+    global.COLS = ruleset.COLS;
+    global.ROWS = ruleset.ROWS;
+
+    GL.initFormations(rulesetKey);
+
+    room.G = GL.createInitialState();
+
+    const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   GL.FORMATION_HOME);
+    const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, GL.FORMATION_AWAY);
+    room.G.players            = [...homePlayers, ...awayPlayers];
+    room.G.players[1].hasBall = true;
+    room.G.ball.carrier       = room.G.players[1];
+
+    console.log(`Room ${room.id}: game started — ${room.G.players.length} players`);
+
+    broadcast(room, {
+        type:     'START',
+        G:        room.G,
+        homeTeam: DEFAULT_HOME,
+        awayTeam: DEFAULT_AWAY,
+        ruleset:  rulesetKey,
+    });
+}
+
+// ── WebSocket server ──────────────────────────────────────────────
+
 const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws) => {
-    // A new browser has connected.
-    // Assign them to the first empty slot.
+    console.log('Client connected');
 
-    if (!room.home) {
-        room.home = ws;
-        ws.send(JSON.stringify({ type: 'WELCOME', side: 'home' }));
-        console.log('Player 1 (home) connected');
-    } else if (!room.away) {
-        room.away = ws;
-        ws.send(JSON.stringify({ type: 'WELCOME', side: 'away' }));
-        console.log('Player 2 (away) connected');
-
-        // Both players are here — start the game
-        startGame();
-    } else {
-        // Room is full
-        ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room is full' }));
-        ws.close();
-    }
-
-    // ── Handle incoming messages from this player ──
     ws.on('message', (raw) => {
-        const msg  = JSON.parse(raw);
-        const side = sideOf(ws);
+        let msg;
+        try { msg = JSON.parse(raw); } catch { return; }
 
-        console.log(`${side} sent:`, msg.type);
+        if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);              return; }
+        if (msg.type === 'CREATE_ROOM') { createRoom(ws);
+            ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home' }));   return; }
+        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId);            return; }
 
-        // Ignore messages from the wrong team
-        // Block face pick can come from the defender (when they're stronger)
-        // Push choice always comes from attacker
+        // ── In-game messages ──
+
+        const room = roomOf(ws);
+        if (!room || !room.G) {
+            ws.send(JSON.stringify({ type: 'ERROR', msg: 'Not in a game' }));
+            return;
+        }
+
+        const side     = sideOf(room, ws);
         const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP'].includes(msg.type);
-        if (!turnFree && side !== G.active) {
+        if (!turnFree && side !== room.G.active) {
             ws.send(JSON.stringify({ type: 'ERROR', msg: 'Not your turn' }));
             return;
         }
 
-        // Handle the action
-        handleAction(msg);
-
-        // Send updated G and the log message to both players
-        broadcast({ type: 'UPDATE', G, logMsg: lastLogMsg });
-        lastLogMsg = null;
+        console.log(`Room ${room.id} · ${side}: ${msg.type}`);
+        handleAction(room, msg);
+        broadcast(room, { type: 'UPDATE', G: room.G, logMsg: room.lastLogMsg });
+        room.lastLogMsg = null;
     });
 
     ws.on('close', () => {
-        console.log(`${sideOf(ws)} disconnected`);
-        if (ws === room.home) room.home = null;
-        if (ws === room.away) room.away = null;
+        leaveLobby(ws);
+        const room = roomOf(ws);
+        if (!room) return;
+        const side = sideOf(room, ws);
+        console.log(`Room ${room.id}: ${side} disconnected`);
+        broadcast(room, { type: 'ERROR', msg: 'Opponent disconnected' });
+        destroyRoom(room);
     });
 });
 
-// ── Game actions ─────────────────────────────────────────────────
-// Mirror of what input.js does in the browser, but runs on the server.
+// ── Action handler ────────────────────────────────────────────────
 
-function startGame() {
-    G = GL.createInitialState();
-
-    // Initialise formations for active ruleset
-    GL.initFormations('sevens');
-
-    // Build rosters from team definitions
-    const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   GL.FORMATION_HOME);
-    const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, GL.FORMATION_AWAY);
-    G.players = [...homePlayers, ...awayPlayers];
-    G.players[1].hasBall = true;
-    G.ball.carrier = G.players[1];
-
-    console.log('Game started —', G.players.length, 'players');
-
-    // Send START with team defs so clients can load sprites
-    broadcast({
-        type:     'START',
-        G,
-        homeTeam: DEFAULT_HOME,
-        awayTeam: DEFAULT_AWAY,
-        ruleset:  'sevens',
-    });
-}
-
-
-
-let lastLogMsg = null;
-
-// Mirror the onClick handlers in input.js, but run on the server.
-// uses const GL = require('./logic.js') loaded above
-function handleAction(msg) {
+function handleAction(room, msg) {
+    const G = room.G;
     switch (msg.type) {
-        case 'ACTIVATE':        lastLogMsg = GL.activatePlayer(G, msg.playerId);       break;
-        case 'MOVE':            lastLogMsg = GL.movePlayer(G, msg.col, msg.row);       break;
-        case 'CANCEL':          lastLogMsg = GL.cancelActivation(G);                   break;
-        case 'STOP':            lastLogMsg = GL.endActivation(G);                      break;
-        case 'END_TURN':        lastLogMsg = GL.endTurn(G);                            break;
-        case 'BLITZ_DECLARE':   lastLogMsg = GL.activateBlitz(G, msg.playerId);       break;
-        case 'BLITZ_TARGET':    lastLogMsg = GL.setBlitzTarget(G, msg.defId);        break;
+        case 'ACTIVATE':      room.lastLogMsg = GL.activatePlayer(G, msg.playerId);     break;
+        case 'MOVE':          room.lastLogMsg = GL.movePlayer(G, msg.col, msg.row);     break;
+        case 'CANCEL':        room.lastLogMsg = GL.cancelActivation(G);                 break;
+        case 'STOP':          room.lastLogMsg = GL.endActivation(G);                    break;
+        case 'END_TURN':      room.lastLogMsg = GL.endTurn(G);                          break;
+        case 'BLITZ_DECLARE': room.lastLogMsg = GL.activateBlitz(G, msg.playerId);      break;
+        case 'BLITZ_TARGET':  room.lastLogMsg = GL.setBlitzTarget(G, msg.defId);        break;
         case 'BLITZ_START': {
             const att = G.players.find(p => p.id === msg.attId);
             const def = G.players.find(p => p.id === msg.defId);
-            if (att && def) lastLogMsg = GL.blitzBlock(G, att, def);
+            if (att && def) room.lastLogMsg = GL.blitzBlock(G, att, def);
             break;
         }
         case 'BLOCK_START': {
             const att = G.players.find(p => p.id === msg.attId);
             const def = G.players.find(p => p.id === msg.defId);
-            if (att && def) lastLogMsg = GL.declareBlock(G, att, def);
+            if (att && def) room.lastLogMsg = GL.declareBlock(G, att, def);
             break;
         }
         case 'BLOCK_FACE': {
             if (G.block && G.block.phase === 'pick-face') {
                 const face = G.block.rolls[msg.faceIdx];
-                if (face) lastLogMsg = GL.pickBlockFace(G, face);
+                if (face) room.lastLogMsg = GL.pickBlockFace(G, face);
             }
             break;
         }
         case 'BLOCK_PUSH': {
             if (G.block && G.block.phase === 'pick-push')
-                lastLogMsg = GL.pickPushSquare(G, msg.col, msg.row);
+                room.lastLogMsg = GL.pickPushSquare(G, msg.col, msg.row);
             break;
         }
         case 'FOLLOW_UP': {
-            lastLogMsg = GL.resolveFollowUp(G, msg.choice);
+            room.lastLogMsg = GL.resolveFollowUp(G, msg.choice);
             break;
         }
     }
 }
 
 // ── Start listening ───────────────────────────────────────────────
+
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
-    console.log('Open two browser tabs to play');
 });

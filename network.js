@@ -1,65 +1,80 @@
 // network.js
-// Manages the WebSocket connection to the server.
+// WebSocket transport layer — connect, send, receive, route to game.
+// Knows nothing about game logic or rendering beyond calling into game.js.
 
 var NET = {
     online: false,
     side:   null,
+    roomId: null,
     ws:     null,
 };
 
-function connect() {
-    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    NET.ws = new WebSocket(`${protocol}://${location.host}`);
+// ── connect ───────────────────────────────────────────────────────
+// Opens a WebSocket connection to the server.
+// Does NOT create or join a room — call createRoom() or joinRoom() after.
 
-    NET.ws.onopen    = () => console.log('Connected to server');
-    NET.ws.onmessage = (event) => netReceive(JSON.parse(event.data));
-    NET.ws.onclose   = () => {
-        console.log('Disconnected');
-        NET.online = false;
-    };
-    NET.ws.onerror = (err) => console.error('WebSocket error:', err);
+function connect() {
+    return new Promise((resolve, reject) => {
+        const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+        NET.ws = new WebSocket(`${protocol}://${location.host}`);
+
+        NET.ws.onopen    = () => resolve();
+        NET.ws.onmessage = (event) => netReceive(JSON.parse(event.data));
+        NET.ws.onclose   = () => {
+            console.log('Disconnected');
+            NET.online = false;
+        };
+        NET.ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+            reject(err);
+        };
+    });
 }
+
+// ── createRoom / joinRoom ─────────────────────────────────────────
+
+function createRoom() {
+    sendAction({ type: 'CREATE_ROOM' });
+}
+
+function joinRoom(roomId) {
+    sendAction({ type: 'JOIN_ROOM', roomId });
+}
+
+// ── sendAction ────────────────────────────────────────────────────
+
+function sendAction(msg) {
+    if (!NET.ws || NET.ws.readyState !== WebSocket.OPEN) return;
+    NET.ws.send(JSON.stringify(msg));
+}
+
+// ── netReceive ────────────────────────────────────────────────────
 
 function netReceive(msg) {
     console.log('Received:', msg.type);
 
     switch (msg.type) {
 
-        case 'WELCOME':
+        case 'LOBBY_UPDATE':
+            onLobbyUpdate(msg.rooms);
+            break;
+
+        case 'ROOM_CREATED':
             NET.side   = msg.side;
             NET.online = true;
-            // Update status label — show which side we are
-            const netEl = document.getElementById('net-status');
-            netEl.textContent = `You are ${NET.side.toUpperCase()}`;
-            netEl.className   = 'connected';
-            // Hide the connect button — no longer needed
-            document.getElementById('btn-connect').style.display = 'none';
+            onRoomReady(msg.side);  // home waits for opponent
+            break;
+
+        case 'ROOM_JOINED':
+            NET.side   = msg.side;
+            NET.online = true;
+            // away player goes straight to game when START arrives — no waiting screen
             break;
 
         case 'START':
-            document.getElementById('online-strip').classList.add('hidden');
-            log('Game started online', 'turn-marker');
-
-            // Apply ruleset from server
-            if (msg.ruleset && RULESETS[msg.ruleset]) {
-                RULESET = RULESETS[msg.ruleset];
-                COLS    = RULESET.COLS;
-                ROWS    = RULESET.ROWS;
-                TURNS   = RULESET.TURNS;
-                initFormations();
-                sizePitch();  // resize canvas for new dimensions
-            }
-
-            if (msg.homeTeam)
-                document.getElementById('lbl-home-team').textContent =
-                    msg.homeTeam.name.toUpperCase();
-            if (msg.awayTeam)
-                document.getElementById('lbl-away-team').textContent =
-                    msg.awayTeam.name.toUpperCase();
-
-            loadSpriteSheet();
-
-            // fall through to UPDATE
+            // game.js handles ruleset, formations, pitch setup, and rendering
+            startGame(msg.homeTeam, msg.awayTeam, msg.ruleset);
+            // fall through to apply the initial G
 
         case 'UPDATE':
             if (msg.logMsg) log(msg.logMsg);
@@ -72,9 +87,4 @@ function netReceive(msg) {
             console.warn('Server says:', msg.msg);
             break;
     }
-}
-
-function sendAction(msg) {
-    if (!NET.ws || NET.ws.readyState !== WebSocket.OPEN) return;
-    NET.ws.send(JSON.stringify(msg));
 }
