@@ -82,15 +82,19 @@ function movePlayer(G, col, row) {
         enemy.side !== p.side && isStanding(enemy) && isAdjacent(p, enemy)
     );
 
+    // Tackle negates Dodge skill
+    const markedbyTackle = G.players.some(enemy =>
+        enemy.side !== p.side && isStanding(enemy) && isAdjacent(p, enemy) && enemy.skills?.includes('Tackle')
+    );    
+
     if (needsDodge) {
         let { roll, target, failed } = dodge(G, p, col, row);
-
         if (!failed) {
             log(`${p.pos} dodges (rolled ${roll}, needed ${target}+)`);
         } 
         else {
             // First failure
-            if (p.skills && p.skills.includes('Dodge') && !G.hasDodged) {
+            if (p.skills && p.skills.includes('Dodge') && !G.hasDodged && !markedbyTackle) {
                 log(`${p.pos} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill`);
                 G.hasDodged = true;
 
@@ -515,7 +519,14 @@ function pickPushSquare(G, col, row) {
     let msg = `${def.pos} pushed to (${col},${row}).`;
 
     // Knock down if face warrants it
-    if (chosenFace.id === 'DEF_STUMBLES' || chosenFace.id === 'DEF_DOWN') {
+    if (
+        // simple pow
+        (chosenFace.id === 'DEF_DOWN')  
+        // stumble and def has no dodge
+        || (chosenFace.id === 'DEF_STUMBLES' && !def.skills?.includes('Dodge'))
+        // stumble and def has dodge but att has tackle
+        || (chosenFace.id === 'DEF_STUMBLES' && def.skills?.includes('Dodge') && att.skills?.includes('Tackle')) 
+    ) {
         knockDown(G, def);
         msg += ` ${def.pos} is knocked down!`;
     }

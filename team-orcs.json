@@ -3,7 +3,7 @@
     "colour": [0, 0, 255],
     "players": [
         { "pos": "Lineman", "ma": 5, "st": 3, "ag": 3, "av": 9,
-          "skills": [], "count": 4,
+          "skills": ["Tackle"], "count": 4,
           "sprite": { "sheet": "assets/sprites/orc.gif", 
                       "base": { "x": 0, "y": 0, "w": 26, "h": 26 }, 
                       "armour": { "x": 32, "y": 0, "w": 26, "h": 26 } } },
