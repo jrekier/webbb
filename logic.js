@@ -82,14 +82,14 @@ function movePlayer(G, col, row) {
     if (rushneeded) {
         const rushroll = Math.floor(Math.random() * 6) + 1;
         if ( rushroll == 1){
-            msg += `${p.pos} fails rush (rolled ${rushroll})`;
+            msg += `${p.pos} fails rush (rolled ${rushroll}). `;
             p.col = col; // falls over on target square
             p.row = row;
             knockDown(G, p);
             endTurn(G);
-            return null
+            return msg
         } else {
-            msg += `${p.pos} rushes (rolled ${rushroll})`;
+            msg += `${p.pos} rushes (rolled ${rushroll}). `;
         }
     };
 
@@ -106,7 +106,7 @@ function movePlayer(G, col, row) {
     if (needsDodge) {
         let { roll, target, failed } = dodge(G, p, col, row);
         if (!failed) {
-            msg += `${p.pos} dodges (rolled ${roll}, needed ${target}+)`;
+            msg += `${p.pos} dodges (rolled ${roll}, needed ${target}+). `;
         } 
         else {
             // First failure
@@ -116,7 +116,7 @@ function movePlayer(G, col, row) {
 
                 ({ roll, target, failed } = dodge(G, p, col, row));
                 if (!failed) {
-                    msg += `${p.pos} succeeds dodge on reroll (rolled ${roll}, needed ${target}+)`;
+                    msg += `${p.pos} succeeds dodge on reroll (rolled ${roll}, needed ${target}+). `;
                 }
             }            
             // Final failure check (covers BOTH: no skill + failed reroll)
