@@ -33,10 +33,9 @@ function playerAt(G, col, row) {
 function canMoveTo(G, player, col, row) {
     const dc = Math.abs(player.col - col);
     const dr = Math.abs(player.row - row);
-    return dc <= 1 && dr <= 1
-        && !(dc === 0 && dr === 0)
-        && player.maLeft > 0
-        && playerAt(G, col, row) === null;
+    const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
+    const rushneeded = (maLeft === 0);
+    return { allowed, rushneeded }
 }
 
 function hasMovedYet(G) {
@@ -72,10 +71,25 @@ function cancelActivation(G) {
 
 function movePlayer(G, col, row) {
     if (!G.activated) return null;
-    if (!canMoveTo(G, G.activated, col, row)) return null;
+    const { allowed, rushneeded } = canMoveTo(G, G.activated, col, row);
+    if (!allowed) return null;
 
     const p = G.activated;
-    let msg = null;
+
+    // Rush required
+    if (rushneeded) {
+        const rushroll = Math.floor(Math.random() * 6) + 1;
+        if ( rushroll == 1){
+            log(`${p.pos} fails rush (rolled ${rushroll})`);
+            p.col = col; // falls over on target square
+            p.row = row;
+            knockDown(G, p);
+            endTurn(G);
+            return null
+        } else {
+            log(`${p.pos} rushes (rolled ${rushroll})`)
+        }
+    };
 
     // Dodge required if leaving a tackle zone
     const needsDodge = G.players.some(enemy =>
@@ -105,28 +119,26 @@ function movePlayer(G, col, row) {
             }            
             // Final failure check (covers BOTH: no skill + failed reroll)
             if (failed) {
-                log(`${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`);
-
-                knockDown(G, p);
-                p.usedAction = true;
-                G.activated  = null;
-                G.blitz      = null;
-                G.hasDodged  = null;
-
+                `${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`;
                 p.col = col; // falls over on target square
                 p.row = row;
-
-                return null;
+                knockDown(G, p);
+                endTurn(G);
+                return null
             }
         }
     }
 
     p.col    = col;
     p.row    = row;
-    p.maLeft -= 1;
+    if(!rushneeded) {
+        p.maLeft -= 1;
+    } else {
+        p.rushLeft -= 1;
+    }
     G.sel = p;
-    if (p.maLeft === 0) endActivation(G);
-    return msg;
+    if (p.maLeft + p.rushLeft === 0) endActivation(G);
+    return null;
 }
 
 
@@ -146,12 +158,13 @@ function endTurn(G) {
         if (p.side === G.active) {
             p.usedAction = false;
             p.maLeft     = p.ma;
+            p.rushLeft   = 2;
         }
     }
-    const prev   = G.active;
     G.active     = G.active === 'home' ? 'away' : 'home';
     G.sel        = null;
     G.hasBlitzed = false; // Reset blitz flag at turn end
+    G.hasDodged  = false; // Reset dodge flag at turn end
     if (G.active === 'home') G.turn += 1;
     return `Turn ${G.turn} · ${G.active.toUpperCase()}`;
 }
@@ -476,6 +489,7 @@ function pickBlockFace(G, face) {
             G.blitz = null;
             G.activated = null;
             att.usedAction = true;
+            endTurn(G);
             return `${att.pos} is knocked down! TURNOVER`;
 
         case 'BOTH_DOWN':
@@ -485,6 +499,7 @@ function pickBlockFace(G, face) {
             G.blitz = null;
             G.activated = null;
             att.usedAction = true;
+            endTurn(G);
             return `Both players are knocked down! TURNOVER`;
 
         case 'PUSH':
@@ -632,8 +647,7 @@ function standUp(G, playerId) {
         const { roll, failed } = rush(G, p);
         rolls.push(roll);
         if (failed) {
-            p.usedAction = true;
-            G.activated  = null;
+            endTurn(G);
             return `${p.pos} fails to stand (rolled ${rolls.join(', ')}) — TURNOVER`;
         }
     }

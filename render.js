@@ -220,13 +220,20 @@ function drawPitch() {
 
 // ── Highlights ────────────────────────────────────────────────────
 function drawHighlights() {
-    // Movement highlights — green fill + inset border
+    // Movement highlights — green fill + inset border – orange if rush needed
     if (G.activated && !G.block && G.blitz !== 'targeting') {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                if (canMoveTo(G, G.activated, c, r)) {
-                    hlCell(c, r, 'rgba(100,180,100,0.20)', 'rgba(100,200,100,0.4)', false);
-                }
+                const { allowed, rushneeded } = canMoveTo(G, G.activated, c, r);
+                console.log(allowed,rushneeded)
+                if (allowed) {
+                    if (rushneeded) {
+                        hlCell(c, r, 'rgba(220,130,30,0.22)', 'rgba(255,160,40,0.6)', false);
+                    }
+                    else {
+                        hlCell(c, r, 'rgba(100,180,100,0.20)', 'rgba(100,200,100,0.4)', false);
+                    }
+                } 
             }
         }
     }

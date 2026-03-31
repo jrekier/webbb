@@ -39,6 +39,7 @@ function buildRosterFromTeam(teamDef, side, startId, formation) {
                 av:         posData.av,
                 skills:     posData.skills || [],
                 maLeft:     posData.ma,
+                rushLeft:   2,
                 col,
                 row,
                 hasBall:    false,

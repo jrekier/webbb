@@ -141,7 +141,8 @@ function clickCell(col, row) {
     // Movement
     if (!G.activated) return;
     if (G.blitz === 'targeting') return;
-    if (!canMoveTo(G, G.activated, col, row)) return;
+    const { allowed, rushneeded } = canMoveTo(G, G.activated, col, row);
+    if (!allowed) return;
     if (NET.online) {
         sendAction({ type: 'MOVE', col, row });
     } else {
@@ -270,8 +271,7 @@ function show(id, visible) {
 function canMoveTo(G, player, col, row) {
     const dc = Math.abs(player.col - col);
     const dr = Math.abs(player.row - row);
-    return dc <= 1 && dr <= 1
-        && !(dc === 0 && dr === 0)
-        && player.maLeft > 0
-        && playerAt(G, col, row) === null;
+    const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
+    const rushneeded = (player.maLeft === 0);
+    return { allowed, rushneeded }
 }
