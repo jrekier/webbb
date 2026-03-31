@@ -18,6 +18,7 @@ function createInitialState() {
         block:       null,
         blitz:       null,
         hasBlitzed:  false,
+        hasDodged:   false,
         ball:        { col: 7, row: 13, carrier: null },
         players:     [],
     };
@@ -34,7 +35,7 @@ function canMoveTo(G, player, col, row) {
     const dc = Math.abs(player.col - col);
     const dr = Math.abs(player.row - row);
     const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
-    const rushneeded = (maLeft === 0);
+    const rushneeded = (player.maLeft === 0);
     return { allowed, rushneeded }
 }
 
@@ -75,19 +76,20 @@ function movePlayer(G, col, row) {
     if (!allowed) return null;
 
     const p = G.activated;
+    let msg = '';
 
     // Rush required
     if (rushneeded) {
         const rushroll = Math.floor(Math.random() * 6) + 1;
         if ( rushroll == 1){
-            log(`${p.pos} fails rush (rolled ${rushroll})`);
+            msg += `${p.pos} fails rush (rolled ${rushroll})`;
             p.col = col; // falls over on target square
             p.row = row;
             knockDown(G, p);
             endTurn(G);
             return null
         } else {
-            log(`${p.pos} rushes (rolled ${rushroll})`)
+            msg += `${p.pos} rushes (rolled ${rushroll})`;
         }
     };
 
@@ -104,27 +106,27 @@ function movePlayer(G, col, row) {
     if (needsDodge) {
         let { roll, target, failed } = dodge(G, p, col, row);
         if (!failed) {
-            log(`${p.pos} dodges (rolled ${roll}, needed ${target}+)`);
+            msg += `${p.pos} dodges (rolled ${roll}, needed ${target}+)`;
         } 
         else {
             // First failure
             if (p.skills && p.skills.includes('Dodge') && !G.hasDodged && !markedbyTackle) {
-                log(`${p.pos} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill`);
+                msg += `${p.pos} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
                 G.hasDodged = true;
 
                 ({ roll, target, failed } = dodge(G, p, col, row));
                 if (!failed) {
-                    log(`${p.pos} succeeds dodge on reroll (rolled ${roll}, needed ${target}+)`);
+                    msg += `${p.pos} succeeds dodge on reroll (rolled ${roll}, needed ${target}+)`;
                 }
             }            
             // Final failure check (covers BOTH: no skill + failed reroll)
             if (failed) {
-                `${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`;
+                msg += `${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`;
                 p.col = col; // falls over on target square
                 p.row = row;
                 knockDown(G, p);
                 endTurn(G);
-                return null
+                return msg
             }
         }
     }
@@ -138,7 +140,7 @@ function movePlayer(G, col, row) {
     }
     G.sel = p;
     if (p.maLeft + p.rushLeft === 0) endActivation(G);
-    return null;
+    return msg;
 }
 
 

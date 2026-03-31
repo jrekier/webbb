@@ -225,7 +225,6 @@ function drawHighlights() {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 const { allowed, rushneeded } = canMoveTo(G, G.activated, c, r);
-                console.log(allowed,rushneeded)
                 if (allowed) {
                     if (rushneeded) {
                         hlCell(c, r, 'rgba(220,130,30,0.22)', 'rgba(255,160,40,0.6)', false);
