@@ -275,13 +275,17 @@ function drawHighlights() {
 // ── hlCell ────────────────────────────────────────────────────────
 // Draws a highlight on one cell: filled background + inset stroke rect.
 // dash=true draws a dashed border.
-function hlCell(c, r, fill, stroke, dash) {
+// text is an optional string printed inside the cell
+function hlCell(c, r, fill, stroke, dash, text) {
     const x = c * CELL, y = r * CELL;
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, CELL, CELL);
     if (stroke) {
         ctx.strokeStyle = stroke;
         ctx.lineWidth   = 1;
+        if (text !== undefined) {
+            ctx.fillText(text, x + CELL/2, y + CELL/2);
+        }
         if (dash) ctx.setLineDash([4, 3]);
         ctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
         if (dash) ctx.setLineDash([]);
