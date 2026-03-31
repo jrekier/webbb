@@ -267,30 +267,30 @@ function show(id, visible) {
     document.getElementById(id).style.display = visible ? '' : 'none';
 }
 
-// ── canMoveTo — also used by render.js for highlights ─────────────
-function canMoveTo(G, player, col, row) {
-    const dc = Math.abs(player.col - col);
-    const dr = Math.abs(player.row - row);
-    const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
-    const needsrush = (player.maLeft === 0);
+// // ── canMoveTo — also used by render.js for highlights ─────────────
+// function canMoveTo(G, player, col, row) {
+//     const dc = Math.abs(player.col - col);
+//     const dr = Math.abs(player.row - row);
+//     const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
+//     const needsrush = (player.maLeft === 0);
 
-    // Dodge required if leaving a tackle zone
-    const needsDodge = G.players.some(enemy =>
-        enemy.side !== player.side && isStanding(enemy) && isAdjacent(player, enemy)
-    );
+//     // Dodge required if leaving a tackle zone
+//     const needsDodge = G.players.some(enemy =>
+//         enemy.side !== player.side && isStanding(enemy) && isAdjacent(player, enemy)
+//     );
     
-    let dodgerolltarget = 0;
-    if (needsDodge) {
-        // Target: player's AG + 1, +1 per tackle zone covering the destination.
-        const destTZs = G.players.filter(enemy =>
-            enemy.side !== player.side
-            && isStanding(enemy)
-            && Math.abs(enemy.col - col) <= 1
-            && Math.abs(enemy.row - row) <= 1
-            && !(enemy.col === col && enemy.row === row)
-        ).length;
-        dodgerolltarget = player.ag + destTZs;
-    }
+//     let dodgerolltarget = 0;
+//     if (needsDodge) {
+//         // Target: player's AG + 1, +1 per tackle zone covering the destination.
+//         const destTZs = G.players.filter(enemy =>
+//             enemy.side !== player.side
+//             && isStanding(enemy)
+//             && Math.abs(enemy.col - col) <= 1
+//             && Math.abs(enemy.row - row) <= 1
+//             && !(enemy.col === col && enemy.row === row)
+//         ).length;
+//         dodgerolltarget = Math.min(player.ag + destTZs, 6);
+//     }
 
-    return { allowed, needsrush, dodgerolltarget }
-}
+//     return { allowed, needsrush, dodgerolltarget }
+// }

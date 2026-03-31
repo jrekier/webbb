@@ -52,7 +52,7 @@ function canMoveTo(G, player, col, row) {
             && Math.abs(enemy.row - row) <= 1
             && !(enemy.col === col && enemy.row === row)
         ).length;
-        dodgerolltarget = player.ag + destTZs;
+        dodgerolltarget = Math.min(player.ag + destTZs, 6);
     }
 
     return { allowed, needsrush, dodgerolltarget }
@@ -131,7 +131,7 @@ function movePlayer(G, col, row) {
                 msg += `${p.pos} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
                 G.hasDodged = true;
 
-                ({ roll, target, failed } = dodge(G, p, col, row));
+                ({ roll, target, failed } = dodge(dodgerolltarget));
                 if (!failed) {
                     msg += `${p.pos} succeeds dodge on reroll (rolled ${roll}, needed ${target}+). `;
                 }
