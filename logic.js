@@ -35,8 +35,27 @@ function canMoveTo(G, player, col, row) {
     const dc = Math.abs(player.col - col);
     const dr = Math.abs(player.row - row);
     const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
-    const rushneeded = (player.maLeft === 0);
-    return { allowed, rushneeded }
+    const needsrush = (player.maLeft === 0);
+
+    // Dodge required if leaving a tackle zone
+    const needsDodge = G.players.some(enemy =>
+        enemy.side !== player.side && isStanding(enemy) && isAdjacent(player, enemy)
+    );
+    
+    let dodgerolltarget = 0;
+    if (needsDodge) {
+        // Target: player's AG + 1, +1 per tackle zone covering the destination.
+        const destTZs = G.players.filter(enemy =>
+            enemy.side !== player.side
+            && isStanding(enemy)
+            && Math.abs(enemy.col - col) <= 1
+            && Math.abs(enemy.row - row) <= 1
+            && !(enemy.col === col && enemy.row === row)
+        ).length;
+        dodgerolltarget = player.ag + destTZs;
+    }
+
+    return { allowed, needsrush, dodgerolltarget }
 }
 
 function hasMovedYet(G) {
@@ -72,14 +91,14 @@ function cancelActivation(G) {
 
 function movePlayer(G, col, row) {
     if (!G.activated) return null;
-    const { allowed, rushneeded } = canMoveTo(G, G.activated, col, row);
+    const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, G.activated, col, row);
     if (!allowed) return null;
 
     const p = G.activated;
     let msg = '';
 
     // Rush required
-    if (rushneeded) {
+    if (needsrush) {
         const rushroll = Math.floor(Math.random() * 6) + 1;
         if ( rushroll == 1){
             msg += `${p.pos} fails rush (rolled ${rushroll}). `;
@@ -93,10 +112,8 @@ function movePlayer(G, col, row) {
         }
     };
 
-    // Dodge required if leaving a tackle zone
-    const needsDodge = G.players.some(enemy =>
-        enemy.side !== p.side && isStanding(enemy) && isAdjacent(p, enemy)
-    );
+    // Dodge required
+    const needsDodge = (dodgerolltarget !== 0);
 
     // Tackle negates Dodge skill
     const markedbyTackle = G.players.some(enemy =>
@@ -104,7 +121,7 @@ function movePlayer(G, col, row) {
     );    
 
     if (needsDodge) {
-        let { roll, target, failed } = dodge(G, p, col, row);
+        let { roll, target, failed } = dodge(dodgerolltarget);
         if (!failed) {
             msg += `${p.pos} dodges (rolled ${roll}, needed ${target}+). `;
         } 
@@ -133,7 +150,7 @@ function movePlayer(G, col, row) {
 
     p.col    = col;
     p.row    = row;
-    if(!rushneeded) {
+    if(!needsrush) {
         p.maLeft -= 1;
     } else {
         p.rushLeft -= 1;
@@ -601,24 +618,12 @@ function rush(G, player) {
 
 // ── dodge ─────────────────────────────────────────────────────────
 // Roll to leave a square that is in a tackle zone.
-// Target: player's AG + 1, +1 per tackle zone covering the destination.
-// A roll of 6 always succeeds. On failure, knocks the player down.
+// A roll of 6 always succeeds.
 // Returns { roll, target, failed }.
 
-function dodge(G, player, destCol, destRow) {
-    const destTZs = G.players.filter(enemy =>
-        enemy.side !== player.side
-        && isStanding(enemy)
-        && Math.abs(enemy.col - destCol) <= 1
-        && Math.abs(enemy.row - destRow) <= 1
-        && !(enemy.col === destCol && enemy.row === destRow)
-    ).length;
-
-    const target = player.ag + destTZs;
+function dodge(target) {
     const roll   = Math.floor(Math.random() * 6) + 1;
     const failed = roll !== 6 && roll < target;
-
-    // if (failed) knockDown(G, player);
     return { roll, target, failed };
 }
 

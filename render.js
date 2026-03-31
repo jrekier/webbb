@@ -224,10 +224,13 @@ function drawHighlights() {
     if (G.activated && !G.block && G.blitz !== 'targeting') {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                const { allowed, rushneeded } = canMoveTo(G, G.activated, c, r);
+                const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, G.activated, c, r);
                 if (allowed) {
-                    if (rushneeded) {
+                    if (needsrush) {
                         hlCell(c, r, 'rgba(220,130,30,0.22)', 'rgba(255,160,40,0.6)', false);
+                    }                    
+                    if (dodgerolltarget>0){
+                        hlCell(c, r, 'rgba(192, 49, 232, 0.22)', 'rgba(244, 40, 255, 0.6)', false, dodgerolltarget);
                     }
                     else {
                         hlCell(c, r, 'rgba(100,180,100,0.20)', 'rgba(100,200,100,0.4)', false);
@@ -281,11 +284,13 @@ function hlCell(c, r, fill, stroke, dash, text) {
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, CELL, CELL);
     if (stroke) {
-        ctx.strokeStyle = stroke;
+        // ctx.strokeStyle = stroke;
         ctx.lineWidth   = 1;
         if (text !== undefined) {
-            ctx.fillText(text, x + CELL/2, y + CELL/2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
+            ctx.strokeText(text, x + CELL/2, y + CELL/2);
         }
+        ctx.strokeStyle = stroke;
         if (dash) ctx.setLineDash([4, 3]);
         ctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
         if (dash) ctx.setLineDash([]);
