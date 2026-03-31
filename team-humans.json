@@ -17,7 +17,7 @@
           "sprite": { "sheet": "assets/sprites/human.gif",
                       "base":   { "x":  0, "y": 108, "w": 25, "h": 26 },
                       "armour": { "x": 26, "y": 108, "w": 25, "h": 26 } } },
-        { "pos": "Catcher", "ma": 8, "st": 2, "ag": 4, "av": 7,
+        { "pos": "Catcher", "ma": 8, "st": 2, "ag": 3, "av": 7,
           "skills": ["Dodge", "Catch"], "count": 1,
           "sprite": { "sheet": "assets/sprites/human.gif",
                       "base":   { "x":  0, "y": 27, "w": 25, "h": 26 },

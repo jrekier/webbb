@@ -51,4 +51,6 @@ var G = {
     blitz: null,
 
     hasBlitzed: false, // Set to true after the active team blitzes, reset at turn end
+
+    hasDodged: false, // Set to true after first use of Dodge skill by one player, reset at activation end
 };

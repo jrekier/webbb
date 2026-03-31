@@ -83,17 +83,37 @@ function movePlayer(G, col, row) {
     );
 
     if (needsDodge) {
-        const { roll, target, failed } = dodge(G, p, col, row);
-        if (failed) {
-            p.usedAction = true;
-            G.activated  = null;
-            G.blitz      = null;
-            p.col    = col; // falls over on target square
-            p.row    = row;
-            return `${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`;
-        }
+        let { roll, target, failed } = dodge(G, p, col, row);
+
+        if (!failed) {
+            log(`${p.pos} dodges (rolled ${roll}, needed ${target}+)`);
+        } 
         else {
-            msg = `${p.pos} dodges (rolled ${roll}, needed ${target}+)`;
+            // First failure
+            if (p.skills && p.skills.includes('Dodge') && !G.hasDodged) {
+                log(`${p.pos} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill`);
+                G.hasDodged = true;
+
+                ({ roll, target, failed } = dodge(G, p, col, row));
+                if (!failed) {
+                    log(`${p.pos} succeeds dodge on reroll (rolled ${roll}, needed ${target}+)`);
+                }
+            }            
+            // Final failure check (covers BOTH: no skill + failed reroll)
+            if (failed) {
+                log(`${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`);
+
+                knockDown(G, p);
+                p.usedAction = true;
+                G.activated  = null;
+                G.blitz      = null;
+                G.hasDodged  = null;
+
+                p.col = col; // falls over on target square
+                p.row = row;
+
+                return null;
+            }
         }
     }
 
@@ -105,12 +125,14 @@ function movePlayer(G, col, row) {
     return msg;
 }
 
+
 function endActivation(G) {
     if (!G.activated) return null;
     const name = G.activated.pos;
     G.activated.usedAction = true;
     G.activated = null;
     G.blitz     = null;
+    G.hasDodged = false;
     return `${name} done`;
 }
 
@@ -170,7 +192,8 @@ var FORMATIONS = {
         home: [
             [4,13],[5,13],[6,13],   // 3 on LoS (row 13)
             [1,13],[9,13],          // 1 in each wide zone, also on LoS
-            [4,15],[6,15],          // 2 behind line
+            // [4,15],[6,15],          // 2 behind line
+            [4,15],[7,7],          // 2 behind line
         ],
         away: [
             [4,6],[5,6],[6,6],      // 3 on LoS (row 6)
@@ -567,7 +590,7 @@ function dodge(G, player, destCol, destRow) {
     const roll   = Math.floor(Math.random() * 6) + 1;
     const failed = roll !== 6 && roll < target;
 
-    if (failed) knockDown(G, player);
+    // if (failed) knockDown(G, player);
     return { roll, target, failed };
 }
 
