@@ -43,7 +43,7 @@ var G = {
     block: null,
 
     // Blitz state - non-null while a blitz is being resolved.
-    // Set by declareBlitz(), cleared when blitz fully resolves.
+    // Set by activateBlitz(), cleared when blitz fully resolves.
     // {
     //   att:         the attacking player
     //   target:      the target player

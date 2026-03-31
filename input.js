@@ -241,6 +241,12 @@ function updateButtons() {
         && !G.sel.usedAction
         && noAction
         && !selProne;
+    const canBlitz = myTurn && G.sel
+        && G.sel.side    === G.active
+        && !G.sel.usedAction
+        && noAction
+        && !G.hasBlitzed 
+        && G.players.some(p => p.side !== G.active && isStanding(p));     
     const canStand   = myTurn && G.sel
         && G.sel.side    === G.active
         && !G.sel.usedAction
@@ -251,7 +257,7 @@ function updateButtons() {
 
     show('btn-move',     canDeclare);
     show('btn-block',    hasTargets);
-    show('btn-blitz',    canDeclare && !G.hasBlitzed && G.players.some(p => p.side !== G.active && isStanding(p)));
+    show('btn-blitz',    canBlitz);
     show('btn-stand-up', canStand);
     show('btn-cancel',   myTurn && (G.block === 'targeting'
                             || (G.activated && !hasMovedYet(G) && !G.block)));

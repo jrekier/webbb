@@ -35,7 +35,10 @@ function canMoveTo(G, player, col, row) {
     const dc = Math.abs(player.col - col);
     const dr = Math.abs(player.row - row);
     const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
-    const needsrush = (player.maLeft === 0);
+    let needsrush = (player.maLeft === 0);
+    if (player.status === 'prone') {
+        needsrush = (player.maLeft < 3);
+    }
 
     // Dodge required if leaving a tackle zone
     const needsDodge = G.players.some(enemy =>
@@ -95,6 +98,10 @@ function movePlayer(G, col, row) {
     if (!allowed) return null;
 
     const p = G.activated;
+    if (p.status === 'prone'){
+        p.status  = 'active';
+    }
+
     let msg = '';
 
     // Rush required
