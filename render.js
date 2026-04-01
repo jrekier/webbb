@@ -20,24 +20,42 @@ function buildPitch() {
 }
 
 function sizePitch() {
-    // Measure the available space from the wrapper element — works
-    // correctly regardless of which sidebars are visible
-    const wrap = document.getElementById('pitch-wrap');
-    const maxW = wrap.clientWidth;
-    const maxH = wrap.clientHeight;
-    CELL = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
-    canvas.width  = CELL * COLS;
-    canvas.height = CELL * ROWS;
+    const wrap  = document.getElementById('pitch-wrap');
+    const style = getComputedStyle(wrap);
+    const maxW  = wrap.clientWidth  - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const maxH  = wrap.clientHeight - parseFloat(style.paddingTop)  - parseFloat(style.paddingBottom);
+
+    if (window.innerWidth <= 500) {
+        // Mobile: size by width only — pitch may be taller than the screen
+        // and is panned vertically via cameraY (set in mobile.js).
+        CELL          = Math.floor(maxW / COLS);
+        canvas.width  = CELL * COLS;
+        canvas.height = maxH;
+        // Re-clamp camera in case CELL changed
+        if (typeof clampCamera === 'function') clampCamera();
+    } else {
+        CELL          = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
+        canvas.width  = CELL * COLS;
+        canvas.height = CELL * ROWS;
+    }
     render();
 }
 
 // ── render ───────────────────────────────────────────────────────
 function render() {
     if (!ctx) return;
+    const cam = (typeof cameraY !== 'undefined') ? cameraY : 0;
+
+    // Pitch, highlights, ball and players are drawn in camera space
+    ctx.save();
+    ctx.translate(0, -cam);
     drawPitch();
     drawHighlights();
     drawBall();
     drawPlayers();
+    ctx.restore();
+
+    // Overlays are always in screen space
     updateSidebar();
     updateButtons();
     drawDiceOverlay();

@@ -6,6 +6,17 @@
 //   input.js    setupInput():    if (typeof setupTouch === 'function') setupTouch();
 //   input.js    updateButtons(): if (typeof syncMobileHud === 'function') syncMobileHud();
 
+// ── Camera ────────────────────────────────────────────────────────
+// cameraY is the vertical scroll offset in pixels into the pitch.
+// 0 = top of pitch visible. Clamped in clampCamera().
+
+var cameraY = 0;
+
+function clampCamera() {
+    const maxCam = Math.max(0, CELL * ROWS - canvas.height);
+    cameraY = Math.max(0, Math.min(maxCam, cameraY));
+}
+
 // ── Overlay state ─────────────────────────────────────────────────
 // wheelState:   null = hidden; object = { actions, cx, cy, rInner, rOuter }
 // inspectState: null = hidden; player object to show stats for
@@ -32,7 +43,7 @@ function drawInspectOverlay() {
 
     // Build lines with their font/colour already set
     const lines = [
-        { text: p.pos,                                         font: `bold ${fs + 2}px 'IBM Plex Mono', monospace`, color: `rgb(${teamRgb})` },
+        { text: p.pos, font: `bold ${fs + 2}px 'IBM Plex Mono', monospace`, color: `rgb(${teamRgb})` },
         { text: `MA ${p.maLeft}/${p.ma}  ST ${p.st}  AG ${p.ag}  AV ${p.av}`, font: `${fs}px 'IBM Plex Mono', monospace`,      color: 'rgba(255,255,255,0.7)' },
     ];
     if (p.skills && p.skills.length > 0)
@@ -46,11 +57,12 @@ function drawInspectOverlay() {
     const cardW = maxW + padX * 2;
     const cardH = padY * 2 + lines.length * lineH;
 
-    // Position above the player; flip below if near top edge
+    // Position above the player in screen space (subtract cameraY)
     let cardX = p.col * CELL + CELL / 2 - cardW / 2;
-    let cardY = p.row * CELL - cardH - 6;
-    if (cardY < 0) cardY = (p.row + 1) * CELL + 6;
+    let cardY = p.row * CELL - cameraY - cardH - 6;
+    if (cardY < 0) cardY = p.row * CELL - cameraY + CELL + 6;
     cardX = Math.max(2, Math.min(canvas.width - cardW - 2, cardX));
+    cardY = Math.max(2, Math.min(canvas.height - cardH - 2, cardY));
 
     roundRect(ctx, cardX, cardY, cardW, cardH, 4);
     ctx.fillStyle = 'rgba(8,6,3,0.92)';
@@ -84,7 +96,7 @@ function drawWheelOverlay() {
     ctx.fillStyle = 'rgba(0,0,0,0.42)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const gap = 0.055;  // radians between segments
+    const gap = 0; // radians between segments
 
     actions.forEach((a, i) => {
         const a0  = baseAngle + i * sweep + gap;
@@ -187,11 +199,14 @@ function setupTouch() {
 
 var _pressTimer  = null;
 var _pressOrigin = null;
+var _dragging    = false;
+var _dragCamStart = 0;
 
 function _onTouchStart(e) {
     e.preventDefault();
     const t      = e.touches[0];
     _pressOrigin = { x: t.clientX, y: t.clientY };
+    _dragging    = false;
     _pressTimer  = setTimeout(() => {
         _pressTimer = null;
         _onLongPress(_pressOrigin.x, _pressOrigin.y);
@@ -199,23 +214,34 @@ function _onTouchStart(e) {
 }
 
 function _onTouchMove(e) {
-    if (!_pressTimer || !_pressOrigin) return;
+    if (!_pressOrigin) return;
     const t  = e.touches[0];
     const dx = t.clientX - _pressOrigin.x;
     const dy = t.clientY - _pressOrigin.y;
-    if (dx * dx + dy * dy > 64) {  // > 8px movement cancels long-press
-        clearTimeout(_pressTimer);
-        _pressTimer = null;
+
+    if (!_dragging && dx * dx + dy * dy > 64) {
+        // Movement threshold crossed — cancel long-press, start panning
+        if (_pressTimer) { clearTimeout(_pressTimer); _pressTimer = null; }
+        _dragging     = true;
+        _dragCamStart = cameraY;
+    }
+
+    if (_dragging) {
+        cameraY = _dragCamStart - dy;
+        clampCamera();
+        render();
     }
 }
 
 function _onTouchEnd(e) {
     e.preventDefault();
+    _dragging = false;
     if (_pressTimer) {
         clearTimeout(_pressTimer);
         _pressTimer = null;
         _onTap(_pressOrigin.x, _pressOrigin.y);
     }
+    // If we were dragging, do nothing — the pan already happened
     _pressOrigin = null;
 }
 
@@ -233,7 +259,7 @@ function _onTap(clientX, clientY) {
 
     // Show inspect card on player tap; dismiss on tap elsewhere
     const col    = Math.floor(px / CELL);
-    const row    = Math.floor(py / CELL);
+    const row    = Math.floor((py + cameraY) / CELL);
     inspectState = playerAt(G, col, row) || null;
 
     handleClick({ clientX, clientY });
@@ -246,7 +272,7 @@ function _onLongPress(clientX, clientY) {
     const px     = clientX - rect.left;
     const py     = clientY - rect.top;
     const col    = Math.floor(px / CELL);
-    const row    = Math.floor(py / CELL);
+    const row    = Math.floor((py + cameraY) / CELL);
     const player = playerAt(G, col, row);
     if (!player) return;
 

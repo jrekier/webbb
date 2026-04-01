@@ -64,8 +64,9 @@ function handleClick(event) {
         return; // block all other clicks while overlay is open
     }
 
+    const cam    = (typeof cameraY !== 'undefined') ? cameraY : 0;
     const col    = Math.floor(px / CELL);
-    const row    = Math.floor(py / CELL);
+    const row    = Math.floor((py + cam) / CELL);
     const player = playerAt(G, col, row);
 
     if (player) clickPlayer(player);
