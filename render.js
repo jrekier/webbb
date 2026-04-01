@@ -44,7 +44,7 @@ function sizePitch() {
 // ── render ───────────────────────────────────────────────────────
 function render() {
     if (!ctx) return;
-    const cam = (typeof cameraY !== 'undefined') ? cameraY : 0;
+    const cam = cameraY;
 
     // Pitch, highlights, ball and players are drawn in camera space
     ctx.save();
