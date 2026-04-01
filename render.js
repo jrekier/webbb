@@ -32,7 +32,7 @@ function sizePitch() {
         canvas.width  = CELL * COLS;
         canvas.height = maxH;
         // Re-clamp camera in case CELL changed
-        if (typeof clampCamera === 'function') clampCamera();
+        clampCamera();
     } else {
         CELL          = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
         canvas.width  = CELL * COLS;
@@ -60,7 +60,7 @@ function render() {
     updateButtons();
     drawDiceOverlay();
     drawFollowUpOverlay();
-    if (typeof drawWheelOverlay === 'function') drawWheelOverlay();
+    drawWheelOverlay();
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────

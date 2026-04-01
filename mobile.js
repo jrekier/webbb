@@ -1,10 +1,10 @@
 // mobile.js
 // Touch input and radial action wheel for mobile play.
 //
-// Integration points — add these lines to other files:
-//   render.js   render():        if (typeof drawWheelOverlay === 'function') drawWheelOverlay();
-//   input.js    setupInput():    if (typeof setupTouch === 'function') setupTouch();
-//   input.js    updateButtons(): if (typeof syncMobileHud === 'function') syncMobileHud();
+// Requires three call sites in other files (already wired):
+//   render.js   render():        drawWheelOverlay();
+//   input.js    setupInput():    setupTouch();
+//   input.js    updateButtons(): syncMobileHud();
 
 // ── Camera ────────────────────────────────────────────────────────
 // cameraY is the vertical scroll offset in pixels into the pitch.

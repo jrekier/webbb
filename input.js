@@ -4,7 +4,7 @@
 
 function setupInput() {
     canvas.addEventListener('click', handleClick);
-    if (typeof setupTouch === 'function') setupTouch();
+    setupTouch();
 }
 
 // ── handleClick ──────────────────────────────────────────────────
@@ -270,7 +270,7 @@ function updateButtons() {
     if (btnEnd.style.display !== 'none')
         btnEnd.textContent = `End ${G.active.toUpperCase()} Turn`;
 
-    if (typeof syncMobileHud === 'function') syncMobileHud();
+    syncMobileHud();
 }
 
 function show(id, visible) {
