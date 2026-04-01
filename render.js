@@ -42,6 +42,7 @@ function render() {
     updateButtons();
     drawDiceOverlay();
     drawFollowUpOverlay();
+    if (typeof drawWheelOverlay === 'function') drawWheelOverlay();
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────
@@ -382,7 +383,7 @@ function drawPlayer(p) {
 }
 
 // ── drawPlayerSprite ─────────────────────────────────────────────
-function drawPlayerSprite(p, sprite, cx, cy, r) {
+function drawPlayerSprite(p, sprite, cx, cy) {
     const scale = (CELL * 1.1) / sprite.height;
     const sw    = Math.round(sprite.width  * scale);
     const sh    = Math.round(sprite.height * scale);

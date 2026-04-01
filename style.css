@@ -127,6 +127,7 @@ body {
     display: flex;
     align-items: stretch;
     width: 100%;
+    height: 100%;  /* fill #screen-game so pitch-wrap has a real height */
     /* No max-width — pitch will self-limit via sizePitch() */
 }
 
@@ -360,11 +361,128 @@ canvas {
 
 #btn-connect:hover { border-color: var(--text-dim); color: var(--text); }
 
+/* ── Mobile HUD ───────────────────────────────────────────────── */
+#mobile-hud {
+    display: none;
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+#mobile-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    background: rgba(240,234,216,0.92);
+    border-bottom: 1px solid var(--border);
+    pointer-events: auto;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 3px;
+}
+
+#mobile-active-label {
+    font-size: 18px;
+    line-height: 1;
+    flex: 1;
+}
+
+#mobile-turn-label {
+    font-size: 13px;
+    color: var(--text-dim);
+    flex: 1;
+    text-align: center;
+}
+
+#mobile-bottom-bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    background: rgba(240,234,216,0.92);
+    border-top: 1px solid var(--border);
+    pointer-events: auto;
+}
+
+#mobile-log-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    flex: 1;
+    text-align: right;
+}
+
+#mobile-log-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 58%;
+    z-index: 20;
+    background: rgba(240,234,216,0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+}
+
+#mobile-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 3px;
+    flex-shrink: 0;
+}
+
+#mobile-log-header button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0;
+}
+
+#mobile-log-copy {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 14px;
+}
+
+#mobile-bottom-bar .action-btn {
+    flex: 1;
+    padding: 10px 6px;
+    font-size: 10px;
+}
+
 /* ── Responsive ───────────────────────────────────────────────── */
 
 /* Medium: left sidebar hidden — pitch + right sidebar only */
 @media (max-width: 700px) {
     #sidebar-left { display: none; }
+}
+
+/* Mobile: both sidebars hidden, full-canvas pitch, HUD overlay */
+@media (max-width: 500px) {
+    .sidebar { display: none !important; }
+    #mobile-hud { display: flex; }
+    /* Push pitch-wrap down/up so the canvas sits between the two HUD bars */
+    #pitch-wrap {
+        padding-top:    38px;
+        padding-bottom: 58px;
+    }
 }
 
 /* Wide: cap the pitch size so it doesn't sprawl on very wide screens */

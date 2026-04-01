@@ -4,6 +4,7 @@
 
 function setupInput() {
     canvas.addEventListener('click', handleClick);
+    if (typeof setupTouch === 'function') setupTouch();
 }
 
 // ── handleClick ──────────────────────────────────────────────────
@@ -141,7 +142,7 @@ function clickCell(col, row) {
     // Movement
     if (!G.activated) return;
     if (G.blitz === 'targeting') return;
-    const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, G.activated, col, row);
+    const { allowed } = canMoveTo(G, G.activated, col, row);
     if (!allowed) return;
     if (NET.online) {
         sendAction({ type: 'MOVE', col, row });
@@ -267,6 +268,8 @@ function updateButtons() {
     const btnEnd = document.getElementById('btn-end-turn');
     if (btnEnd.style.display !== 'none')
         btnEnd.textContent = `End ${G.active.toUpperCase()} Turn`;
+
+    if (typeof syncMobileHud === 'function') syncMobileHud();
 }
 
 function show(id, visible) {

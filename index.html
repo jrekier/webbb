@@ -83,6 +83,29 @@
 
   </div>
 </div>
+  <!-- Mobile HUD — visible only on narrow screens (CSS) -->
+  <div id="mobile-hud">
+    <div id="mobile-top-bar">
+      <span id="mobile-active-label">HOME</span>
+      <span id="mobile-turn-label">T1</span>
+      <button id="mobile-log-btn" onclick="toggleMobileLog()">☰</button>
+    </div>
+    <div id="mobile-bottom-bar">
+      <button id="mobile-btn-cancel"   class="action-btn"         onclick="onClickCancel();"  style="display:none">Cancel</button>
+      <button id="mobile-btn-stop"     class="action-btn success" onclick="onClickStop();"    style="display:none">Stop</button>
+      <button id="mobile-btn-end-turn" class="action-btn end-turn" onclick="onClickEndTurn();">End Turn</button>
+    </div>
+  </div>
+
+  <!-- Mobile log panel -->
+  <div id="mobile-log-panel" class="hidden">
+    <div id="mobile-log-header">
+      <span>Match Log</span>
+      <button onclick="toggleMobileLog()">✕</button>
+    </div>
+    <div id="mobile-log-copy"></div>
+  </div>
+
 </div><!-- /screen-game -->
 
 <!-- Hidden file inputs for custom team loading -->
@@ -100,6 +123,7 @@
 <script src="game.js"></script>
 <script src="lobby.js"></script>
 <script src="welcome.js"></script>
+<script src="mobile.js"></script>
 
 <script>
   Promise.all([
