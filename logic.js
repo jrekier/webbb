@@ -786,13 +786,15 @@ function rollArmourAndInjury(p, attacker) {
 // ball's square. Ends activation on success; turnover on failure.
 
 function _doSecureRoll(G, p) {
-    const roll = Math.floor(Math.random() * 6) + 1;
+    const tzs    = _countTackleZones(G, p.side, G.ball.col, G.ball.row);
+    const target = Math.min(2 + tzs, 6);
+    const roll   = Math.floor(Math.random() * 6) + 1;
     G.securingBall = false;
-    if (roll >= 2) {
+    if (roll >= target || roll === 6) {
         p.hasBall      = true;
         G.ball.carrier = p;
         endActivation(G);
-        return `${p.pos} secures the ball (rolled ${roll}).`;
+        return `${p.pos} secures the ball (rolled ${roll}, needed ${target}+).`;
     }
     const scatterMsg = scatterBall(G);
     endTurn(G);
