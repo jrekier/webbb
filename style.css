@@ -70,32 +70,133 @@
 .screen button:hover { border-color: var(--text); color: var(--text); }
 
 /* ── Lobby ────────────────────────────────────────────────────── */
-#lobby-room-list {
+#screen-lobby {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    overflow-y: auto;
+}
+
+#lobby-inner {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+#lobby-inner h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 6px;
+    color: var(--text);
+    margin: 0;
+}
+
+.lobby-section {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    min-width: 240px;
-    min-height: 48px;
 }
 
-.lobby-room-row {
-    padding: 10px 16px;
+.lobby-section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+}
+
+.lobby-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
     border: 1px solid var(--border);
-    color: var(--text);
-    cursor: pointer;
     font-size: 11px;
     letter-spacing: 1px;
     transition: all 0.1s;
 }
 
-.lobby-room-row:hover { border-color: var(--text); background: rgba(0,0,0,0.04); }
+.lobby-card--open {
+    cursor: pointer;
+    color: var(--text);
+}
+
+.lobby-card--open:hover {
+    border-color: var(--text);
+    background: rgba(0,0,0,0.04);
+}
+
+.lobby-card--open .lobby-card-action {
+    color: var(--text-dim);
+    font-size: 10px;
+    letter-spacing: 2px;
+}
+
+.lobby-card--open:hover .lobby-card-action {
+    color: var(--text);
+}
+
+.lobby-card--playing {
+    color: var(--text-dim);
+    border-style: dashed;
+}
+
+.lobby-card--playing .lobby-card-status {
+    color: #4a8a4a;
+    font-size: 10px;
+}
 
 .lobby-empty {
     font-size: 10px;
     color: var(--text-dim);
     letter-spacing: 1px;
-    text-align: center;
-    padding: 12px 0;
+    padding: 10px 0;
+}
+
+.lobby-create-btn {
+    margin-top: 4px;
+    align-self: flex-start;
+    padding: 10px 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.lobby-create-btn:hover {
+    border-color: var(--text);
+    color: var(--text);
+}
+
+.lobby-back-btn {
+    align-self: flex-start;
+    padding: 8px 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 0.1s;
+}
+
+.lobby-back-btn:hover { color: var(--text); }
+
+@media (max-width: 500px) {
+    #lobby-inner { gap: 24px; }
+    #lobby-inner h1 { font-size: 34px; }
+    .lobby-card { padding: 16px 14px; }  /* larger touch target */
 }
 
 /* ── Palette ──────────────────────────────────────────────────── */
@@ -362,6 +463,40 @@ canvas {
 }
 
 #btn-connect:hover { border-color: var(--text-dim); color: var(--text); }
+
+/* ── Reconnect overlay ────────────────────────────────────────── */
+#reconnect-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#reconnect-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 28px 36px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#reconnect-msg {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: var(--text);
+}
+
+#reconnect-sub {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
 
 /* ── Mobile HUD ───────────────────────────────────────────────── */
 #mobile-hud {

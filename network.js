@@ -18,7 +18,11 @@ function connect() {
         const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
         NET.ws = new WebSocket(`${protocol}://${location.host}`);
 
-        NET.ws.onopen    = () => resolve();
+        NET.ws.onopen    = () => {
+            resolve();
+            const token = _loadReconnectToken();
+            if (token) sendAction({ type: 'RECONNECT', roomId: token.roomId, side: token.side });
+        };
         NET.ws.onmessage = (event) => netReceive(JSON.parse(event.data));
         NET.ws.onclose   = () => {
             console.log('Disconnected');
@@ -41,6 +45,19 @@ function joinRoom(roomId) {
     sendAction({ type: 'JOIN_ROOM', roomId });
 }
 
+// ── reconnect token helpers ───────────────────────────────────────
+
+function _loadReconnectToken() {
+    try {
+        const raw = localStorage.getItem('bbReconnect');
+        return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+}
+
+function _clearReconnectToken() {
+    localStorage.removeItem('bbReconnect');
+}
+
 // ── sendAction ────────────────────────────────────────────────────
 
 function sendAction(msg) {
@@ -61,13 +78,17 @@ function netReceive(msg) {
 
         case 'ROOM_CREATED':
             NET.side   = msg.side;
+            NET.roomId = msg.roomId;
             NET.online = true;
+            localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side }));
             onRoomReady(msg.side);  // home waits for opponent
             break;
 
         case 'ROOM_JOINED':
             NET.side   = msg.side;
+            NET.roomId = msg.roomId;
             NET.online = true;
+            localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side }));
             // away player goes straight to game when START arrives — no waiting screen
             break;
 
@@ -81,6 +102,24 @@ function netReceive(msg) {
             Object.assign(G, msg.G);
             fixReferences(G);
             render();
+            break;
+
+        case 'OPPONENT_DISCONNECTED':
+            document.getElementById('reconnect-overlay').classList.remove('hidden');
+            break;
+
+        case 'RECONNECTED':
+            document.getElementById('reconnect-overlay').classList.add('hidden');
+            Object.assign(G, msg.G);
+            fixReferences(G);
+            render();
+            break;
+
+        case 'RECONNECT_FAILED':
+            _clearReconnectToken();
+            document.getElementById('reconnect-overlay').classList.add('hidden');
+            console.warn('Reconnect failed:', msg.msg);
+            showScreen('lobby');
             break;
 
         case 'ERROR':

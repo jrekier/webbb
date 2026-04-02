@@ -10,21 +10,50 @@ function enterLobby() {
 // Called by network.js when the server broadcasts a room list update.
 
 function onLobbyUpdate(roomList) {
-    const list    = document.getElementById('lobby-room-list');
     const waiting = roomList.filter(r => r.status === 'waiting');
+    const playing = roomList.filter(r => r.status === 'playing');
 
+    _renderWaiting(waiting);
+    _renderPlaying(playing);
+}
+
+function _renderWaiting(rooms) {
+    const list = document.getElementById('lobby-waiting-list');
     list.innerHTML = '';
 
-    if (waiting.length === 0) {
-        list.innerHTML = '<div class="lobby-empty">No open games. Create one!</div>';
+    if (rooms.length === 0) {
+        list.innerHTML = '<div class="lobby-empty">No open games yet.</div>';
         return;
     }
 
-    waiting.forEach(room => {
-        const row = document.createElement('div');
-        row.className = 'lobby-room-row';
-        row.textContent = 'Open game';
-        row.addEventListener('click', () => sendAction({ type: 'JOIN_ROOM', roomId: room.id }));
-        list.appendChild(row);
+    rooms.forEach(room => {
+        const card = document.createElement('div');
+        card.className = 'lobby-card lobby-card--open';
+        card.innerHTML = `
+            <span class="lobby-card-label">Waiting for opponent</span>
+            <span class="lobby-card-action">Join →</span>
+        `;
+        card.addEventListener('click', () => sendAction({ type: 'JOIN_ROOM', roomId: room.id }));
+        list.appendChild(card);
+    });
+}
+
+function _renderPlaying(rooms) {
+    const list = document.getElementById('lobby-playing-list');
+    list.innerHTML = '';
+
+    if (rooms.length === 0) {
+        list.innerHTML = '<div class="lobby-empty">No games in progress.</div>';
+        return;
+    }
+
+    rooms.forEach(() => {
+        const card = document.createElement('div');
+        card.className = 'lobby-card lobby-card--playing';
+        card.innerHTML = `
+            <span class="lobby-card-label">Game in progress</span>
+            <span class="lobby-card-status">●</span>
+        `;
+        list.appendChild(card);
     });
 }

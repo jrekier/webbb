@@ -112,6 +112,7 @@ function createRoom(ws) {
     const room = { id, home: ws, away: null, G: null, lastLogMsg: null };
     rooms.set(id, room);
     leaveLobby(ws);
+    ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id }));
     console.log(`Room ${id} created`);
     broadcastLobbyUpdate();
     return room;
@@ -124,7 +125,7 @@ function joinRoom(ws, roomId) {
     room.away = ws;
     leaveLobby(ws);
     // Tell away player their side before START arrives so NET.side is set in time
-    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away' }));
+    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId }));
     console.log(`Room ${roomId}: away joined — starting game`);
     startGame(room);
     broadcastLobbyUpdate();
@@ -147,6 +148,25 @@ function broadcast(room, msg) {
     const text = JSON.stringify(msg);
     if (room.home) room.home.send(text);
     if (room.away) room.away.send(text);
+}
+
+function reconnectToRoom(ws, roomId, side) {
+    const room = rooms.get(roomId);
+    if (!room || !room.G) {
+        ws.send(JSON.stringify({ type: 'RECONNECT_FAILED', msg: 'Room not found or game not started' }));
+        return;
+    }
+    if (room[side] !== null) {
+        ws.send(JSON.stringify({ type: 'RECONNECT_FAILED', msg: 'Slot already occupied' }));
+        return;
+    }
+    // Clear the countdown and reattach
+    clearTimeout(room.reconnectTimer);
+    room[side] = ws;
+    ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G }));
+    const other = side === 'home' ? room.away : room.home;
+    if (other) other.send(JSON.stringify({ type: 'RECONNECTED', G: room.G }));
+    console.log(`Room ${roomId}: ${side} reconnected`);
 }
 
 function destroyRoom(room) {
@@ -197,9 +217,9 @@ wss.on('connection', (ws) => {
         try { msg = JSON.parse(raw); } catch { return; }
 
         if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);              return; }
-        if (msg.type === 'CREATE_ROOM') { createRoom(ws);
-            ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home' }));   return; }
-        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId);            return; }
+        if (msg.type === 'CREATE_ROOM') { createRoom(ws);              return; }
+        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId);    return; }
+        if (msg.type === 'RECONNECT')   { reconnectToRoom(ws, msg.roomId, msg.side); return; }
 
         // ── In-game messages ──
 
@@ -228,8 +248,18 @@ wss.on('connection', (ws) => {
         if (!room) return;
         const side = sideOf(room, ws);
         console.log(`Room ${room.id}: ${side} disconnected`);
-        broadcast(room, { type: 'ERROR', msg: 'Opponent disconnected' });
-        destroyRoom(room);
+
+        // Null out the socket but keep the room alive for 2 minutes
+        room[side] = null;
+        const other = side === 'home' ? room.away : room.home;
+        if (other) other.send(JSON.stringify({ type: 'OPPONENT_DISCONNECTED' }));
+
+        room.reconnectTimer = setTimeout(() => {
+            console.log(`Room ${room.id}: reconnect timeout — destroying`);
+            if (room.home) room.home.send(JSON.stringify({ type: 'ERROR', msg: 'Opponent did not reconnect' }));
+            if (room.away) room.away.send(JSON.stringify({ type: 'ERROR', msg: 'Opponent did not reconnect' }));
+            destroyRoom(room);
+        }, 120_000);
     });
 });
 

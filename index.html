@@ -17,10 +17,22 @@
 
 <!-- ── Lobby screen ────────────────────────────────────────── -->
 <div id="screen-lobby" class="screen hidden">
-  <h2>Lobby</h2>
-  <div id="lobby-room-list"></div>
-  <button onclick="onClickCreateRoom();">Create Game</button>
-  <button onclick="showScreen('welcome');">Back</button>
+  <div id="lobby-inner">
+    <h1>Lobby</h1>
+
+    <section class="lobby-section">
+      <div class="lobby-section-title">Open games</div>
+      <div id="lobby-waiting-list"></div>
+      <button class="lobby-create-btn" onclick="onClickCreateRoom();">+ New game</button>
+    </section>
+
+    <section class="lobby-section">
+      <div class="lobby-section-title">In progress</div>
+      <div id="lobby-playing-list"></div>
+    </section>
+
+    <button class="lobby-back-btn" onclick="showScreen('welcome');">← Back</button>
+  </div>
 </div>
 
 <!-- ── Waiting screen ─────────────────────────────────────── -->
@@ -94,6 +106,14 @@
       <button id="mobile-btn-cancel"   class="action-btn"         onclick="onClickCancel();"  style="display:none">Cancel</button>
       <button id="mobile-btn-stop"     class="action-btn success" onclick="onClickStop();"    style="display:none">Stop</button>
       <button id="mobile-btn-end-turn" class="action-btn end-turn" onclick="onClickEndTurn();">End Turn</button>
+    </div>
+  </div>
+
+  <!-- Reconnect overlay — shown when opponent drops mid-game -->
+  <div id="reconnect-overlay" class="hidden">
+    <div id="reconnect-box">
+      <div id="reconnect-msg">Opponent disconnected</div>
+      <div id="reconnect-sub">Waiting for them to reconnect…</div>
     </div>
   </div>
 
