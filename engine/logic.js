@@ -149,42 +149,19 @@ function fixReferences(G) {
 
 // ── Formations ───────────────────────────────────────────────────
 
-var FORMATIONS = {
-    sevens: {
-        home: [
-            [4,13],[5,13],[6,13],
-            [1,13],[9,13],
-            [4,15],[7,7],
-        ],
-        away: [
-            [4,6],[5,6],[6,6],
-            [1,6],[9,6],
-            [4,4],[6,4],
-        ],
-    },
-    classic: {
-        home: [
-            [5,13],[7,13],[9,13],
-            [3,15],[11,15],
-            [5,16],[7,16],[9,16],
-            [4,17],[7,17],[10,17],
-        ],
-        away: [
-            [5,12],[7,12],[9,12],
-            [3,10],[11,10],
-            [5,9],[7,9],[9,9],
-            [4,8],[7,8],[10,8],
-        ],
-    },
-};
+var FORMATION_HOME = [
+    [4,13],[5,13],[6,13],
+    [1,13],[9,13],
+    [4,15],[6,15],
+];
 
-var FORMATION_HOME = [];
-var FORMATION_AWAY = [];
+var FORMATION_AWAY = [
+    [4,6],[5,6],[6,6],
+    [1,6],[9,6],
+    [4,4],[6,4],
+];
 
-function initFormations(key) {
-    key = key || 'sevens';
-    FORMATION_HOME = FORMATIONS[key].home;
-    FORMATION_AWAY = FORMATIONS[key].away;
+function initFormations() {
     if (typeof module !== 'undefined') {
         module.exports.FORMATION_HOME = FORMATION_HOME;
         module.exports.FORMATION_AWAY = FORMATION_AWAY;
@@ -198,6 +175,6 @@ if (typeof module !== 'undefined') {
         hasMovedYet, canStillCancel,
         activatePlayer, cancelActivation, endActivation, endTurn,
         fixReferences,
-        FORMATIONS, FORMATION_HOME, FORMATION_AWAY, initFormations,
+        FORMATION_HOME, FORMATION_AWAY, initFormations,
     };
 }

@@ -10,50 +10,41 @@ function loadTeamFromJSON(json) {
     if (!json.colour)  throw 'Team must have a colour [r,g,b]';
     if (!json.players) throw 'Team must have a players array';
     json.players.forEach(p => {
-        if (!p.pos)   throw `Player missing pos`;
-        if (!p.ma)    throw `${p.pos} missing ma`;
-        if (!p.st)    throw `${p.pos} missing st`;
-        if (!p.count) throw `${p.pos} missing count`;
+        if (!p.name) throw `Player missing name`;
+        if (!p.pos)  throw `${p.name} missing pos`;
+        if (!p.ma)   throw `${p.name} missing ma`;
+        if (!p.st)   throw `${p.name} missing st`;
     });
     return json;
 }
 
 // ── buildRosterFromTeam ───────────────────────────────────────────
-// Expands a team definition into individual player objects.
+// Builds individual player objects from a team definition.
 
 function buildRosterFromTeam(teamDef, side, startId, formation) {
-    const players = [];
-    let id  = startId;
-    let pos = 0;
-
-    teamDef.players.forEach(posData => {
-        for (let i = 0; i < posData.count; i++) {
-            const [col, row] = formation[pos] || [7, side === 'home' ? 20 : 5];
-            players.push({
-                id,
-                side,
-                pos:        posData.pos,
-                ma:         posData.ma,
-                st:         posData.st,
-                ag:         posData.ag || 3,
-                av:         posData.av,
-                skills:     posData.skills || [],
-                maLeft:     posData.ma,
-                rushLeft:   2,
-                col,
-                row,
-                hasBall:    false,
-                usedAction: false,
-                status:     'active',
-                sprite:     posData.sprite || null,
-                colour:     teamDef.colour,
-            });
-            id++;
-            pos++;
-        }
+    return teamDef.players.map((p, i) => {
+        const [col, row] = formation[i] || [7, side === 'home' ? 20 : 5];
+        return {
+            id:         startId + i,
+            side,
+            name:       p.name,
+            pos:        p.pos,
+            ma:         p.ma,
+            st:         p.st,
+            ag:         p.ag || 3,
+            av:         p.av,
+            skills:     p.skills || [],
+            maLeft:     p.ma,
+            rushLeft:   2,
+            col,
+            row,
+            hasBall:    false,
+            usedAction: false,
+            status:     'active',
+            sprite:     p.sprite || null,
+            colour:     teamDef.colour,
+        };
     });
-
-    return players;
 }
 
 // ── Node.js export ────────────────────────────────────────────────

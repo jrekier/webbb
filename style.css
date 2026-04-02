@@ -349,9 +349,11 @@ canvas {
     border-radius: 2px;
 }
 
-.status-ready  { background: rgba(60,120,60,0.15);  color: #3a8a3a; }
-.status-moving { background: rgba(180,120,0,0.15);   color: #aa7000; }
-.status-done   { background: rgba(0,0,0,0.08);        color: var(--text-dim); }
+.status-ready   { background: rgba(60,120,60,0.15);   color: #3a8a3a; }
+.status-moving  { background: rgba(180,120,0,0.15);   color: #aa7000; }
+.status-done    { background: rgba(0,0,0,0.08);       color: var(--text-dim); }
+.status-prone   { background: rgba(180,90,0,0.15);    color: #a05000; }
+.status-stunned { background: rgba(120,0,180,0.15);   color: #7000aa; }
 
 /* ── Log ──────────────────────────────────────────────────────── */
 #section-log {

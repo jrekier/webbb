@@ -160,7 +160,7 @@ function startGame(room) {
     global.COLS = 11;
     global.ROWS = 20;
 
-    GL.initFormations('sevens');
+    GL.initFormations();
 
     room.G = GL.createInitialState();
 

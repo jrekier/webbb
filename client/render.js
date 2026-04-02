@@ -134,18 +134,31 @@ function updateDetail() {
     const isActivated = G.activated && G.activated.id === p.id;
     const color       = p.side === 'home' ? 'var(--home)' : 'var(--away)';
 
-    const statusClass = p.usedAction ? 'status-done'
-                      : isActivated  ? 'status-moving'
-                      :                'status-ready';
-    const statusText  = p.usedAction ? 'Done'
-                      : isActivated  ? `Moving · ${p.maLeft} left`
-                      :                'Ready';
+    const statusClass = p.usedAction        ? 'status-done'
+                      : p.status === 'prone'   ? 'status-prone'
+                      : p.status === 'stunned' ? 'status-stunned'
+                      : p.status === 'ko'      ? 'status-done'
+                      : isActivated            ? 'status-moving'
+                      :                          'status-ready';
+    const statusText  = p.usedAction        ? 'Done'
+                      : p.status === 'prone'   ? 'Prone'
+                      : p.status === 'stunned' ? 'Stunned'
+                      : p.status === 'ko'      ? 'KO'
+                      : p.status === 'casualty'? 'Casualty'
+                      : isActivated            ? `Acting · ${p.maLeft} MA · ${p.rushLeft} GFI`
+                      :                          `MA ${p.maLeft}`;
+
+    const skillsHtml = p.skills && p.skills.length
+        ? `<div class="stat-row" style="margin-top:2px">${p.skills.join(', ')}</div>`
+        : '';
 
     el.innerHTML = `
-        <div class="name" style="color:${color}">${p.pos}</div>
-        <div class="stat-row">MA <b>${p.ma}</b> &nbsp; Left <b>${p.maLeft}</b></div>
-        <div class="stat-row">${p.side.toUpperCase()}</div>
+        <div class="name" style="color:${color}">${p.name}</div>
+        <div class="stat-row" style="color:var(--text-dim);font-size:10px;margin-top:-2px;margin-bottom:3px">${p.pos}</div>
+        <div class="stat-row">MA <b>${p.ma}</b> &nbsp; ST <b>${p.st}</b> &nbsp; AG <b>${p.ag}</b> &nbsp; AV <b>${p.av}</b></div>
+        ${skillsHtml}
         <span class="status ${statusClass}">${statusText}</span>
+        ${p.hasBall ? '<span class="status" style="background:rgba(255,200,0,0.15);color:#cc9900;margin-left:4px">Ball</span>' : ''}
     `;
 }
 
