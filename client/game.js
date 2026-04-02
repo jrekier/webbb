@@ -10,18 +10,9 @@ var awayTeamDef = null;
 // homeTeam / awayTeam: validated team definition objects.
 // ruleset: 'sevens' | 'classic'
 
-function startGame(homeTeam, awayTeam, ruleset) {
-    ruleset = ruleset || 'sevens';
-
+function startGame(homeTeam, awayTeam) {
     homeTeamDef = loadTeamFromJSON(homeTeam);
     awayTeamDef = loadTeamFromJSON(awayTeam);
-
-    if (RULESETS[ruleset]) {
-        RULESET = RULESETS[ruleset];
-        COLS    = RULESET.COLS;
-        ROWS    = RULESET.ROWS;
-        TURNS   = RULESET.TURNS;
-    }
 
     showScreen('game');
     initFormations();

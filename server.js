@@ -5,7 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-const GL = require('./engine/logic.js');
+const GL = require('./engine/index.js');
 const TM = require('./engine/teams.js');
 
 // ── Static file server ───────────────────────────────────────────
@@ -31,27 +31,6 @@ const httpServer = http.createServer((req, res) => {
         res.end(data);
     });
 });
-
-// ── Rulesets ─────────────────────────────────────────────────────
-
-const RULESETS = {
-    sevens: {
-        name: 'Blood Bowl Sevens',
-        COLS: 11, ROWS: 20, TURNS: 6,
-        END_ZONE_HOME: 19, END_ZONE_AWAY: 0,
-        SCR_HOME: 12, SCR_AWAY: 7,
-        WIDE_COLS: [0,1,9,10],
-        PLAYERS_PER_TEAM: 7,
-    },
-    classic: {
-        name: 'Blood Bowl',
-        COLS: 15, ROWS: 26, TURNS: 8,
-        END_ZONE_HOME: [24,25], END_ZONE_AWAY: [0,1],
-        SCR_HOME: 13, SCR_AWAY: 12,
-        WIDE_COLS: [0,1,2,12,13,14],
-        PLAYERS_PER_TEAM: 11,
-    },
-};
 
 // ── Default teams ─────────────────────────────────────────────────
 
@@ -177,14 +156,11 @@ function destroyRoom(room) {
 
 // ── Game initialisation ───────────────────────────────────────────
 
-function startGame(room, rulesetKey) {
-    rulesetKey    = rulesetKey || 'sevens';
-    const ruleset = RULESETS[rulesetKey];
+function startGame(room) {
+    global.COLS = 11;
+    global.ROWS = 20;
 
-    global.COLS = ruleset.COLS;
-    global.ROWS = ruleset.ROWS;
-
-    GL.initFormations(rulesetKey);
+    GL.initFormations('sevens');
 
     room.G = GL.createInitialState();
 

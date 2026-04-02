@@ -1,6 +1,12 @@
 // render.js
 // Reads G and draws the canvas. Never modifies G.
 
+// Cell size in pixels — updated by sizePitch() on resize
+var CELL = 32;
+
+// Canvas and 2D drawing context — set up by buildPitch()
+var canvas, ctx;
+
 // ── log ──────────────────────────────────────────────────────────
 function log(msg, type) {
     const el   = document.getElementById('log');
@@ -171,48 +177,29 @@ function drawPitch() {
         }
     }
 
-    const rs = RULESET;
-
-    // End zones — 1 row deep in 7s, 2 rows in classic
-    const awayRows = Array.isArray(rs.END_ZONE_AWAY)
-        ? rs.END_ZONE_AWAY : [rs.END_ZONE_AWAY];
-    const homeRows = Array.isArray(rs.END_ZONE_HOME)
-        ? rs.END_ZONE_HOME : [rs.END_ZONE_HOME];
-
+    // End zones (Sevens: 1 row deep)
     ctx.fillStyle = 'rgba(20,20,100,0.30)';
-    awayRows.forEach(r =>
-        ctx.fillRect(0, r * CELL, COLS * CELL, CELL));
+    ctx.fillRect(0, 0, COLS * CELL, CELL);           // away end zone (row 0)
 
     ctx.fillStyle = 'rgba(100,20,20,0.30)';
-    homeRows.forEach(r =>
-        ctx.fillRect(0, r * CELL, COLS * CELL, CELL));
+    ctx.fillRect(0, (ROWS - 1) * CELL, COLS * CELL, CELL); // home end zone (row 19)
 
-    // Lines of scrimmage — drawn at the boundary between the two LoS rows
-    // In 7s: home LoS = row 13 top edge, away LoS = row 6 bottom edge
-    // The gap between them is the centre field
+    // Lines of scrimmage (Sevens: rows 6/13)
     ctx.strokeStyle = 'rgba(255,210,0,0.5)';
     ctx.lineWidth   = 2;
-    // Home LoS: top edge of SCR_HOME row
     ctx.beginPath();
-    ctx.moveTo(0, rs.SCR_HOME * CELL);
-    ctx.lineTo(COLS * CELL, rs.SCR_HOME * CELL);
+    ctx.moveTo(0, 13 * CELL);
+    ctx.lineTo(COLS * CELL, 13 * CELL);
     ctx.stroke();
-    // Away LoS: bottom edge of SCR_AWAY row
     ctx.beginPath();
-    ctx.moveTo(0, (rs.SCR_AWAY + 1) * CELL);
-    ctx.lineTo(COLS * CELL, (rs.SCR_AWAY + 1) * CELL);
+    ctx.moveTo(0, 7 * CELL);
+    ctx.lineTo(COLS * CELL, 7 * CELL);
     ctx.stroke();
 
-    // Wide zone boundary lines — one line per side, at the inner edge
-    // For WIDE_COLS [0,1,9,10]: draw at col 2 (left) and col 9 (right)
-    const scrTop      = (rs.SCR_AWAY + 1) * CELL;
-    const scrBottom   = rs.SCR_HOME * CELL;
-    const wideCols    = rs.WIDE_COLS || [];
-    const leftCols    = wideCols.filter(c => c < COLS / 2);
-    const rightCols   = wideCols.filter(c => c >= COLS / 2);
-    const innerBounds = [];
-    if (leftCols.length)  innerBounds.push(Math.max(...leftCols) + 1);
-    if (rightCols.length) innerBounds.push(Math.min(...rightCols));
+    // Wide zone boundary lines (Sevens: cols 2 and 9)
+    const scrTop      = 7 * CELL;
+    const scrBottom   = 13 * CELL;
+    const innerBounds = [2, 9];
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.lineWidth   = 1;
     innerBounds.forEach(c => {
@@ -233,8 +220,8 @@ function drawPitch() {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle    = 'rgba(255,255,255,0.22)';
-    ctx.fillText('▲  AWAY END ZONE', COLS * CELL / 2, awayRows[0] * CELL + CELL / 2);
-    ctx.fillText('▼  HOME END ZONE', COLS * CELL / 2, homeRows[0] * CELL + CELL / 2);
+    ctx.fillText('▲  AWAY END ZONE', COLS * CELL / 2, 0 * CELL + CELL / 2);
+    ctx.fillText('▼  HOME END ZONE', COLS * CELL / 2, (ROWS - 1) * CELL + CELL / 2);
 }
 
 // ── Highlights ────────────────────────────────────────────────────
