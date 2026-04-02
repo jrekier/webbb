@@ -2,13 +2,62 @@
 // Translates clicks and button presses into logic calls.
 // Online: sends actions to server. Offline: applies locally.
 
+// Drag state for setup phase — also read by render.js for the ghost
+var setupDrag     = null;  // { player, pixelX, pixelY }
+var _dragMoved    = false;
+
 function setupInput() {
-    canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('click',     handleClick);
+    canvas.addEventListener('mousedown', _onMouseDown);
+    canvas.addEventListener('mousemove', _onMouseMove);
+    canvas.addEventListener('mouseup',   _onMouseUp);
     setupTouch();
+}
+
+function _onMouseDown(e) {
+    if (G.phase !== 'setup') return;
+    const rect = canvas.getBoundingClientRect();
+    const px   = e.clientX - rect.left;
+    const py   = e.clientY - rect.top + cameraY;
+    const col  = Math.floor(px / CELL);
+    const row  = Math.floor(py / CELL);
+    const p    = playerAt(G, col, row);
+    if (p && p.side === G.setupSide && (!NET.online || NET.side === G.setupSide)) {
+        setupDrag  = { player: p, pixelX: e.clientX - rect.left, pixelY: e.clientY - rect.top };
+        _dragMoved = false;
+        e.preventDefault();
+    }
+}
+
+function _onMouseMove(e) {
+    if (!setupDrag) return;
+    const rect     = canvas.getBoundingClientRect();
+    setupDrag.pixelX = e.clientX - rect.left;
+    setupDrag.pixelY = e.clientY - rect.top;
+    _dragMoved = true;
+    render();
+}
+
+function _onMouseUp(e) {
+    if (!setupDrag) return;
+    const drag = setupDrag;
+    setupDrag  = null;
+    if (_dragMoved) {
+        const rect = canvas.getBoundingClientRect();
+        const col  = Math.floor((e.clientX - rect.left) / CELL);
+        const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+        if (NET.online) {
+            sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
+        } else {
+            moveSetupPlayer(G, drag.player.id, col, row);
+        }
+    }
+    render();
 }
 
 // ── handleClick ──────────────────────────────────────────────────
 function handleClick(event) {
+    if (G.phase !== 'play') return; // toss and setup handled elsewhere
     const rect = canvas.getBoundingClientRect();
     const px   = event.clientX - rect.left;
     const py   = event.clientY - rect.top;
@@ -234,6 +283,21 @@ function onClickStop() {
     }
 }
 
+function onClickConfirmSetup() {
+    if (NET.online) {
+        sendAction({ type: 'CONFIRM_SETUP' });
+        return;
+    }
+    const result = confirmSetup(G, G.setupSide);
+    if (!result) return;
+    if (result.errors) {
+        result.errors.forEach(e => log(e, 'error'));
+    } else {
+        log(result.msg, 'turn-marker');
+    }
+    render();
+}
+
 function onClickEndTurn() {
     if (NET.online) {
         sendAction({ type: 'END_TURN' });
@@ -246,6 +310,19 @@ function onClickEndTurn() {
 
 // ── updateButtons ────────────────────────────────────────────────
 function updateButtons() {
+    if (G.phase === 'setup') {
+        ['btn-move','btn-block','btn-blitz','btn-stand-up',
+         'btn-secure-ball','btn-cancel','btn-stop','btn-end-turn']
+            .forEach(id => show(id, false));
+        const mySetup = !NET.online || NET.side === G.setupSide;
+        show('btn-confirm-setup', mySetup);
+        document.getElementById('btn-confirm-setup').textContent =
+            `Confirm ${(G.setupSide || '').toUpperCase()} Setup`;
+        syncMobileHud();
+        return;
+    }
+    show('btn-confirm-setup', false);
+
     const myTurn     = !NET.online || NET.side === G.active;
     const noAction   = !G.activated && !G.block;
     const selProne   = G.sel && G.sel.status === 'prone';

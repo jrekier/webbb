@@ -4,4 +4,5 @@ module.exports = {
     ...require('./ball.js'),
     ...require('./block.js'),
     ...require('./move.js'),
+    ...require('./setup.js'),
 };

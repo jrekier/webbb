@@ -26,15 +26,36 @@ function startGame(homeTeam, awayTeam) {
         // Local: build the initial state here. Online: server sends it via UPDATE.
         const homePlayers = buildRosterFromTeam(homeTeamDef, 'home', 0,   FORMATION_HOME);
         const awayPlayers = buildRosterFromTeam(awayTeamDef, 'away', 100, FORMATION_AWAY);
-        G.players             = [...homePlayers, ...awayPlayers];
-        G.players[1].hasBall  = true;
-        G.ball.carrier        = G.players[1];
-        log('Match begins', 'turn-marker');
+        G.players = [...homePlayers, ...awayPlayers];
+        const winner = initToss(G);
+        showTossOverlay(winner);
         render();
     }
 
     document.getElementById('lbl-home-team').textContent = homeTeamDef.name.toUpperCase();
     document.getElementById('lbl-away-team').textContent = awayTeamDef.name.toUpperCase();
+}
+
+// ── Toss overlay ─────────────────────────────────────────────────
+
+function showTossOverlay(winner, canChoose = true) {
+    const lbl = document.getElementById('toss-winner-label');
+    lbl.textContent = `${winner.toUpperCase()} WINS THE TOSS`;
+    lbl.className   = winner === 'home' ? 'team-home' : 'team-away';
+    document.getElementById('toss-subtitle').style.display = canChoose ? '' : 'none';
+    document.getElementById('toss-buttons').style.display  = canChoose ? '' : 'none';
+    document.getElementById('toss-overlay').style.display  = 'flex';
+}
+
+function onTossChoose(choice) {
+    document.getElementById('toss-overlay').style.display = 'none';
+    if (NET.online) {
+        sendAction({ type: 'TOSS_CHOOSE', choice });
+        return;
+    }
+    const msg = chooseTossResult(G, choice);
+    log(msg, 'turn-marker');
+    render();
 }
 
 // ── onRoomReady ───────────────────────────────────────────────────

@@ -166,9 +166,8 @@ function startGame(room) {
 
     const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   GL.FORMATION_HOME);
     const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, GL.FORMATION_AWAY);
-    room.G.players            = [...homePlayers, ...awayPlayers];
-    room.G.players[1].hasBall = true;
-    room.G.ball.carrier       = room.G.players[1];
+    room.G.players = [...homePlayers, ...awayPlayers];
+    GL.initToss(room.G);  // sets phase='toss', picks tossWinner
 
     console.log(`Room ${room.id}: game started — ${room.G.players.length} players`);
 
@@ -177,7 +176,6 @@ function startGame(room) {
         G:        room.G,
         homeTeam: DEFAULT_HOME,
         awayTeam: DEFAULT_AWAY,
-        ruleset:  rulesetKey,
     });
 }
 
@@ -205,7 +203,13 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        const side     = sideOf(room, ws);
+        const side = sideOf(room, ws);
+
+        // ── Toss / setup messages (no turn guard needed) ──
+        if (msg.type === 'TOSS_CHOOSE')   { handleTossChoose(room, side, msg.choice); return; }
+        if (msg.type === 'SETUP_MOVE')    { handleSetupMove(room, side, msg);         return; }
+        if (msg.type === 'CONFIRM_SETUP') { handleConfirmSetup(room, side);           return; }
+
         const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP'].includes(msg.type);
         if (!turnFree && side !== room.G.active) {
             ws.send(JSON.stringify({ type: 'ERROR', msg: 'Not your turn' }));
@@ -238,6 +242,32 @@ wss.on('connection', (ws) => {
         }, 120_000);
     });
 });
+
+// ── Toss / setup handlers ─────────────────────────────────────────
+
+function handleTossChoose(room, side, choice) {
+    const G = room.G;
+    if (G.phase !== 'toss') return;
+    if (side !== G.tossWinner) return;  // only the winner chooses
+    const logMsg = GL.chooseTossResult(G, choice);
+    broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
+function handleSetupMove(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'setup' || side !== G.setupSide) return;
+    GL.moveSetupPlayer(G, msg.playerId, msg.col, msg.row);
+    broadcast(room, { type: 'UPDATE', G, logMsg: null });
+}
+
+function handleConfirmSetup(room, side) {
+    const G = room.G;
+    if (G.phase !== 'setup' || side !== G.setupSide) return;
+    const result = GL.confirmSetup(G, side);
+    if (!result) return;
+    const logMsg = result.errors ? result.errors[0] : result.msg;
+    broadcast(room, { type: 'UPDATE', G, logMsg });
+}
 
 // ── Action handler ────────────────────────────────────────────────
 

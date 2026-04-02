@@ -52,16 +52,20 @@ function render() {
     if (!ctx) return;
     const cam = cameraY;
 
-    // Pitch, highlights, ball and players are drawn in camera space
     ctx.save();
     ctx.translate(0, -cam);
     drawPitch();
-    drawHighlights();
+    if (G.phase === 'setup') {
+        drawSetupZones();
+    } else {
+        drawHighlights();
+    }
     drawBall();
     drawPlayers();
     ctx.restore();
 
-    // Overlays are always in screen space
+    // Overlays in screen space
+    if (G.phase === 'setup' && setupDrag) drawSetupDragGhost();
     updateSidebar();
     updateButtons();
     drawDiceOverlay();
@@ -69,13 +73,78 @@ function render() {
     drawWheelOverlay();
 }
 
+// ── drawSetupZones ────────────────────────────────────────────────
+// Tints the pitch to show the valid setup zone for the current side.
+
+function drawSetupZones() {
+    if (!G.setupSide) return;
+    const isHome   = G.setupSide === 'home';
+    const validMin = isHome ? 13 : 0;
+    const validMax = isHome ? ROWS - 1 : 6;
+    const losRow   = isHome ? 13 : 6;
+
+    // Darken opponent's half
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let r = 0; r < ROWS; r++) {
+        if (r < validMin || r > validMax)
+            ctx.fillRect(0, r * CELL, COLS * CELL, CELL);
+    }
+
+    // Subtle green tint on valid zone
+    ctx.fillStyle = 'rgba(60,140,60,0.10)';
+    ctx.fillRect(0, validMin * CELL, COLS * CELL, (validMax - validMin + 1) * CELL);
+
+    // Highlight LoS row
+    ctx.fillStyle = 'rgba(255,210,0,0.10)';
+    ctx.fillRect(0, losRow * CELL, COLS * CELL, CELL);
+
+    // Highlight target cell during drag
+    if (setupDrag) {
+        const col = Math.floor(setupDrag.pixelX / CELL);
+        const row = Math.floor((setupDrag.pixelY + cameraY) / CELL);
+        const occupied = G.players.some(o =>
+            o.id !== setupDrag.player.id && o.col === col && o.row === row);
+        const valid = isValidSetupSquare(G.setupSide, col, row) && !occupied;
+        ctx.strokeStyle = valid ? 'rgba(80,220,80,0.9)' : 'rgba(220,60,60,0.9)';
+        ctx.lineWidth   = 2;
+        ctx.strokeRect(col * CELL + 1, row * CELL + 1, CELL - 2, CELL - 2);
+    }
+}
+
+// ── drawSetupDragGhost ────────────────────────────────────────────
+// Draws the dragged player as a ghost at the cursor (screen space).
+
+function drawSetupDragGhost() {
+    const { player, pixelX, pixelY } = setupDrag;
+    const [r, g, b] = player.colour || [180, 180, 180];
+    const radius    = CELL * 0.38;
+
+    ctx.save();
+    ctx.globalAlpha = 0.65;
+    ctx.beginPath();
+    ctx.ellipse(pixelX, pixelY, radius, radius * 0.75, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
 // ── Sidebar ───────────────────────────────────────────────────────
 function updateSidebar() {
     // Turn banner
     const lbl = document.getElementById('lbl-active');
-    lbl.textContent = G.active.toUpperCase();
-    lbl.className   = G.active === 'home' ? 'team-home' : 'team-away';
-    document.getElementById('lbl-turn').textContent = G.turn;
+    if (G.phase === 'setup') {
+        lbl.textContent = `${(G.setupSide || '').toUpperCase()} SETUP`;
+        lbl.className   = G.setupSide === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = '';
+    } else {
+        lbl.textContent = G.active.toUpperCase();
+        lbl.className   = G.active === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = G.turn;
+    }
 
     // Score
     const score = G.score || { home: 0, away: 0 };
@@ -337,7 +406,11 @@ function drawBall() {
 
 // ── Players ───────────────────────────────────────────────────────
 function drawPlayers() {
-    G.players.forEach(p => { if (p.col >= 0) drawPlayer(p); });
+    G.players.forEach(p => {
+        if (p.col < 0) return;
+        if (setupDrag && setupDrag.player.id === p.id) return; // drawn as ghost
+        drawPlayer(p);
+    });
 }
 
 function drawPlayer(p) {

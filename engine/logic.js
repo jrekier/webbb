@@ -6,11 +6,15 @@
 
 function createInitialState() {
     return {
+        phase:         'toss',   // 'toss' | 'setup' | 'play'
+        tossWinner:    null,
+        kicker:        null,
+        receiver:      null,
+        setupSide:     null,
         active:        'home',
         turn:          1,
         half:          1,
-        homeScore:     0,
-        awayScore:     0,
+        score:         { home: 0, away: 0 },
         activated:     null,
         sel:           null,
         block:         null,
@@ -19,7 +23,7 @@ function createInitialState() {
         hasDodged:     false,
         blitzFromProne: false,
         securingBall:  false,
-        ball:          { col: 7, row: 13, carrier: null },
+        ball:          { col: 5, row: 10, carrier: null },
         players:       [],
     };
 }
@@ -190,16 +194,20 @@ function resetAfterTouchdown(G, scoringSide) {
         p.maLeft = p.ma; p.rushLeft = 2; p.usedAction = false;
     });
 
-    G.ball          = { col: 5, row: 10, carrier: null };
-    G.activated     = null;
-    G.sel           = null;
-    G.block         = null;
-    G.blitz         = null;
-    G.hasBlitzed    = false;
-    G.hasDodged     = false;
+    G.activated      = null;
+    G.sel            = null;
+    G.block          = null;
+    G.blitz          = null;
+    G.hasBlitzed     = false;
+    G.hasDodged      = false;
     G.blitzFromProne = false;
-    G.securingBall  = false;
-    G.active        = scoringSide === 'home' ? 'away' : 'home';
+    G.securingBall   = false;
+
+    // Scoring team kicks off the next drive; both sides set up again
+    G.kicker    = scoringSide;
+    G.receiver  = scoringSide === 'home' ? 'away' : 'home';
+    G.phase     = 'setup';
+    G.setupSide = G.kicker;
 }
 
 if (typeof module !== 'undefined') {

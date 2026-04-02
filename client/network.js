@@ -93,8 +93,7 @@ function netReceive(msg) {
             break;
 
         case 'START':
-            // game.js handles ruleset, formations, pitch setup, and rendering
-            startGame(msg.homeTeam, msg.awayTeam, msg.ruleset);
+            startGame(msg.homeTeam, msg.awayTeam);
             // fall through to apply the initial G
 
         case 'UPDATE':
@@ -102,6 +101,11 @@ function netReceive(msg) {
             Object.assign(G, msg.G);
             fixReferences(G);
             render();
+            if (G.phase === 'toss') {
+                showTossOverlay(G.tossWinner, NET.side === G.tossWinner);
+            } else {
+                document.getElementById('toss-overlay').style.display = 'none';
+            }
             break;
 
         case 'OPPONENT_DISCONNECTED':

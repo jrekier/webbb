@@ -171,23 +171,27 @@ function syncMobileHud() {
     const activeEl = document.getElementById('mobile-active-label');
     const turnEl   = document.getElementById('mobile-turn-label');
     if (activeEl) {
-        activeEl.textContent = G.active.toUpperCase();
-        activeEl.className   = G.active === 'home' ? 'team-home' : 'team-away';
+        const side = G.phase === 'setup' ? G.setupSide : G.active;
+        activeEl.textContent = (side || '').toUpperCase();
+        activeEl.className   = side === 'home' ? 'team-home' : 'team-away';
     }
-    if (turnEl) turnEl.textContent = `T${G.turn}`;
+    if (turnEl) turnEl.textContent = G.phase === 'setup' ? '' : `T${G.turn}`;
     const score = G.score || { home: 0, away: 0 };
     const sh = document.getElementById('mobile-score-home');
     const sa = document.getElementById('mobile-score-away');
     if (sh) sh.textContent = score.home;
     if (sa) sa.textContent = score.away;
 
+    const inSetup  = G.phase === 'setup';
+    const mySetup  = inSetup && (!NET.online || NET.side === G.setupSide);
+    mobileShow('mobile-btn-confirm-setup', mySetup);
     mobileShow('mobile-btn-cancel',
-        myTurn && (G.block === 'targeting'
+        !inSetup && myTurn && (G.block === 'targeting'
             || (G.activated && canStillCancel(G) && !G.block)));
     mobileShow('mobile-btn-stop',
-        myTurn && G.activated && !canStillCancel(G) && !G.block);
+        !inSetup && myTurn && G.activated && !canStillCancel(G) && !G.block);
     mobileShow('mobile-btn-end-turn',
-        myTurn && !G.block);
+        !inSetup && myTurn && !G.block);
 }
 
 function mobileShow(id, visible) {
@@ -230,23 +234,47 @@ var _dragCamStart = 0;
 
 function _onTouchStart(e) {
     e.preventDefault();
-    const t      = e.touches[0];
+    const t = e.touches[0];
     _pressOrigin = { x: t.clientX, y: t.clientY };
     _dragging    = false;
-    _pressTimer  = setTimeout(() => {
+
+    // Setup phase: immediately pick up a player for drag
+    if (G.phase === 'setup') {
+        const rect = canvas.getBoundingClientRect();
+        const px   = t.clientX - rect.left;
+        const py   = t.clientY - rect.top;
+        const col  = Math.floor(px / CELL);
+        const row  = Math.floor((py + cameraY) / CELL);
+        const p    = playerAt(G, col, row);
+        if (p && p.side === G.setupSide && (!NET.online || NET.side === G.setupSide)) {
+            setupDrag = { player: p, pixelX: px, pixelY: py };
+            return;
+        }
+    }
+
+    _pressTimer = setTimeout(() => {
         _pressTimer = null;
         _onLongPress(_pressOrigin.x, _pressOrigin.y);
     }, 450);
 }
 
 function _onTouchMove(e) {
+    const t = e.touches[0];
+
+    // Setup drag — move the ghost
+    if (setupDrag) {
+        const rect       = canvas.getBoundingClientRect();
+        setupDrag.pixelX = t.clientX - rect.left;
+        setupDrag.pixelY = t.clientY - rect.top;
+        render();
+        return;
+    }
+
     if (!_pressOrigin) return;
-    const t  = e.touches[0];
     const dx = t.clientX - _pressOrigin.x;
     const dy = t.clientY - _pressOrigin.y;
 
     if (!_dragging && dx * dx + dy * dy > 64) {
-        // Movement threshold crossed — cancel long-press, start panning
         if (_pressTimer) { clearTimeout(_pressTimer); _pressTimer = null; }
         _dragging     = true;
         _dragCamStart = cameraY;
@@ -261,13 +289,31 @@ function _onTouchMove(e) {
 
 function _onTouchEnd(e) {
     e.preventDefault();
+
+    // Setup drag — drop the player
+    if (setupDrag) {
+        const drag = setupDrag;
+        setupDrag  = null;
+        const rect = canvas.getBoundingClientRect();
+        const t    = e.changedTouches[0];
+        const col  = Math.floor((t.clientX - rect.left) / CELL);
+        const row  = Math.floor((t.clientY - rect.top + cameraY) / CELL);
+        if (NET.online) {
+            sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
+        } else {
+            moveSetupPlayer(G, drag.player.id, col, row);
+        }
+        render();
+        _pressOrigin = null;
+        return;
+    }
+
     _dragging = false;
     if (_pressTimer) {
         clearTimeout(_pressTimer);
         _pressTimer = null;
         _onTap(_pressOrigin.x, _pressOrigin.y);
     }
-    // If we were dragging, do nothing — the pan already happened
     _pressOrigin = null;
 }
 
