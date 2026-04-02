@@ -866,9 +866,9 @@ function scatterBall(G) {
     // Empty square — ball rests here
     if (!lander) return `Ball scattered to (${nc},${nr}).`;
 
-    // Prone/stunned player — ball rests on their square (they can't catch)
+    // Prone/stunned player — ball bounces off and scatters again
     if (!isStanding(lander)) {
-        return `Ball scattered to (${nc},${nr}) — rests by ${lander.pos}.`;
+        return `Ball bounces off ${lander.pos}. ` + scatterBall(G);
     }
 
     // Standing player — attempt catch: AG + tackle zones on that square
@@ -930,6 +930,9 @@ function knockDown(G, p, { attacker } = {}) {
         G.ball.carrier = null;
         G.ball.col     = p.col;
         G.ball.row     = p.row;
+        scatterMsg     = ' ' + scatterBall(G);
+    } else if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) {
+        // Player fell onto a loose ball — it scatters
         scatterMsg     = ' ' + scatterBall(G);
     }
 
