@@ -165,6 +165,17 @@ function onClickStandUp() {
     }
 }
 
+function onClickSecureBall() {
+    if (!G.sel || G.sel.side !== G.active) return;
+    if (NET.online) {
+        sendAction({ type: 'SECURE_BALL', playerId: G.sel.id });
+    } else {
+        const msg = secureBall(G, G.sel.id);
+        if (msg) log(msg);
+        render();
+    }
+}
+
 function onClickMove() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (G.sel.usedAction || G.activated) return;
@@ -180,6 +191,7 @@ function onClickMove() {
 function onClickBlock() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (G.sel.usedAction || G.activated) return;
+    if (G.sel.status !== 'active') return;   // prone/stunned players can't block
     G.activated = G.sel;
     G.block     = 'targeting';
     log(`${G.sel.pos} declares block — click a target`);
@@ -253,16 +265,18 @@ function updateButtons() {
         && !G.sel.usedAction
         && noAction
         && selProne;
-    const hasTargets = canDeclare && G.sel
+    const hasTargets  = canDeclare && G.sel
         && getBlockTargets(G, G.sel).length > 0;
+    const canSecure   = canDeclare && !G.ball.carrier;
 
-    show('btn-move',     canDeclare);
-    show('btn-block',    hasTargets);
-    show('btn-blitz',    canBlitz);
-    show('btn-stand-up', canStand);
+    show('btn-move',        canDeclare);
+    show('btn-block',       hasTargets);
+    show('btn-blitz',       canBlitz);
+    show('btn-stand-up',    canStand);
+    show('btn-secure-ball', canSecure);
     show('btn-cancel',   myTurn && (G.block === 'targeting'
-                            || (G.activated && !hasMovedYet(G) && !G.block)));
-    show('btn-stop',     myTurn && G.activated && hasMovedYet(G) && !G.block);
+                            || (G.activated && canStillCancel(G) && !G.block)));
+    show('btn-stop',     myTurn && G.activated && !canStillCancel(G) && !G.block);
     show('btn-end-turn', myTurn && !G.block);
 
     const btnEnd = document.getElementById('btn-end-turn');

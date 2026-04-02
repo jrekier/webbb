@@ -411,10 +411,11 @@ function drawPlayerSprite(p, sprite, cx, cy) {
     ctx.imageSmoothingEnabled = false;   // keep pixels crisp
     ctx.globalAlpha = p.usedAction ? 0.45 : 1;
 
-    if (p.status === 'prone') {
+    if (p.status === 'prone' || p.status === 'stunned') {
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(Math.PI / 2);
+        if (p.status === 'stunned') ctx.globalAlpha *= 0.55;
         ctx.drawImage(sprite, -sw / 2, -sh / 2, sw, sh);
         ctx.restore();
     } else {
@@ -428,10 +429,10 @@ function drawPlayerSprite(p, sprite, cx, cy) {
 // ── drawPlayerCircle ─────────────────────────────────────────────
 // Fallback when sprites aren't loaded yet.
 function drawPlayerCircle(p, cx, cy, r) {
-    if (p.status === 'prone') {
+    if (p.status === 'prone' || p.status === 'stunned') {
         const base = p.side === 'home' ? '#882222' : '#224488';
         ctx.fillStyle   = p.usedAction ? '#555' : base;
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = p.status === 'stunned' ? 0.4 : 0.7;
         ctx.beginPath();
         ctx.ellipse(cx, cy, r, r * 0.45, 0, 0, Math.PI * 2);
         ctx.fill();

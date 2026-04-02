@@ -274,6 +274,7 @@ function handleAction(room, msg) {
         case 'STOP':          room.lastLogMsg = GL.endActivation(G);                    break;
         case 'END_TURN':      room.lastLogMsg = GL.endTurn(G);                          break;
         case 'STAND_UP':      room.lastLogMsg = GL.standUp(G, msg.playerId);            break;
+        case 'SECURE_BALL':   room.lastLogMsg = GL.secureBall(G, msg.playerId);        break;
         case 'BLITZ_DECLARE': room.lastLogMsg = GL.activateBlitz(G, msg.playerId);      break;
         case 'BLITZ_TARGET':  room.lastLogMsg = GL.setBlitzTarget(G, msg.defId);        break;
         case 'BLITZ_START': {

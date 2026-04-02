@@ -34,10 +34,13 @@ function playerAt(G, col, row) {
 function canMoveTo(G, player, col, row) {
     const dc = Math.abs(player.col - col);
     const dr = Math.abs(player.row - row);
-    const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0) && player.maLeft + player.rushLeft > 0 && playerAt(G, col, row) === null);
+    const minMA  = player.status === 'prone' ? 3 : 1;   // stand-up costs 3 total
+    const allowed = (dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0)
+        && player.maLeft + player.rushLeft >= minMA
+        && playerAt(G, col, row) === null);
     let needsrush = (player.maLeft === 0);
     if (player.status === 'prone') {
-        needsrush = (player.maLeft < 3);
+        needsrush = (player.maLeft < 3);   // need rush rolls to cover stand-up shortfall
     }
 
     // Dodge required if leaving a tackle zone
@@ -66,6 +69,13 @@ function hasMovedYet(G) {
     return G.activated.maLeft < G.activated.ma;
 }
 
+// True when cancellation is still legal: player activated but not yet taken a real step.
+// A prone blitzer standing up doesn't count as having moved yet.
+function canStillCancel(G) {
+    if (!G.activated) return false;
+    return !hasMovedYet(G) || G.blitzFromProne;
+}
+
 // ── Actions ───────────────────────────────────────────────────────
 // These modify G. Each one does one thing and nothing else.
 
@@ -75,6 +85,7 @@ function activatePlayer(G, playerId) {
     if (p.side !== G.active) return null;
     if (p.usedAction) return null;
     if (G.activated) return null;
+    if (p.status === 'stunned') return null;   // stunned players can't act at all
     G.activated = p;
     G.sel       = p;
     return `${p.pos} activated`;
@@ -82,13 +93,20 @@ function activatePlayer(G, playerId) {
 
 function cancelActivation(G) {
     if (!G.activated) return null;
-    if (hasMovedYet(G)) return null;
-    const name  = G.activated.pos;
-    G.activated  = null;
+    if (!canStillCancel(G)) return null;
+    const p    = G.activated;
+    const name = p.pos;
     if (G.blitz !== null) {
-        G.hasBlitzed = false;  // return blitz token — only consumed once you move
-        G.blitz      = null;
+        if (G.blitzFromProne) {
+            p.status = 'prone';
+            p.maLeft = p.ma;
+        }
+        G.blitzFromProne = false;
+        G.hasBlitzed     = false;
+        G.blitz          = null;
     }
+    G.securingBall = false;
+    G.activated    = null;
     return `${name} — action cancelled`;
 }
 
@@ -98,26 +116,43 @@ function movePlayer(G, col, row) {
     if (!allowed) return null;
 
     const p = G.activated;
-    if (p.status === 'prone'){
-        p.status  = 'active';
+    let msg = '';
+    let standingUp = false;
+
+    // Stand up from prone — costs 3 MA; rush rolls cover any shortfall (1 per missing MA)
+    if (p.status === 'prone') {
+        standingUp = true;
+        const rushesNeeded = Math.max(0, 3 - p.maLeft);
+        for (let i = 0; i < rushesNeeded; i++) {
+            const { roll, failed } = rush();
+            if (failed) {
+                msg += `${p.pos} fails to stand (rolled ${roll}). `;
+                p.col = col;
+                p.row = row;
+                msg += knockDown(G, p);
+                endTurn(G);
+                return msg + ' TURNOVER';
+            }
+            msg += `${p.pos} rushes to stand (rolled ${roll}). `;
+        }
+        p.rushLeft -= rushesNeeded;
+        p.maLeft    = 0;
+        p.status    = 'active';
     }
 
-    let msg = '';
-
-    // Rush required
-    if (needsrush) {
-        const rushroll = Math.floor(Math.random() * 6) + 1;
-        if ( rushroll == 1){
+    // Rush required for regular movement (only when already standing)
+    if (!standingUp && needsrush) {
+        const { roll: rushroll, failed: rushFailed } = rush();
+        if (rushFailed) {
             msg += `${p.pos} fails rush (rolled ${rushroll}). `;
-            p.col = col; // falls over on target square
+            p.col = col;
             p.row = row;
-            knockDown(G, p);
+            msg += knockDown(G, p);
             endTurn(G);
-            return msg
-        } else {
-            msg += `${p.pos} rushes (rolled ${rushroll}). `;
+            return msg;
         }
-    };
+        msg += `${p.pos} rushes (rolled ${rushroll}). `;
+    }
 
     // Dodge required
     const needsDodge = (dodgerolltarget !== 0);
@@ -145,25 +180,45 @@ function movePlayer(G, col, row) {
             }            
             // Final failure check (covers BOTH: no skill + failed reroll)
             if (failed) {
-                msg += `${p.pos} fails dodge (rolled ${roll}, needed ${target}+) — TURNOVER`;
+                msg += `${p.pos} fails dodge (rolled ${roll}, needed ${target}+). `;
                 p.col = col; // falls over on target square
                 p.row = row;
-                knockDown(G, p);
+                msg += knockDown(G, p);
                 endTurn(G);
-                return msg
+                return msg + ' TURNOVER'
             }
         }
     }
 
-    p.col    = col;
-    p.row    = row;
-    if(!needsrush) {
-        p.maLeft -= 1;
-    } else {
-        p.rushLeft -= 1;
+    p.col = col;
+    p.row = row;
+    if (!standingUp) {
+        if (!needsrush) {
+            p.maLeft -= 1;
+        } else {
+            p.rushLeft -= 1;
+        }
     }
+    // standingUp: the 3 MA stand-up cost already covers this first step
     G.sel = p;
     if (p.maLeft + p.rushLeft === 0) endActivation(G);
+
+    // Ball pickup (player stepped onto loose ball)
+    let pickupMsg;
+    if (G.securingBall && p.col === G.ball.col && p.row === G.ball.row) {
+        pickupMsg = _doSecureRoll(G, p);
+    } else {
+        pickupMsg = tryPickup(G, p);
+    }
+    if (pickupMsg) {
+        msg += ' ' + pickupMsg;
+        if (pickupMsg.includes('TURNOVER')) return msg;
+    }
+
+    // Touchdown check
+    const tdMsg = checkTouchdown(G, p);
+    if (tdMsg) return msg + ' ' + tdMsg;
+
     return msg;
 }
 
@@ -185,12 +240,16 @@ function endTurn(G) {
             p.usedAction = false;
             p.maLeft     = p.ma;
             p.rushLeft   = 2;
+            // Stunned players flip face-up at the end of their own team's turn
+            if (p.status === 'stunned') p.status = 'prone';
         }
     }
-    G.active     = G.active === 'home' ? 'away' : 'home';
-    G.sel        = null;
-    G.hasBlitzed = false; // Reset blitz flag at turn end
-    G.hasDodged  = false; // Reset dodge flag at turn end
+    G.active         = G.active === 'home' ? 'away' : 'home';
+    G.sel            = null;
+    G.hasBlitzed     = false;
+    G.hasDodged      = false;
+    G.blitzFromProne = false;
+    G.securingBall   = false;
     if (G.active === 'home') G.turn += 1;
     return `Turn ${G.turn} · ${G.active.toUpperCase()}`;
 }
@@ -289,7 +348,8 @@ if (typeof module !== 'undefined') {
     module.exports = {
         FORMATION_HOME, FORMATION_AWAY, FORMATIONS, initFormations,
         createInitialState,
-        playerAt, canMoveTo, hasMovedYet, fixReferences,
+        playerAt, canMoveTo, hasMovedYet, canStillCancel, fixReferences,
+        secureBall, scatterBall, tryPickup, checkTouchdown,
         activatePlayer, cancelActivation,
         movePlayer, endActivation,
         endTurn,
@@ -482,7 +542,7 @@ function getPushSquares(G, att, def) {
 // Rolls the dice and sets G.block with phase 'pick-face'.
 
 function declareBlock(G, att, def) {
-    const { attStr, defStr, attAssists, defAssists } = countAssists(G, att, def);
+    const { attStr, defStr } = countAssists(G, att, def);
     const { dice, chooser } = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
 
@@ -509,34 +569,33 @@ function pickBlockFace(G, face) {
 
     switch (face.id) {
 
-        case 'ATT_DOWN':
-            knockDown(G, att);
+        case 'ATT_DOWN': {
+            const injMsg = knockDown(G, att);
             G.block = null;
             G.blitz = null;
             G.activated = null;
             att.usedAction = true;
             endTurn(G);
-            return `${att.pos} is knocked down! TURNOVER`;
+            return `${att.pos} is knocked down! ${injMsg} TURNOVER`;
+        }
 
         case 'BOTH_DOWN': {
             const attHasBlock = att.skills?.includes('Block');
             const defHasBlock = def.skills?.includes('Block');
-            if (!attHasBlock) knockDown(G, att);
-            if (!defHasBlock) knockDown(G, def);
+            const attInj = attHasBlock ? null : knockDown(G, att);
+            const defInj = defHasBlock ? null : knockDown(G, def, { attacker: att });
             G.block = null;
             G.blitz = null;
             att.usedAction = true;
             if (attHasBlock) {
-                // Attacker stays standing — no turnover, activation ends normally
                 G.activated = null;
-                if (defHasBlock) return `Both players keep their footing (Block skill).`;
-                return `${def.pos} is knocked down! ${att.pos} keeps footing (Block).`;
+                if (defHasBlock) return `Both keep their footing (Block).`;
+                return `${def.pos} knocked down! ${defInj} ${att.pos} keeps footing (Block).`;
             }
-            // Attacker fell — turnover regardless of defender
             G.activated = null;
             endTurn(G);
-            if (defHasBlock) return `${att.pos} is knocked down! ${def.pos} keeps footing (Block). TURNOVER`;
-            return `Both players are knocked down! TURNOVER`;
+            if (defHasBlock) return `${att.pos} knocked down! ${attInj} ${def.pos} keeps footing (Block). TURNOVER`;
+            return `Both knocked down! ${att.pos}: ${attInj} ${def.pos}: ${defInj} TURNOVER`;
         }
 
         case 'PUSH':
@@ -579,8 +638,8 @@ function pickPushSquare(G, col, row) {
         // stumble and def has dodge but att has tackle
         || (chosenFace.id === 'DEF_STUMBLES' && def.skills?.includes('Dodge') && att.skills?.includes('Tackle')) 
     ) {
-        knockDown(G, def);
-        msg += ` ${def.pos} is knocked down!`;
+        const injMsg = knockDown(G, def, { attacker: att });
+        msg += ` ${def.pos} is knocked down! ${injMsg}`;
     }
 
     // Transition to follow-up phase
@@ -627,10 +686,9 @@ function resolveFollowUp(G, followUp) {
 // On failure, knocks the player down (caller handles turnover).
 // Returns { roll, failed }.
 
-function rush(G, player) {
+function rush() {
     const roll   = Math.floor(Math.random() * 6) + 1;
     const failed = roll === 1;
-    if (failed) knockDown(G, player);
     return { roll, failed };
 }
 
@@ -669,11 +727,12 @@ function standUp(G, playerId) {
     // Not enough base MA — cover the gap with rush rolls
     const rolls = [];
     for (let i = 0; i < rushesNeeded; i++) {
-        const { roll, failed } = rush(G, p);
+        const { roll, failed } = rush();
         rolls.push(roll);
         if (failed) {
+            const injMsg = knockDown(G, p);
             endTurn(G);
-            return `${p.pos} fails to stand (rolled ${rolls.join(', ')}) — TURNOVER`;
+            return `${p.pos} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
         }
     }
 
@@ -683,16 +742,216 @@ function standUp(G, playerId) {
     return `${p.pos} stands up on a rush (rolled ${rolls.join(', ')})`;
 }
 
-// ── knockDown ─────────────────────────────────────────────────────
-// Sets a player to prone and rolls armour.
+// ── rollArmourAndInjury ───────────────────────────────────────────
+// Rolls 2d6 armour and (if broken) 2d6 injury for player p.
+// attacker may have Mighty Blow; p may have Thick Skull.
+// Returns { armorRoll, armorBroken, injuryRoll, outcome }.
+// outcome is 'stunned' | 'ko' | 'casualty' | null (armor held).
 
-function knockDown(G, p) {
-    p.status = 'prone';
-    if (p.hasBall) {
-        p.hasBall        = false;
-        G.ball.carrier   = null;
-        // Ball scatters — simple version: stays in same square for now
+function rollArmourAndInjury(p, attacker) {
+    const d1a = Math.floor(Math.random() * 6) + 1;
+    const d2a = Math.floor(Math.random() * 6) + 1;
+    const rawArmor   = d1a + d2a;
+    const mightyBlow = attacker?.skills?.includes('Mighty Blow') ? 1 : 0;
+
+    // Mighty Blow: optimally apply +1 to armor (to tip a break) or save for injury
+    const wouldBreakWithBonus = rawArmor + mightyBlow > p.av;
+    const applyBonusToArmor  = mightyBlow > 0 && rawArmor <= p.av && wouldBreakWithBonus;
+    const armorRoll          = applyBonusToArmor ? rawArmor + mightyBlow : rawArmor;
+    const injuryBonus        = mightyBlow > 0 && !applyBonusToArmor ? mightyBlow : 0;
+
+    if (armorRoll <= p.av) {
+        return { armorRoll, armorBroken: false, injuryRoll: null, outcome: null };
     }
+
+    const d1i      = Math.floor(Math.random() * 6) + 1;
+    const d2i      = Math.floor(Math.random() * 6) + 1;
+    const injuryRoll = d1i + d2i + injuryBonus;
+    const thickSkull = p.skills?.includes('Thick Skull');
+
+    let outcome;
+    if      (injuryRoll <= 7) outcome = 'stunned';
+    else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
+    else                      outcome = 'casualty';
+
+    return { armorRoll, armorBroken: true, injuryRoll, outcome };
+}
+
+// ── secureBall ────────────────────────────────────────────────────
+// Secure the Ball action (BB2025): roll 2+, pick up the loose ball,
+// activation ends. No movement required; player must be on the ball.
+
+// ── _doSecureRoll ─────────────────────────────────────────────────
+// Rolls 2+ for Secure the Ball. Called once the player is on the
+// ball's square. Ends activation on success; turnover on failure.
+
+function _doSecureRoll(G, p) {
+    const roll = Math.floor(Math.random() * 6) + 1;
+    G.securingBall = false;
+    if (roll >= 2) {
+        p.hasBall      = true;
+        G.ball.carrier = p;
+        endActivation(G);
+        return `${p.pos} secures the ball (rolled ${roll}).`;
+    }
+    const scatterMsg = scatterBall(G);
+    endTurn(G);
+    return `${p.pos} fails to secure (rolled ${roll}). ${scatterMsg} TURNOVER`;
+}
+
+// ── secureBall ────────────────────────────────────────────────────
+// Secure the Ball action (BB2025): activates player in securing mode.
+// If already on the ball, rolls immediately. Otherwise the player
+// moves normally and the 2+ fires when they step onto the ball square.
+
+function secureBall(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
+    if (p.status !== 'active') return null;
+    if (G.ball.carrier) return null;
+
+    // Already on the ball square — resolve immediately
+    if (p.col === G.ball.col && p.row === G.ball.row) {
+        return _doSecureRoll(G, p);
+    }
+
+    // Activate player; 2+ roll fires in movePlayer when they reach the ball
+    G.activated    = p;
+    G.sel          = p;
+    G.securingBall = true;
+    return `${p.pos} declares Secure Ball — move to the ball.`;
+}
+
+// ── scatterBall ───────────────────────────────────────────────────
+// Moves the loose ball one square in a random d8 direction.
+// If it lands on a standing player they attempt to catch it (AG roll).
+// Repeats if it lands on a prone/stunned player (ball bounces off).
+// Returns a log string.
+
+// ── _countTackleZones ─────────────────────────────────────────────
+// Count opposing standing players whose tackle zone covers (col, row).
+
+function _countTackleZones(G, side, col, row) {
+    return G.players.filter(e =>
+        e.side !== side && isStanding(e)
+        && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
+        && !(e.col === col && e.row === row)
+    ).length;
+}
+
+// ── scatterBall ───────────────────────────────────────────────────
+// Moves the loose ball one square in a random d8 direction.
+// Standing players on the landing square attempt a catch (AG + TZs).
+// Prone/stunned players let the ball rest on their square.
+
+function scatterBall(G) {
+    const DC = [ 0, 1, 1, 1, 0,-1,-1,-1];
+    const DR = [-1,-1, 0, 1, 1, 1, 0,-1];
+    const dir = Math.floor(Math.random() * 8);
+    const nc  = G.ball.col + DC[dir];
+    const nr  = G.ball.row + DR[dir];
+
+    // Out of bounds — clamp to nearest edge square
+    if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) {
+        G.ball.col = Math.max(0, Math.min(COLS - 1, nc < 0 ? 0 : nc >= COLS ? COLS - 1 : nc));
+        G.ball.row = Math.max(0, Math.min(ROWS - 1, nr < 0 ? 0 : nr >= ROWS ? ROWS - 1 : nr));
+        return `Ball scattered out of bounds — placed at (${G.ball.col},${G.ball.row}).`;
+    }
+
+    G.ball.col = nc;
+    G.ball.row = nr;
+
+    const lander = playerAt(G, nc, nr);
+
+    // Empty square — ball rests here
+    if (!lander) return `Ball scattered to (${nc},${nr}).`;
+
+    // Prone/stunned player — ball rests on their square (they can't catch)
+    if (!isStanding(lander)) {
+        return `Ball scattered to (${nc},${nr}) — rests by ${lander.pos}.`;
+    }
+
+    // Standing player — attempt catch: AG + tackle zones on that square
+    const tzs    = _countTackleZones(G, lander.side, nc, nr);
+    const target = Math.min(lander.ag + tzs, 6);
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    if (roll >= target || roll === 6) {
+        lander.hasBall = true;
+        G.ball.carrier = lander;
+        return `Ball scattered to (${nc},${nr}) — ${lander.pos} catches it! (rolled ${roll}, needed ${target}+)`;
+    }
+    // Failed catch — scatter again from this square
+    return `${lander.pos} fails to catch (rolled ${roll}, needed ${target}+). ` + scatterBall(G);
+}
+
+// ── tryPickup ─────────────────────────────────────────────────────
+// Called when a player moves onto the ball's square.
+// AG roll modified by opposing tackle zones on that square.
+
+function tryPickup(G, p) {
+    if (G.ball.carrier || G.ball.col !== p.col || G.ball.row !== p.row) return null;
+    const tzs    = _countTackleZones(G, p.side, p.col, p.row);
+    const target = Math.min(p.ag + tzs, 6);
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    if (roll >= target || roll === 6) {
+        p.hasBall      = true;
+        G.ball.carrier = p;
+        return `${p.pos} picks up the ball (rolled ${roll}, needed ${target}+).`;
+    }
+    const scatterMsg = scatterBall(G);
+    endTurn(G);
+    return `${p.pos} fails to pick up (rolled ${roll}, needed ${target}+). ${scatterMsg} TURNOVER`;
+}
+
+// ── checkTouchdown ────────────────────────────────────────────────
+// Returns a score message if p just scored, null otherwise.
+
+function checkTouchdown(G, p) {
+    if (!p.hasBall) return null;
+    const scored =
+        (p.side === 'away' && p.row === ROWS - 1) ||
+        (p.side === 'home' && p.row === 0);
+    if (!scored) return null;
+    G.score       = G.score || { home: 0, away: 0 };
+    G.score[p.side] += 1;
+    return `TOUCHDOWN! ${p.side.toUpperCase()} scores! (${G.score.home}–${G.score.away})`;
+}
+
+// ── knockDown ─────────────────────────────────────────────────────
+// Sets a player prone, drops the ball, rolls armour + injury.
+// opts.attacker — the blocking player (for Mighty Blow).
+// Returns a description string of the armor/injury result.
+
+function knockDown(G, p, { attacker } = {}) {
+    p.status = 'prone';
+    let scatterMsg = '';
+    if (p.hasBall) {
+        p.hasBall      = false;
+        G.ball.carrier = null;
+        G.ball.col     = p.col;
+        G.ball.row     = p.row;
+        scatterMsg     = ' ' + scatterBall(G);
+    }
+
+    const { armorRoll, armorBroken, injuryRoll, outcome } = rollArmourAndInjury(p, attacker);
+
+    if (!armorBroken) {
+        return `AV ${armorRoll}/${p.av} — armour holds.${scatterMsg}`;
+    }
+
+    if (outcome === 'stunned') {
+        p.status = 'stunned';
+        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: Stunned.${scatterMsg}`;
+    }
+    if (outcome === 'ko') {
+        p.status = 'ko';
+        p.col    = -1;
+        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: KO'd!${scatterMsg}`;
+    }
+    // casualty
+    p.status = 'casualty';
+    p.col    = -1;
+    return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: CASUALTY!${scatterMsg}`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -707,9 +966,16 @@ function knockDown(G, p) {
 function activateBlitz(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
+    if (p.status === 'stunned') return null;   // stunned players can't act at all
     G.activated  = p;
     G.blitz      = 'targeting';
     G.hasBlitzed = true;  // committed on declaration; persists even if MA runs out before blocking
+    // Prone blitzer stands up immediately; store flag so cancel can restore the state
+    if (p.status === 'prone') {
+        p.status  = 'active';
+        p.maLeft  = Math.max(0, p.maLeft - 3);
+        G.blitzFromProne = true;
+    }
     return `${p.pos} declares blitz — click a target`;
 }
 

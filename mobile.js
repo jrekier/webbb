@@ -157,9 +157,9 @@ function syncMobileHud() {
 
     mobileShow('mobile-btn-cancel',
         myTurn && (G.block === 'targeting'
-            || (G.activated && !hasMovedYet(G) && !G.block)));
+            || (G.activated && canStillCancel(G) && !G.block)));
     mobileShow('mobile-btn-stop',
-        myTurn && G.activated && hasMovedYet(G) && !G.block);
+        myTurn && G.activated && !canStillCancel(G) && !G.block);
     mobileShow('mobile-btn-end-turn',
         myTurn && !G.block);
 }
@@ -293,7 +293,7 @@ function _openWheel(player, px, py) {
 
     // Activated player — navigation options
     if (G.activated && G.activated.id === player.id && !G.block) {
-        if (!hasMovedYet(G)) {
+        if (canStillCancel(G)) {
             actions.push({
                 label: 'Cancel', color: '#ffd080', bg: 'rgba(130,70,0,0.90)',
                 fn: onClickCancel,
@@ -312,6 +312,11 @@ function _openWheel(player, px, py) {
                 label: 'Stand\nUp', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
                 fn: onClickStandUp,
             });
+            if (!G.hasBlitzed && G.players.some(p => p.side !== G.active && isStanding(p)))
+                actions.push({
+                    label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
+                    fn: onClickBlitz,
+                });
         } else {
             actions.push({
                 label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
@@ -326,6 +331,11 @@ function _openWheel(player, px, py) {
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
                     fn: onClickBlitz,
+                });
+            if (!G.ball.carrier)
+                actions.push({
+                    label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)',
+                    fn: onClickSecureBall,
                 });
         }
     }
