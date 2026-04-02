@@ -69,14 +69,14 @@ function activatePlayer(G, playerId) {
     if (p.status === 'stunned') return null;
     G.activated = p;
     G.sel       = p;
-    return `${p.pos} activated`;
+    return `${p.name} activated`;
 }
 
 function cancelActivation(G) {
     if (!G.activated) return null;
     if (!canStillCancel(G)) return null;
     const p    = G.activated;
-    const name = p.pos;
+    const name = p.name;
     if (G.blitz !== null) {
         if (G.blitzFromProne) {
             p.status = 'prone';

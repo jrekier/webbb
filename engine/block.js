@@ -137,7 +137,7 @@ function declareBlock(G, att, def) {
         pushSquares: null,
     };
 
-    return `${att.pos} (ST${attStr}) blocks ${def.pos} (ST${defStr}) · ${dice}d`;
+    return `${att.name} (ST${attStr}) blocks ${def.name} (ST${defStr}) · ${dice}d`;
 }
 
 // ── pickBlockFace ─────────────────────────────────────────────────
@@ -157,7 +157,7 @@ function pickBlockFace(G, face) {
             G.activated = null;
             att.usedAction = true;
             endTurn(G);
-            return `${att.pos} is knocked down! ${injMsg} TURNOVER`;
+            return `${att.name} is knocked down! ${injMsg} TURNOVER`;
         }
 
         case 'BOTH_DOWN': {
@@ -172,12 +172,12 @@ function pickBlockFace(G, face) {
             if (attHasBlock) {
                 G.activated = null;
                 if (defHasBlock) return `Both keep their footing (Block).`;
-                return `${def.pos} knocked down! ${defInj}${scatterMsg} ${att.pos} keeps footing (Block).`;
+                return `${def.name} knocked down! ${defInj}${scatterMsg} ${att.name} keeps footing (Block).`;
             }
             G.activated = null;
             endTurn(G);
-            if (defHasBlock) return `${att.pos} knocked down! ${attInj}${scatterMsg} ${def.pos} keeps footing (Block). TURNOVER`;
-            return `Both knocked down! ${att.pos}: ${attInj} ${def.pos}: ${defInj}${scatterMsg} TURNOVER`;
+            if (defHasBlock) return `${att.name} knocked down! ${attInj}${scatterMsg} ${def.name} keeps footing (Block). TURNOVER`;
+            return `Both knocked down! ${att.name}: ${attInj} ${def.name}: ${defInj}${scatterMsg} TURNOVER`;
         }
 
         case 'PUSH':
@@ -186,7 +186,7 @@ function pickBlockFace(G, face) {
             G.block.phase       = 'pick-push';
             G.block.pushSquares = getPushSquares(G, att, def);
             const falls = face.id !== 'PUSH';
-            return `${def.pos} is pushed back${falls ? ' and falls!' : '.'}  Choose push square.`;
+            return `${def.name} is pushed back${falls ? ' and falls!' : '.'}  Choose push square.`;
         }
     }
 }
@@ -202,7 +202,7 @@ function pickPushSquare(G, col, row) {
     def.col = col;
     def.row = row;
 
-    let msg = `${def.pos} pushed to (${col},${row}).`;
+    let msg = `${def.name} pushed to (${col},${row}).`;
 
     if (
         (chosenFace.id === 'DEF_DOWN')
@@ -210,7 +210,7 @@ function pickPushSquare(G, col, row) {
         || (chosenFace.id === 'DEF_STUMBLES' && def.skills?.includes('Dodge') && att.skills?.includes('Tackle'))
     ) {
         const injMsg = knockDown(G, def, { attacker: att });
-        msg += ` ${def.pos} is knocked down! ${injMsg}`;
+        msg += ` ${def.name} is knocked down! ${injMsg}`;
     }
 
     G.block = { phase: 'follow-up', att, vacCol, vacRow };
@@ -240,12 +240,12 @@ function resolveFollowUp(G, followUp) {
             att.usedAction = true;
             G.activated    = null;
         }
-        return (followUp ? `${att.pos} follows up` : `${att.pos} stays`) + scatterMsg + maMsg;
+        return (followUp ? `${att.name} follows up` : `${att.name} stays`) + scatterMsg + maMsg;
     }
 
     att.usedAction = true;
     G.activated    = null;
-    return (followUp ? `${att.pos} follows up` : `${att.pos} stays`) + scatterMsg;
+    return (followUp ? `${att.name} follows up` : `${att.name} stays`) + scatterMsg;
 }
 
 // ── activateBlitz ─────────────────────────────────────────────────
@@ -263,7 +263,7 @@ function activateBlitz(G, playerId) {
         p.maLeft         = Math.max(0, p.maLeft - 3);
         G.blitzFromProne = true;
     }
-    return `${p.pos} declares blitz — click a target`;
+    return `${p.name} declares blitz — click a target`;
 }
 
 // ── setBlitzTarget ────────────────────────────────────────────────
@@ -273,7 +273,7 @@ function setBlitzTarget(G, defId) {
     const def = G.players.find(p => p.id === defId);
     if (!def || !G.activated || G.blitz !== 'targeting' || def.side === G.active) return null;
     G.blitz = { att: G.activated, def, phase: 'moving' };
-    return `${G.activated.pos} targets ${def.pos} — move into range`;
+    return `${G.activated.name} targets ${def.name} — move into range`;
 }
 
 // ── blitzBlock ───────────────────────────────────────────────────

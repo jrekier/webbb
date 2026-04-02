@@ -65,7 +65,7 @@ function movePlayer(G, col, row) {
         for (let i = 0; i < rushesNeeded; i++) {
             const { roll, failed } = rush();
             if (failed) {
-                msg += `${p.pos} fails to stand (rolled ${roll}). `;
+                msg += `${p.name} fails to stand (rolled ${roll}). `;
                 p.col = col;
                 p.row = row;
                 msg += knockDown(G, p);
@@ -73,7 +73,7 @@ function movePlayer(G, col, row) {
                 endTurn(G);
                 return msg + ' TURNOVER';
             }
-            msg += `${p.pos} rushes to stand (rolled ${roll}). `;
+            msg += `${p.name} rushes to stand (rolled ${roll}). `;
         }
         p.rushLeft -= rushesNeeded;
         p.maLeft    = 0;
@@ -84,7 +84,7 @@ function movePlayer(G, col, row) {
     if (!standingUp && needsrush) {
         const { roll: rushroll, failed: rushFailed } = rush();
         if (rushFailed) {
-            msg += `${p.pos} fails rush (rolled ${rushroll}). `;
+            msg += `${p.name} fails rush (rolled ${rushroll}). `;
             p.col = col;
             p.row = row;
             msg += knockDown(G, p);
@@ -92,7 +92,7 @@ function movePlayer(G, col, row) {
             endTurn(G);
             return msg;
         }
-        msg += `${p.pos} rushes (rolled ${rushroll}). `;
+        msg += `${p.name} rushes (rolled ${rushroll}). `;
     }
 
     // Dodge
@@ -104,18 +104,18 @@ function movePlayer(G, col, row) {
 
         let { roll, target, failed } = dodge(dodgerolltarget);
         if (!failed) {
-            msg += `${p.pos} dodges (rolled ${roll}, needed ${target}+). `;
+            msg += `${p.name} dodges (rolled ${roll}, needed ${target}+). `;
         } else {
             if (p.skills?.includes('Dodge') && !G.hasDodged && !markedByTackle) {
-                msg += `${p.pos} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
+                msg += `${p.name} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
                 G.hasDodged = true;
                 ({ roll, target, failed } = dodge(dodgerolltarget));
                 if (!failed) {
-                    msg += `${p.pos} succeeds dodge on reroll (rolled ${roll}, needed ${target}+). `;
+                    msg += `${p.name} succeeds dodge on reroll (rolled ${roll}, needed ${target}+). `;
                 }
             }
             if (failed) {
-                msg += `${p.pos} fails dodge (rolled ${roll}, needed ${target}+). `;
+                msg += `${p.name} fails dodge (rolled ${roll}, needed ${target}+). `;
                 p.col = col;
                 p.row = row;
                 msg += knockDown(G, p);
@@ -170,7 +170,7 @@ function standUp(G, playerId) {
         p.maLeft -= 3;
         p.status  = 'active';
         if (p.maLeft === 0) endActivation(G);
-        return `${p.pos} stands up · ${p.maLeft} MA left`;
+        return `${p.name} stands up · ${p.maLeft} MA left`;
     }
 
     const rolls = [];
@@ -181,14 +181,14 @@ function standUp(G, playerId) {
             let injMsg = knockDown(G, p);
             if (!G.ball.carrier) injMsg += ' ' + scatterBall(G);
             endTurn(G);
-            return `${p.pos} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
+            return `${p.name} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
         }
     }
 
     p.maLeft = 0;
     p.status  = 'active';
     endActivation(G);
-    return `${p.pos} stands up on a rush (rolled ${rolls.join(', ')})`;
+    return `${p.name} stands up on a rush (rolled ${rolls.join(', ')})`;
 }
 
 if (typeof module !== 'undefined') {

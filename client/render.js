@@ -154,7 +154,7 @@ function updateDetail() {
 
     el.innerHTML = `
         <div class="name" style="color:${color}">${p.name}</div>
-        <div class="stat-row" style="color:var(--text-dim);font-size:10px;margin-top:-2px;margin-bottom:3px">${p.pos}</div>
+        <div class="stat-row" style="color:var(--text-dim);font-size:10px;margin-top:-2px;margin-bottom:3px">${p.name}</div>
         <div class="stat-row">MA <b>${p.ma}</b> &nbsp; ST <b>${p.st}</b> &nbsp; AG <b>${p.ag}</b> &nbsp; AV <b>${p.av}</b></div>
         ${skillsHtml}
         <span class="status ${statusClass}">${statusText}</span>

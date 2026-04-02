@@ -68,11 +68,11 @@ function tryPickup(G, p) {
     if (roll >= target || roll === 6) {
         p.hasBall      = true;
         G.ball.carrier = p;
-        return `${p.pos} picks up the ball (rolled ${roll}, needed ${target}+).`;
+        return `${p.name} picks up the ball (rolled ${roll}, needed ${target}+).`;
     }
     const scatterMsg = scatterBall(G);
     endTurn(G);
-    return `${p.pos} fails to pick up (rolled ${roll}, needed ${target}+). ${scatterMsg} TURNOVER`;
+    return `${p.name} fails to pick up (rolled ${roll}, needed ${target}+). ${scatterMsg} TURNOVER`;
 }
 
 // ── checkTouchdown ────────────────────────────────────────────────
@@ -102,11 +102,11 @@ function _doSecureRoll(G, p) {
         p.hasBall      = true;
         G.ball.carrier = p;
         endActivation(G);
-        return `${p.pos} secures the ball (rolled ${roll}, needed ${target}+).`;
+        return `${p.name} secures the ball (rolled ${roll}, needed ${target}+).`;
     }
     const scatterMsg = scatterBall(G);
     endTurn(G);
-    return `${p.pos} fails to secure (rolled ${roll}). ${scatterMsg} TURNOVER`;
+    return `${p.name} fails to secure (rolled ${roll}). ${scatterMsg} TURNOVER`;
 }
 
 // ── secureBall ────────────────────────────────────────────────────
@@ -117,17 +117,18 @@ function _doSecureRoll(G, p) {
 function secureBall(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
-    if (p.status !== 'active') return null;
+    if (p.status === 'stunned') return null;
     if (G.ball.carrier) return null;
 
-    if (p.col === G.ball.col && p.row === G.ball.row) {
+    // Standing player already on the ball — resolve immediately
+    if (p.status === 'active' && p.col === G.ball.col && p.row === G.ball.row) {
         return _doSecureRoll(G, p);
     }
 
     G.activated    = p;
     G.sel          = p;
     G.securingBall = true;
-    return `${p.pos} declares Secure Ball — move to the ball.`;
+    return `${p.name} declares Secure Ball — move to the ball.`;
 }
 
 if (typeof module !== 'undefined') {
