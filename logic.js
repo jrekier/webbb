@@ -130,6 +130,7 @@ function movePlayer(G, col, row) {
                 p.col = col;
                 p.row = row;
                 msg += knockDown(G, p);
+                if (!G.ball.carrier) msg += ' ' + scatterBall(G);
                 endTurn(G);
                 return msg + ' TURNOVER';
             }
@@ -148,6 +149,7 @@ function movePlayer(G, col, row) {
             p.col = col;
             p.row = row;
             msg += knockDown(G, p);
+            if (!G.ball.carrier) msg += ' ' + scatterBall(G);
             endTurn(G);
             return msg;
         }
@@ -184,6 +186,7 @@ function movePlayer(G, col, row) {
                 p.col = col; // falls over on target square
                 p.row = row;
                 msg += knockDown(G, p);
+                if (!G.ball.carrier) msg += ' ' + scatterBall(G);
                 endTurn(G);
                 return msg + ' TURNOVER'
             }
@@ -570,7 +573,8 @@ function pickBlockFace(G, face) {
     switch (face.id) {
 
         case 'ATT_DOWN': {
-            const injMsg = knockDown(G, att);
+            let injMsg = knockDown(G, att);
+            if (!G.ball.carrier) injMsg += ' ' + scatterBall(G);
             G.block = null;
             G.blitz = null;
             G.activated = null;
@@ -584,18 +588,19 @@ function pickBlockFace(G, face) {
             const defHasBlock = def.skills?.includes('Block');
             const attInj = attHasBlock ? null : knockDown(G, att);
             const defInj = defHasBlock ? null : knockDown(G, def, { attacker: att });
+            const scatterMsg = !G.ball.carrier ? ' ' + scatterBall(G) : '';
             G.block = null;
             G.blitz = null;
             att.usedAction = true;
             if (attHasBlock) {
                 G.activated = null;
                 if (defHasBlock) return `Both keep their footing (Block).`;
-                return `${def.pos} knocked down! ${defInj} ${att.pos} keeps footing (Block).`;
+                return `${def.pos} knocked down! ${defInj}${scatterMsg} ${att.pos} keeps footing (Block).`;
             }
             G.activated = null;
             endTurn(G);
-            if (defHasBlock) return `${att.pos} knocked down! ${attInj} ${def.pos} keeps footing (Block). TURNOVER`;
-            return `Both knocked down! ${att.pos}: ${attInj} ${def.pos}: ${defInj} TURNOVER`;
+            if (defHasBlock) return `${att.pos} knocked down! ${attInj}${scatterMsg} ${def.pos} keeps footing (Block). TURNOVER`;
+            return `Both knocked down! ${att.pos}: ${attInj} ${def.pos}: ${defInj}${scatterMsg} TURNOVER`;
         }
 
         case 'PUSH':
@@ -664,6 +669,10 @@ function resolveFollowUp(G, followUp) {
 
     G.block = null;
 
+    // Scatter the ball now — after the follow-up decision — so the attacker
+    // isn't stepping onto a square that still has the ball sitting on it.
+    const scatterMsg = !G.ball.carrier ? ' ' + scatterBall(G) : '';
+
     if (G.blitz) {
         // Blitz: MA was already paid in declareBlitz. Keep player activated to move.
         G.blitz = null;
@@ -673,12 +682,12 @@ function resolveFollowUp(G, followUp) {
             att.usedAction = true;
             G.activated    = null;
         }
-        return (followUp ? `${att.pos} follows up` : `${att.pos} stays`) + maMsg;
+        return (followUp ? `${att.pos} follows up` : `${att.pos} stays`) + scatterMsg + maMsg;
     }
 
     att.usedAction = true;
     G.activated    = null;
-    return followUp ? `${att.pos} follows up` : `${att.pos} stays`;
+    return (followUp ? `${att.pos} follows up` : `${att.pos} stays`) + scatterMsg;
 }
 
 // ── rush ─────────────────────────────────────────────────────────
@@ -730,7 +739,8 @@ function standUp(G, playerId) {
         const { roll, failed } = rush();
         rolls.push(roll);
         if (failed) {
-            const injMsg = knockDown(G, p);
+            let injMsg = knockDown(G, p);
+            if (!G.ball.carrier) injMsg += ' ' + scatterBall(G);
             endTurn(G);
             return `${p.pos} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
         }
@@ -926,37 +936,34 @@ function checkTouchdown(G, p) {
 
 function knockDown(G, p, { attacker } = {}) {
     p.status = 'prone';
-    let scatterMsg = '';
     if (p.hasBall) {
         p.hasBall      = false;
         G.ball.carrier = null;
         G.ball.col     = p.col;
         G.ball.row     = p.row;
-        scatterMsg     = ' ' + scatterBall(G);
-    } else if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) {
-        // Player fell onto a loose ball — it scatters
-        scatterMsg     = ' ' + scatterBall(G);
     }
+    // Ball scatter is always the caller's responsibility, so it can be
+    // ordered correctly (e.g. after a block follow-up).
 
     const { armorRoll, armorBroken, injuryRoll, outcome } = rollArmourAndInjury(p, attacker);
 
     if (!armorBroken) {
-        return `AV ${armorRoll}/${p.av} — armour holds.${scatterMsg}`;
+        return `AV ${armorRoll}/${p.av} — armour holds.`;
     }
 
     if (outcome === 'stunned') {
         p.status = 'stunned';
-        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: Stunned.${scatterMsg}`;
+        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: Stunned.`;
     }
     if (outcome === 'ko') {
         p.status = 'ko';
         p.col    = -1;
-        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: KO'd!${scatterMsg}`;
+        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: KO'd!`;
     }
     // casualty
     p.status = 'casualty';
     p.col    = -1;
-    return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: CASUALTY!${scatterMsg}`;
+    return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: CASUALTY!`;
 }
 
 // ═══════════════════════════════════════════════════════════════
