@@ -518,15 +518,26 @@ function pickBlockFace(G, face) {
             endTurn(G);
             return `${att.pos} is knocked down! TURNOVER`;
 
-        case 'BOTH_DOWN':
-            knockDown(G, att);
-            knockDown(G, def);
+        case 'BOTH_DOWN': {
+            const attHasBlock = att.skills?.includes('Block');
+            const defHasBlock = def.skills?.includes('Block');
+            if (!attHasBlock) knockDown(G, att);
+            if (!defHasBlock) knockDown(G, def);
             G.block = null;
             G.blitz = null;
-            G.activated = null;
             att.usedAction = true;
+            if (attHasBlock) {
+                // Attacker stays standing — no turnover, activation ends normally
+                G.activated = null;
+                if (defHasBlock) return `Both players keep their footing (Block skill).`;
+                return `${def.pos} is knocked down! ${att.pos} keeps footing (Block).`;
+            }
+            // Attacker fell — turnover regardless of defender
+            G.activated = null;
             endTurn(G);
+            if (defHasBlock) return `${att.pos} is knocked down! ${def.pos} keeps footing (Block). TURNOVER`;
             return `Both players are knocked down! TURNOVER`;
+        }
 
         case 'PUSH':
         case 'DEF_STUMBLES':
