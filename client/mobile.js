@@ -42,14 +42,35 @@ function drawInspectOverlay() {
         : (p.side === 'home' ? '180,40,40' : '30,70,160');
 
     // Build lines with their font/colour already set
+    const statusColor = {
+        prone:    '#ffaa44',
+        stunned:  '#cc66ff',
+        ko:       '#888888',
+        casualty: '#ff4444',
+        active:   'rgba(255,255,255,0.35)',
+    };
+    const statusLabel = {
+        prone:    'PRONE',
+        stunned:  'STUNNED',
+        ko:       'KO',
+        casualty: 'CASUALTY',
+        active:   p.usedAction ? 'DONE' : `MA ${p.maLeft}/${p.ma}`,
+    };
+
+    const bold   = `bold ${fs + 2}px 'IBM Plex Mono', monospace`;
+    const normal = `${fs}px 'IBM Plex Mono', monospace`;
+    const small  = `${fs - 1}px 'IBM Plex Mono', monospace`;
+
     const lines = [
-        { text: p.pos, font: `bold ${fs + 2}px 'IBM Plex Mono', monospace`, color: `rgb(${teamRgb})` },
-        { text: `MA ${p.maLeft}/${p.ma}  ST ${p.st}  AG ${p.ag}  AV ${p.av}`, font: `${fs}px 'IBM Plex Mono', monospace`,      color: 'rgba(255,255,255,0.7)' },
+        { text: p.name,                                          font: bold,   color: `rgb(${teamRgb})` },
+        { text: p.pos,                                           font: small,  color: `rgba(${teamRgb},0.6)` },
+        { text: `ST ${p.st}  AG ${p.ag}  AV ${p.av}`, font: normal, color: 'rgba(255,255,255,0.7)' },
     ];
     if (p.skills && p.skills.length > 0)
-        lines.push({ text: p.skills.join(', '), font: `${fs}px 'IBM Plex Mono', monospace`, color: 'rgba(255,255,255,0.5)' });
-    if (p.status === 'prone')
-        lines.push({ text: 'PRONE', font: `bold ${fs}px 'IBM Plex Mono', monospace`, color: '#ffaa44' });
+        lines.push({ text: p.skills.join(', '), font: small, color: 'rgba(255,255,255,0.5)' });
+    if (p.hasBall)
+        lines.push({ text: '● BALL CARRIER', font: small, color: '#ffcc00' });
+    lines.push({ text: statusLabel[p.status] || p.status.toUpperCase(), font: bold, color: statusColor[p.status] || 'white' });
 
     // Measure each line to size the card correctly
     let maxW = 0;
@@ -154,6 +175,11 @@ function syncMobileHud() {
         activeEl.className   = G.active === 'home' ? 'team-home' : 'team-away';
     }
     if (turnEl) turnEl.textContent = `T${G.turn}`;
+    const score = G.score || { home: 0, away: 0 };
+    const sh = document.getElementById('mobile-score-home');
+    const sa = document.getElementById('mobile-score-away');
+    if (sh) sh.textContent = score.home;
+    if (sa) sa.textContent = score.away;
 
     mobileShow('mobile-btn-cancel',
         myTurn && (G.block === 'targeting'

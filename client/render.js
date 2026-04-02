@@ -77,6 +77,11 @@ function updateSidebar() {
     lbl.className   = G.active === 'home' ? 'team-home' : 'team-away';
     document.getElementById('lbl-turn').textContent = G.turn;
 
+    // Score
+    const score = G.score || { home: 0, away: 0 };
+    document.getElementById('score-home').textContent = score.home;
+    document.getElementById('score-away').textContent = score.away;
+
     updateRoster('roster-home', 'home');
     updateRoster('roster-away', 'away');
     updateDetail();

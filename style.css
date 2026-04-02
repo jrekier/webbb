@@ -321,6 +321,16 @@ canvas {
     line-height: 1;
 }
 
+#score-banner {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    letter-spacing: 4px;
+    line-height: 1;
+    margin-top: 4px;
+    text-align: center;
+}
+#score-sep { color: var(--text-dim); margin: 0 4px; }
+
 .team-home { color: var(--home); }
 .team-away { color: var(--away); }
 .turn-num  { color: var(--text-dim); font-size: 11px; letter-spacing: 2px; }
@@ -528,6 +538,12 @@ canvas {
     font-size: 18px;
     line-height: 1;
     flex: 1;
+}
+
+#mobile-score-label {
+    font-size: 20px;
+    flex: 1;
+    text-align: center;
 }
 
 #mobile-turn-label {

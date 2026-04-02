@@ -168,6 +168,40 @@ function initFormations() {
     }
 }
 
+// ── resetAfterTouchdown ───────────────────────────────────────────
+// Resets all players to their formation positions and returns the
+// ball to the centre. The team that did NOT score goes next (they
+// receive the kickoff from the scoring team).
+
+function resetAfterTouchdown(G, scoringSide) {
+    const homePlayers = G.players.filter(p => p.side === 'home');
+    const awayPlayers = G.players.filter(p => p.side === 'away');
+
+    homePlayers.forEach((p, i) => {
+        const [col, row] = FORMATION_HOME[i] || [5, 15];
+        p.col = col; p.row = row;
+        p.status = 'active'; p.hasBall = false;
+        p.maLeft = p.ma; p.rushLeft = 2; p.usedAction = false;
+    });
+    awayPlayers.forEach((p, i) => {
+        const [col, row] = FORMATION_AWAY[i] || [5, 4];
+        p.col = col; p.row = row;
+        p.status = 'active'; p.hasBall = false;
+        p.maLeft = p.ma; p.rushLeft = 2; p.usedAction = false;
+    });
+
+    G.ball          = { col: 5, row: 10, carrier: null };
+    G.activated     = null;
+    G.sel           = null;
+    G.block         = null;
+    G.blitz         = null;
+    G.hasBlitzed    = false;
+    G.hasDodged     = false;
+    G.blitzFromProne = false;
+    G.securingBall  = false;
+    G.active        = scoringSide === 'home' ? 'away' : 'home';
+}
+
 if (typeof module !== 'undefined') {
     module.exports = {
         createInitialState,
@@ -176,5 +210,6 @@ if (typeof module !== 'undefined') {
         activatePlayer, cancelActivation, endActivation, endTurn,
         fixReferences,
         FORMATION_HOME, FORMATION_AWAY, initFormations,
+        resetAfterTouchdown,
     };
 }

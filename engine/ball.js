@@ -2,7 +2,8 @@
 // Ball mechanics: scatter, pickup, secure, touchdown.
 
 if (typeof module !== 'undefined') {
-    var { playerAt, isStanding, endTurn, endActivation } = require('./logic.js');
+    var { playerAt, isStanding, endTurn, endActivation,
+          resetAfterTouchdown } = require('./logic.js');
 }
 
 // ── _countTackleZones ─────────────────────────────────────────────
@@ -86,7 +87,9 @@ function checkTouchdown(G, p) {
     if (!scored) return null;
     G.score         = G.score || { home: 0, away: 0 };
     G.score[p.side] += 1;
-    return `TOUCHDOWN! ${p.side.toUpperCase()} scores! (${G.score.home}–${G.score.away})`;
+    const msg = `TOUCHDOWN! ${p.side.toUpperCase()} scores! (${G.score.home}–${G.score.away})`;
+    resetAfterTouchdown(G, p.side);
+    return msg;
 }
 
 // ── _doSecureRoll ─────────────────────────────────────────────────
