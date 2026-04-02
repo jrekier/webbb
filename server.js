@@ -5,8 +5,8 @@ const fs   = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-const GL = require('./logic.js');
-const TM = require('./teams.js');
+const GL = require('./engine/logic.js');
+const TM = require('./engine/teams.js');
 
 // ── Static file server ───────────────────────────────────────────
 
