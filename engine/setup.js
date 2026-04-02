@@ -80,12 +80,11 @@ function confirmSetup(G, side) {
         return { ok: true, msg: `${G.receiver.toUpperCase()} — set up your team.` };
     }
 
-    // Both sides confirmed — kick off
-    G.phase     = 'play';
-    G.active    = G.receiver;
+    // Both sides confirmed — hand off to kick phase
+    G.phase     = 'kick';
     G.setupSide = null;
-    G.ball      = { col: 5, row: 10, carrier: null };
-    return { ok: true, msg: `Kick off! ${G.receiver.toUpperCase()} receives.` };
+    G.ball      = { col: -1, row: -1, carrier: null };  // off-pitch until kicked
+    return { ok: true, msg: `${G.kicker.toUpperCase()} kicks off — click where to aim.` };
 }
 
 if (typeof module !== 'undefined') {

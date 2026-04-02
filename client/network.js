@@ -96,10 +96,17 @@ function netReceive(msg) {
             startGame(msg.homeTeam, msg.awayTeam);
             // fall through to apply the initial G
 
-        case 'UPDATE':
+        case 'UPDATE': {
             if (msg.logMsg) log(msg.logMsg);
+            const prevSetupSide = G.setupSide;
             Object.assign(G, msg.G);
             fixReferences(G);
+            if (G.phase !== 'setup') {
+                setupErrors = null;
+            } else if (msg.setupError && msg.logMsg) {
+                setupErrors = [msg.logMsg];
+            }
+            if (G.phase === 'setup' && G.setupSide !== prevSetupSide) scrollToSetupSide();
             render();
             if (G.phase === 'toss') {
                 showTossOverlay(G.tossWinner, NET.side === G.tossWinner);
@@ -107,6 +114,7 @@ function netReceive(msg) {
                 document.getElementById('toss-overlay').style.display = 'none';
             }
             break;
+        }
 
         case 'OPPONENT_DISCONNECTED':
             document.getElementById('reconnect-overlay').classList.remove('hidden');

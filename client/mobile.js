@@ -17,6 +17,13 @@ function clampCamera() {
     cameraY = Math.max(0, Math.min(maxCam, cameraY));
 }
 
+// Scroll so the current setup side's area is visible at the top of screen.
+function scrollToSetupSide() {
+    if (!G.setupSide) return;
+    cameraY = G.setupSide === 'home' ? CELL * 13 : 0;
+    clampCamera();
+}
+
 // ── Overlay state ─────────────────────────────────────────────────
 // wheelState:   null = hidden; object = { actions, cx, cy, rInner, rOuter }
 // inspectState: null = hidden; player object to show stats for
@@ -171,27 +178,35 @@ function syncMobileHud() {
     const activeEl = document.getElementById('mobile-active-label');
     const turnEl   = document.getElementById('mobile-turn-label');
     if (activeEl) {
-        const side = G.phase === 'setup' ? G.setupSide : G.active;
-        activeEl.textContent = (side || '').toUpperCase();
+        const side = G.phase === 'setup'     ? G.setupSide
+                   : G.phase === 'kick'      ? G.kicker
+                   : G.phase === 'touchback' ? G.receiver
+                   :                           G.active;
+        activeEl.textContent = G.phase === 'touchback' ? 'TOUCHBACK'
+                             : G.phase === 'kick'      ? `${(G.kicker || '').toUpperCase()} KICK`
+                             :                           (side || '').toUpperCase();
         activeEl.className   = side === 'home' ? 'team-home' : 'team-away';
     }
-    if (turnEl) turnEl.textContent = G.phase === 'setup' ? '' : `T${G.turn}`;
+    if (turnEl)
+        turnEl.textContent = (G.phase === 'play') ? `T${G.turn}` : '';
+
     const score = G.score || { home: 0, away: 0 };
     const sh = document.getElementById('mobile-score-home');
     const sa = document.getElementById('mobile-score-away');
     if (sh) sh.textContent = score.home;
     if (sa) sa.textContent = score.away;
 
-    const inSetup  = G.phase === 'setup';
-    const mySetup  = inSetup && (!NET.online || NET.side === G.setupSide);
+    const inSetup   = G.phase === 'setup';
+    const inSpecial = G.phase === 'kick' || G.phase === 'touchback';
+    const mySetup   = inSetup && (!NET.online || NET.side === G.setupSide);
     mobileShow('mobile-btn-confirm-setup', mySetup);
     mobileShow('mobile-btn-cancel',
-        !inSetup && myTurn && (G.block === 'targeting'
+        !inSetup && !inSpecial && myTurn && (G.block === 'targeting'
             || (G.activated && canStillCancel(G) && !G.block)));
     mobileShow('mobile-btn-stop',
-        !inSetup && myTurn && G.activated && !canStillCancel(G) && !G.block);
+        !inSetup && !inSpecial && myTurn && G.activated && !canStillCancel(G) && !G.block);
     mobileShow('mobile-btn-end-turn',
-        !inSetup && myTurn && !G.block);
+        !inSetup && !inSpecial && myTurn && !G.block);
 }
 
 function mobileShow(id, visible) {
@@ -298,11 +313,11 @@ function _onTouchEnd(e) {
         const t    = e.changedTouches[0];
         const col  = Math.floor((t.clientX - rect.left) / CELL);
         const row  = Math.floor((t.clientY - rect.top + cameraY) / CELL);
+        moveSetupPlayer(G, drag.player.id, col, row);  // optimistic update
         if (NET.online) {
             sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
-        } else {
-            moveSetupPlayer(G, drag.player.id, col, row);
         }
+        setupErrors = null;
         render();
         _pressOrigin = null;
         return;
@@ -329,9 +344,16 @@ function _onTap(clientX, clientY) {
         return;
     }
 
-    // Show inspect card on player tap; dismiss on tap elsewhere
     const col    = Math.floor(px / CELL);
     const row    = Math.floor((py + cameraY) / CELL);
+
+    // During touchback: tap a player to give them the ball (no inspect)
+    if (G.phase === 'touchback') {
+        handleClick({ clientX, clientY });
+        return;
+    }
+
+    // Show inspect card on player tap; dismiss on tap elsewhere
     inspectState = playerAt(G, col, row) || null;
 
     handleClick({ clientX, clientY });

@@ -86,7 +86,15 @@ function generateRoomId() {
     return id;
 }
 
+function _releaseFromRoom(ws) {
+    const old = roomOf(ws);
+    if (!old) return;
+    const side = sideOf(old, ws);
+    if (side) old[side] = null;
+}
+
 function createRoom(ws) {
+    _releaseFromRoom(ws);  // drop any stale room association (e.g. from auto-reconnect)
     const id   = generateRoomId();
     const room = { id, home: ws, away: null, G: null, lastLogMsg: null };
     rooms.set(id, room);
@@ -98,6 +106,7 @@ function createRoom(ws) {
 }
 
 function joinRoom(ws, roomId) {
+    _releaseFromRoom(ws);  // drop any stale room association
     const room = rooms.get(roomId);
     if (!room)       return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
     if (room.away)   return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room is full' }));
@@ -205,10 +214,12 @@ wss.on('connection', (ws) => {
 
         const side = sideOf(room, ws);
 
-        // ── Toss / setup messages (no turn guard needed) ──
+        // ── Toss / setup / kick messages (no turn guard needed) ──
         if (msg.type === 'TOSS_CHOOSE')   { handleTossChoose(room, side, msg.choice); return; }
         if (msg.type === 'SETUP_MOVE')    { handleSetupMove(room, side, msg);         return; }
         if (msg.type === 'CONFIRM_SETUP') { handleConfirmSetup(room, side);           return; }
+        if (msg.type === 'KICK_AIM')      { handleKickAim(room, side, msg);           return; }
+        if (msg.type === 'TOUCHBACK')     { handleTouchback(room, side, msg);         return; }
 
         const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP'].includes(msg.type);
         if (!turnFree && side !== room.G.active) {
@@ -260,13 +271,28 @@ function handleSetupMove(room, side, msg) {
     broadcast(room, { type: 'UPDATE', G, logMsg: null });
 }
 
+function handleKickAim(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'kick' || side !== G.kicker) return;
+    const logMsg = GL.declareKick(G, msg.col, msg.row);
+    if (logMsg) broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
+function handleTouchback(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'touchback' || side !== G.receiver) return;
+    const logMsg = GL.touchbackGiveBall(G, msg.playerId);
+    if (logMsg) broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
 function handleConfirmSetup(room, side) {
     const G = room.G;
     if (G.phase !== 'setup' || side !== G.setupSide) return;
     const result = GL.confirmSetup(G, side);
     if (!result) return;
-    const logMsg = result.errors ? result.errors[0] : result.msg;
-    broadcast(room, { type: 'UPDATE', G, logMsg });
+    const logMsg    = result.errors ? result.errors[0] : result.msg;
+    const setupError = !!result.errors;
+    broadcast(room, { type: 'UPDATE', G, logMsg, setupError });
 }
 
 // ── Action handler ────────────────────────────────────────────────

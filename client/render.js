@@ -57,8 +57,11 @@ function render() {
     drawPitch();
     if (G.phase === 'setup') {
         drawSetupZones();
+    } else if (G.phase === 'kick') {
+        drawKickZone();
     } else {
         drawHighlights();
+        if (G.phase === 'touchback') drawTouchbackHighlights();
     }
     drawBall();
     drawPlayers();
@@ -66,6 +69,8 @@ function render() {
 
     // Overlays in screen space
     if (G.phase === 'setup' && setupDrag) drawSetupDragGhost();
+    if (G.phase === 'setup' && setupErrors && setupErrors.length) drawSetupErrorBanner();
+    if (G.phase === 'touchback') drawTouchbackMessage();
     updateSidebar();
     updateButtons();
     drawDiceOverlay();
@@ -132,6 +137,22 @@ function drawSetupDragGhost() {
     ctx.restore();
 }
 
+// ── drawSetupErrorBanner ──────────────────────────────────────────
+// Screen-space banner showing why the last confirmSetup was rejected.
+
+function drawSetupErrorBanner() {
+    const fh  = Math.max(10, Math.min(15, Math.floor(CELL * 0.36)));
+    const bh  = fh * 2.4;
+    const txt = setupErrors[0];  // show first error; rest in the log
+    ctx.fillStyle = 'rgba(160,30,30,0.85)';
+    ctx.fillRect(0, canvas.height - bh, canvas.width, bh);
+    ctx.fillStyle    = '#fff';
+    ctx.font         = `bold ${fh}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, canvas.width / 2, canvas.height - bh / 2);
+}
+
 // ── Sidebar ───────────────────────────────────────────────────────
 function updateSidebar() {
     // Turn banner
@@ -139,6 +160,14 @@ function updateSidebar() {
     if (G.phase === 'setup') {
         lbl.textContent = `${(G.setupSide || '').toUpperCase()} SETUP`;
         lbl.className   = G.setupSide === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = '';
+    } else if (G.phase === 'kick') {
+        lbl.textContent = `${(G.kicker || '').toUpperCase()} KICKS`;
+        lbl.className   = G.kicker === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = '';
+    } else if (G.phase === 'touchback') {
+        lbl.textContent = 'TOUCHBACK';
+        lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
         document.getElementById('lbl-turn').textContent = '';
     } else {
         lbl.textContent = G.active.toUpperCase();
@@ -390,9 +419,73 @@ function hlCell(c, r, fill, stroke, dash, text) {
     }
 }
 
+// ── drawKickZone ──────────────────────────────────────────────────
+// Tints the pitch during kick phase: darken kicker's half, highlight valid aim area.
+
+function drawKickZone() {
+    if (!G.kicker) return;
+    const isHome = G.kicker === 'home';
+
+    // Darken kicker's own half
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let r = 0; r < ROWS; r++) {
+        if (isHome ? r >= 13 : r <= 6)
+            ctx.fillRect(0, r * CELL, COLS * CELL, CELL);
+    }
+
+    // Subtle yellow tint on valid target area
+    ctx.fillStyle = 'rgba(255,210,0,0.07)';
+    if (isHome) ctx.fillRect(0, 0,          COLS * CELL, 13 * CELL);
+    else        ctx.fillRect(0, 7 * CELL,   COLS * CELL, (ROWS - 7) * CELL);
+
+    // Hover highlight
+    if (kickHover) {
+        const { col, row } = kickHover;
+        const valid = isValidKickTarget(G.kicker, col, row);
+        ctx.fillStyle   = valid ? 'rgba(255,220,0,0.22)' : 'rgba(200,60,60,0.15)';
+        ctx.fillRect(col * CELL, row * CELL, CELL, CELL);
+        ctx.strokeStyle = valid ? 'rgba(255,220,0,0.9)'  : 'rgba(200,60,60,0.6)';
+        ctx.lineWidth   = 2;
+        ctx.strokeRect(col * CELL + 1, row * CELL + 1, CELL - 2, CELL - 2);
+    }
+}
+
+// ── drawTouchbackHighlights ───────────────────────────────────────
+// Gold halo on each receiver player during touchback phase.
+
+function drawTouchbackHighlights() {
+    const isReceiver = !NET.online || NET.side === G.receiver;
+    if (!isReceiver) return;
+    G.players
+        .filter(p => p.side === G.receiver && p.col >= 0
+                  && p.status !== 'ko' && p.status !== 'casualty')
+        .forEach(p => hlCell(p.col, p.row, 'rgba(255,200,0,0.18)', 'rgba(255,200,0,0.85)', false));
+}
+
+// ── drawTouchbackMessage ──────────────────────────────────────────
+// Screen-space banner shown during touchback.
+
+function drawTouchbackMessage() {
+    const isReceiver = !NET.online || NET.side === G.receiver;
+    const txt = isReceiver
+        ? `TOUCHBACK — click one of your players`
+        : `TOUCHBACK — waiting for ${(G.receiver || '').toUpperCase()}…`;
+
+    const fh = Math.max(10, Math.min(16, Math.floor(CELL * 0.38)));
+    const bh = fh * 2.2;
+    ctx.fillStyle = 'rgba(0,0,0,0.60)';
+    ctx.fillRect(0, 0, canvas.width, bh);
+    ctx.fillStyle    = '#ffcc00';
+    ctx.font         = `bold ${fh}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, canvas.width / 2, bh / 2);
+}
+
 // ── Ball ──────────────────────────────────────────────────────────
 function drawBall() {
     if (G.ball.carrier !== null) return;
+    if (G.ball.col < 0) return;  // off-pitch during kick phase
     const x = G.ball.col * CELL + CELL / 2;
     const y = G.ball.row * CELL + CELL / 2;
     ctx.fillStyle = '#e07020';

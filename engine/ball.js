@@ -134,9 +134,89 @@ function secureBall(G, playerId) {
     return `${p.name} declares Secure Ball — move to the ball.`;
 }
 
+// ── Kick mechanics ────────────────────────────────────────────────
+
+function _isInKickerHalf(kicker, row) {
+    return kicker === 'home' ? row >= 13 : row <= 6;
+}
+
+function isValidKickTarget(kicker, col, row) {
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
+    return !_isInKickerHalf(kicker, row);
+}
+
+// Kicker picks an aim square; 2d6 (take min) scatter distance + d8 direction.
+// Touchback if the ball leaves the pitch or lands in the kicker's half.
+function declareKick(G, col, row) {
+    if (G.phase !== 'kick') return null;
+    if (!isValidKickTarget(G.kicker, col, row)) return null;
+
+    const DC   = [ 0, 1, 1, 1, 0,-1,-1,-1];
+    const DR   = [-1,-1, 0, 1, 1, 1, 0,-1];
+    const DIRS = ['N','NE','E','SE','S','SW','W','NW'];
+
+    const d6a  = Math.floor(Math.random() * 6) + 1;
+    const d6b  = Math.floor(Math.random() * 6) + 1;
+    const dist = Math.min(d6a, d6b);
+    const dir  = Math.floor(Math.random() * 8);
+
+    const nc = col + DC[dir] * dist;
+    const nr = row + DR[dir] * dist;
+
+    let msg = `Kick aimed (${col},${row}): ${d6a}+${d6b} → ${dist} sq ${DIRS[dir]}.`;
+
+    const outOfBounds  = nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS;
+    const inKickerHalf = !outOfBounds && _isInKickerHalf(G.kicker, nr);
+
+    if (outOfBounds || inKickerHalf) {
+        G.ball  = { col: -1, row: -1, carrier: null };
+        G.phase = 'touchback';
+        return msg + ` Ball out of play — TOUCHBACK! ${G.receiver.toUpperCase()} picks a player.`;
+    }
+
+    G.ball = { col: nc, row: nr, carrier: null };
+    msg   += ` Lands at (${nc},${nr}).`;
+
+    const lander = playerAt(G, nc, nr);
+    if (lander && isStanding(lander)) {
+        const tzs    = _countTackleZones(G, lander.side, nc, nr);
+        const target = Math.min(lander.ag + tzs, 6);
+        const roll   = Math.floor(Math.random() * 6) + 1;
+        if (roll >= target || roll === 6) {
+            lander.hasBall = true;
+            G.ball.carrier = lander;
+            msg += ` ${lander.name} catches the kick! (${roll} vs ${target}+)`;
+        } else {
+            msg += ` ${lander.name} fails to catch (${roll} vs ${target}+). ` + scatterBall(G);
+        }
+    }
+
+    G.phase  = 'play';
+    G.active = G.receiver;
+    return msg;
+}
+
+// Receiver nominates a player to receive a touchback.
+function touchbackGiveBall(G, playerId) {
+    if (G.phase !== 'touchback') return null;
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.receiver) return null;
+    if (p.status === 'ko' || p.status === 'casualty' || p.col < 0) return null;
+
+    p.hasBall      = true;
+    G.ball.col     = p.col;
+    G.ball.row     = p.row;
+    G.ball.carrier = p;
+
+    G.phase  = 'play';
+    G.active = G.receiver;
+    return `${p.name} receives the touchback.`;
+}
+
 if (typeof module !== 'undefined') {
     module.exports = {
         _countTackleZones, scatterBall, tryPickup, checkTouchdown,
         _doSecureRoll, secureBall,
+        isValidKickTarget, declareKick, touchbackGiveBall,
     };
 }

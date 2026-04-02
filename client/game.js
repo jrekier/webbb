@@ -55,6 +55,7 @@ function onTossChoose(choice) {
     }
     const msg = chooseTossResult(G, choice);
     log(msg, 'turn-marker');
+    scrollToSetupSide();
     render();
 }
 

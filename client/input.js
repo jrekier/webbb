@@ -6,11 +6,18 @@
 var setupDrag     = null;  // { player, pixelX, pixelY }
 var _dragMoved    = false;
 
+// Hover cell during kick phase — read by render.js for aim indicator
+var kickHover     = null;  // { col, row }
+
+// Validation errors from the last failed confirmSetup — drawn on canvas by render.js
+var setupErrors   = null;  // string[] | null
+
 function setupInput() {
-    canvas.addEventListener('click',     handleClick);
-    canvas.addEventListener('mousedown', _onMouseDown);
-    canvas.addEventListener('mousemove', _onMouseMove);
-    canvas.addEventListener('mouseup',   _onMouseUp);
+    canvas.addEventListener('click',      handleClick);
+    canvas.addEventListener('mousedown',  _onMouseDown);
+    canvas.addEventListener('mousemove',  _onMouseMove);
+    canvas.addEventListener('mouseup',    _onMouseUp);
+    canvas.addEventListener('mouseleave', () => { kickHover = null; render(); });
     setupTouch();
 }
 
@@ -30,12 +37,22 @@ function _onMouseDown(e) {
 }
 
 function _onMouseMove(e) {
-    if (!setupDrag) return;
-    const rect     = canvas.getBoundingClientRect();
-    setupDrag.pixelX = e.clientX - rect.left;
-    setupDrag.pixelY = e.clientY - rect.top;
-    _dragMoved = true;
-    render();
+    if (setupDrag) {
+        const rect   = canvas.getBoundingClientRect();
+        setupDrag.pixelX = e.clientX - rect.left;
+        setupDrag.pixelY = e.clientY - rect.top;
+        _dragMoved = true;
+        render();
+        return;
+    }
+    if (G.phase === 'kick') {
+        const rect = canvas.getBoundingClientRect();
+        kickHover  = {
+            col: Math.floor((e.clientX - rect.left) / CELL),
+            row: Math.floor((e.clientY - rect.top + cameraY) / CELL),
+        };
+        render();
+    }
 }
 
 function _onMouseUp(e) {
@@ -46,18 +63,18 @@ function _onMouseUp(e) {
         const rect = canvas.getBoundingClientRect();
         const col  = Math.floor((e.clientX - rect.left) / CELL);
         const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+        moveSetupPlayer(G, drag.player.id, col, row);  // optimistic update
         if (NET.online) {
             sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
-        } else {
-            moveSetupPlayer(G, drag.player.id, col, row);
         }
+        setupErrors = null;
     }
     render();
 }
 
 // ── handleClick ──────────────────────────────────────────────────
 function handleClick(event) {
-    if (G.phase !== 'play') return; // toss and setup handled elsewhere
+    if (G.phase === 'toss' || G.phase === 'setup') return;
     const rect = canvas.getBoundingClientRect();
     const px   = event.clientX - rect.left;
     const py   = event.clientY - rect.top;
@@ -115,6 +132,43 @@ function handleClick(event) {
 
     const col    = Math.floor(px / CELL);
     const row    = Math.floor((py + cameraY) / CELL);
+
+    // ── Kick phase — kicker clicks an aim square ──
+    if (G.phase === 'kick') {
+        const isKicker = !NET.online || NET.side === G.kicker;
+        if (isKicker && isValidKickTarget(G.kicker, col, row)) {
+            kickHover = null;
+            if (NET.online) {
+                sendAction({ type: 'KICK_AIM', col, row });
+            } else {
+                const msg = declareKick(G, col, row);
+                if (msg) log(msg, 'turn-marker');
+            }
+        }
+        render();
+        return;
+    }
+
+    // ── Touchback phase — receiver clicks a player ──
+    if (G.phase === 'touchback') {
+        const isReceiver = !NET.online || NET.side === G.receiver;
+        if (isReceiver) {
+            const player = playerAt(G, col, row);
+            if (player && player.side === G.receiver) {
+                if (NET.online) {
+                    sendAction({ type: 'TOUCHBACK', playerId: player.id });
+                } else {
+                    const msg = touchbackGiveBall(G, player.id);
+                    if (msg) log(msg, 'turn-marker');
+                }
+            }
+        }
+        render();
+        return;
+    }
+
+    if (G.phase !== 'play') { render(); return; }
+
     const player = playerAt(G, col, row);
 
     if (player) clickPlayer(player);
@@ -291,9 +345,12 @@ function onClickConfirmSetup() {
     const result = confirmSetup(G, G.setupSide);
     if (!result) return;
     if (result.errors) {
+        setupErrors = result.errors;
         result.errors.forEach(e => log(e, 'error'));
     } else {
+        setupErrors = null;
         log(result.msg, 'turn-marker');
+        scrollToSetupSide();
     }
     render();
 }
@@ -310,10 +367,12 @@ function onClickEndTurn() {
 
 // ── updateButtons ────────────────────────────────────────────────
 function updateButtons() {
+    const ALL_BTNS = ['btn-move','btn-block','btn-blitz','btn-stand-up',
+                       'btn-secure-ball','btn-cancel','btn-stop','btn-end-turn',
+                       'btn-confirm-setup'];
+
     if (G.phase === 'setup') {
-        ['btn-move','btn-block','btn-blitz','btn-stand-up',
-         'btn-secure-ball','btn-cancel','btn-stop','btn-end-turn']
-            .forEach(id => show(id, false));
+        ALL_BTNS.forEach(id => show(id, false));
         const mySetup = !NET.online || NET.side === G.setupSide;
         show('btn-confirm-setup', mySetup);
         document.getElementById('btn-confirm-setup').textContent =
@@ -321,6 +380,13 @@ function updateButtons() {
         syncMobileHud();
         return;
     }
+
+    if (G.phase === 'kick' || G.phase === 'touchback') {
+        ALL_BTNS.forEach(id => show(id, false));
+        syncMobileHud();
+        return;
+    }
+
     show('btn-confirm-setup', false);
 
     const myTurn     = !NET.online || NET.side === G.active;
