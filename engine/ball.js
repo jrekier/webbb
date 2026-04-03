@@ -6,6 +6,72 @@ if (typeof module !== 'undefined') {
           resetAfterTouchdown, countTackleZones } = require('./logic.js');
 }
 
+// ── _throwIn ──────────────────────────────────────────────────────
+// Ball left the pitch from lastCol/lastRow heading toward nc/nr.
+// The crowd throws it back: pick 1 of 3 inward directions (1d6),
+// travel 2d6-1 squares. Repeat if it goes out again.
+
+function _throwIn(G, lastCol, lastRow, nc, nr) {
+    // Determine which edge was crossed and the two tangential directions.
+    // The three valid throw-in directions are: straight in + two diagonals.
+    const fromLeft  = nc < 0;
+    const fromRight = nc >= COLS;
+    const fromTop   = nr < 0;
+    const fromBot   = nr >= ROWS;
+
+    // Inward unit vector (perpendicular to the crossed edge)
+    const inDC = fromLeft ? 1 : fromRight ? -1 : 0;
+    const inDR = fromTop  ? 1 : fromBot   ? -1 : 0;
+
+    // Tangential unit vectors along the edge
+    // If we crossed a vertical edge (left/right), tangent is along rows.
+    // If we crossed a horizontal edge (top/bot), tangent is along cols.
+    const tanDC = (fromLeft || fromRight) ? 0 : 1;
+    const tanDR = (fromLeft || fromRight) ? 1 : 0;
+
+    // Three candidate directions: in, in+tan, in-tan
+    const dirs = [
+        [ inDC,        inDR        ],
+        [ inDC + tanDC, inDR + tanDR ],
+        [ inDC - tanDC, inDR - tanDR ],
+    ];
+
+    const pick = Math.floor(Math.random() * 6) % 3; // 1d6 → 0,1,2
+    const [dc, dr] = dirs[pick];
+    const dist = Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + 1; // 2d6-1 (min 1)
+
+    // Start from the last in-bounds square
+    const tc = lastCol + dc * dist;
+    const tr = lastRow + dr * dist;
+
+    const dirLabel = ['straight in', 'diagonal +', 'diagonal −'][pick];
+    const msg = `Throw-in: ${dirLabel}, ${dist} sq → (${tc},${tr}).`;
+
+    if (tc < 0 || tc >= COLS || tr < 0 || tr >= ROWS) {
+        // Still out — repeat from the last in-bounds point along this edge
+        const edgeC = Math.max(0, Math.min(COLS - 1, tc));
+        const edgeR = Math.max(0, Math.min(ROWS - 1, tr));
+        return msg + ` Out again. ` + _throwIn(G, edgeC, edgeR, tc, tr);
+    }
+
+    G.ball.col = tc;
+    G.ball.row = tr;
+
+    const lander = playerAt(G, tc, tr);
+    if (!lander) return msg;
+    if (!isStanding(lander)) return msg + ` Bounces off ${lander.name}. ` + scatterBall(G);
+
+    const tzs    = countTackleZones(G, lander.side, tc, tr);
+    const target = Math.min(lander.ag + tzs, 6);
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    if (roll >= target || roll === 6) {
+        lander.hasBall = true;
+        G.ball.carrier = lander;
+        return msg + ` ${lander.name} catches it! (${roll} vs ${target}+)`;
+    }
+    return msg + ` ${lander.name} fails to catch (${roll} vs ${target}+). ` + scatterBall(G);
+}
+
 // ── scatterBall ───────────────────────────────────────────────────
 // Moves the loose ball one square in a random d8 direction.
 // Standing players on the landing square attempt a catch (AG + TZs).
@@ -20,9 +86,7 @@ function scatterBall(G) {
     const nr  = G.ball.row + DR[dir];
 
     if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) {
-        G.ball.col = Math.max(0, Math.min(COLS - 1, nc < 0 ? 0 : nc >= COLS ? COLS - 1 : nc));
-        G.ball.row = Math.max(0, Math.min(ROWS - 1, nr < 0 ? 0 : nr >= ROWS ? ROWS - 1 : nr));
-        return `Ball scattered out of bounds — placed at (${G.ball.col},${G.ball.row}).`;
+        return `Ball scattered out of bounds. ` + _throwIn(G, G.ball.col, G.ball.row, nc, nr);
     }
 
     G.ball.col = nc;

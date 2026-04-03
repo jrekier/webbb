@@ -79,6 +79,24 @@ function handleClick(event) {
     const px   = event.clientX - rect.left;
     const py   = event.clientY - rect.top;
 
+    // Confirm overlay click
+    if (G.confirm) {
+        const inRect = (r) => r && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+        if (inRect(G.confirm._yesRect)) {
+            const cb = G.confirm.onYes;
+            G.confirm = null;
+            cb();
+            render(); return;
+        }
+        if (inRect(G.confirm._noRect)) {
+            const cb = G.confirm.onNo;
+            G.confirm = null;
+            if (cb) cb();
+            render(); return;
+        }
+        return; // block all other clicks while confirm is open
+    }
+
     // Follow-up overlay click
     if (G.block && G.block.phase === 'follow-up') {
         const isAttacker = !NET.online || NET.side === G.active;
@@ -177,6 +195,20 @@ function handleClick(event) {
     render();
 }
 
+// ── _confirmBlock ─────────────────────────────────────────────────
+// Opens the confirm overlay with block odds before committing.
+
+function _confirmBlock(att, def, onConfirm) {
+    const { attStr, defStr } = countAssists(G, att, def);
+    const { dice, chooser }  = blockDiceCount(attStr, defStr);
+    const picker = chooser === 'att' ? 'your pick' : 'their pick';
+    G.confirm = {
+        prompt: `${dice}d — ${picker}  (ST${attStr} vs ST${defStr})`,
+        onYes: onConfirm,
+    };
+    render();
+}
+
 // ── clickPlayer ──────────────────────────────────────────────────
 function clickPlayer(player) {
     if (G.block && G.block.phase === 'pick-push') {
@@ -191,13 +223,15 @@ function clickPlayer(player) {
     // Block targeting — must be adjacent already
     if (G.block === 'targeting') {
         if (player.side !== G.active && isAdjacent(G.activated, player)) {
-            if (NET.online) {
-                sendAction({ type: 'BLOCK_START', attId: G.activated.id, defId: player.id });
-                G.block = null;
-            } else {
-                const msg = declareBlock(G, G.activated, player);
-                if (msg) log(msg);
-            }
+            _confirmBlock(G.activated, player, () => {
+                if (NET.online) {
+                    sendAction({ type: 'BLOCK_START', attId: G.activated.id, defId: player.id });
+                    G.block = null;
+                } else {
+                    const msg = declareBlock(G, G.activated, player);
+                    if (msg) log(msg);
+                }
+            });
         }
         return;
     }
@@ -218,12 +252,14 @@ function clickPlayer(player) {
     // Blitz moving — click the declared target when adjacent to execute the block
     if (G.blitz && G.blitz.phase === 'moving' && player.id === G.blitz.def.id) {
         if (isAdjacent(G.activated, player)) {
-            if (NET.online) {
-                sendAction({ type: 'BLITZ_START', attId: G.activated.id, defId: player.id });
-            } else {
-                const msg = blitzBlock(G, G.activated, player);
-                if (msg) log(msg);
-            }
+            _confirmBlock(G.activated, player, () => {
+                if (NET.online) {
+                    sendAction({ type: 'BLITZ_START', attId: G.activated.id, defId: player.id });
+                } else {
+                    const msg = blitzBlock(G, G.activated, player);
+                    if (msg) log(msg);
+                }
+            });
         }
         return;
     }
@@ -361,13 +397,19 @@ function onClickConfirmSetup() {
 }
 
 function onClickEndTurn() {
-    if (NET.online) {
-        sendAction({ type: 'END_TURN' });
-    } else {
-        const msg = endTurn(G);
-        if (msg) log(msg, 'turn-marker');
-        render();
-    }
+    G.confirm = {
+        prompt: 'End your turn?',
+        onYes: () => {
+            if (NET.online) {
+                sendAction({ type: 'END_TURN' });
+            } else {
+                const msg = endTurn(G);
+                if (msg) log(msg, 'turn-marker');
+                render();
+            }
+        },
+    };
+    render();
 }
 
 // ── updateButtons ────────────────────────────────────────────────

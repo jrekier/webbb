@@ -75,6 +75,7 @@ function render() {
     updateButtons();
     drawDiceOverlay();
     drawFollowUpOverlay();
+    drawConfirmOverlay();
     drawWheelOverlay();
 }
 
@@ -385,14 +386,14 @@ function drawHighlights() {
         hlCell(def.col, def.row, fill, border, false);
     }
 
-    // Push squares — orange, solid border for attacker, dim for defender
+    // Push squares — orange for attacker (interactive), dimmer for defender (informational)
     if (G.block && G.block.phase === 'pick-push') {
         const isAttacker = !NET.online || NET.side === G.active;
         G.block.pushSquares.forEach(([c, r]) => {
             if (isAttacker)
                 hlCell(c, r, 'rgba(255,200,80,0.22)', 'rgba(255,200,80,0.8)', false);
             else
-                hlCell(c, r, 'rgba(255,200,80,0.08)', null, false);
+                hlCell(c, r, 'rgba(255,200,80,0.18)', 'rgba(255,200,80,0.4)', false);
         });
     }
 }
@@ -438,8 +439,8 @@ function drawKickZone() {
     if (isHome) ctx.fillRect(0, 0,          COLS * CELL, 13 * CELL);
     else        ctx.fillRect(0, 7 * CELL,   COLS * CELL, (ROWS - 7) * CELL);
 
-    // Hover highlight
-    if (kickHover) {
+    // Hover highlight — only shown to the kicking team
+    if (kickHover && (!NET.online || NET.side === G.kicker)) {
         const { col, row } = kickHover;
         const valid = isValidKickTarget(G.kicker, col, row);
         ctx.fillStyle   = valid ? 'rgba(255,220,0,0.22)' : 'rgba(200,60,60,0.15)';
@@ -705,6 +706,52 @@ function drawFollowUpOverlay() {
     // Store click regions
     G.block._yesRect = { x: bx, y: by, w: btnW, h: btnH };
     G.block._noRect  = { x: nx, y: by, w: btnW, h: btnH };
+}
+
+// ── drawConfirmOverlay ────────────────────────────────────────────
+// Generic YES / NO confirmation overlay.
+// Driven by G.confirm = { prompt, onYes, onNo }.
+
+function drawConfirmOverlay() {
+    if (!G.confirm) return;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const btnW   = Math.min(100, canvas.width * 0.2);
+    const btnH   = btnW * 0.5;
+    const gap    = 20;
+    const totalW = btnW * 2 + gap;
+    const bx     = (canvas.width - totalW) / 2;
+    const by     = canvas.height / 2 - btnH / 2;
+
+    ctx.fillStyle    = '#fff';
+    ctx.font         = `bold ${Math.floor(btnW * 0.22)}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(G.confirm.prompt, canvas.width / 2, by - 10);
+
+    // YES button
+    ctx.fillStyle = '#2a6a2a';
+    roundRect(ctx, bx, by, btnW, btnH, 6); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+    roundRect(ctx, bx, by, btnW, btnH, 6); ctx.stroke();
+    ctx.fillStyle    = '#fff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('YES', bx + btnW / 2, by + btnH / 2);
+
+    // NO button
+    const nx = bx + btnW + gap;
+    ctx.fillStyle = '#6a2a2a';
+    roundRect(ctx, nx, by, btnW, btnH, 6); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+    roundRect(ctx, nx, by, btnW, btnH, 6); ctx.stroke();
+    ctx.fillStyle    = '#fff';
+    ctx.fillText('NO', nx + btnW / 2, by + btnH / 2);
+
+    // Store click regions on the confirm object itself
+    G.confirm._yesRect = { x: bx,  y: by, w: btnW, h: btnH };
+    G.confirm._noRect  = { x: nx,  y: by, w: btnW, h: btnH };
 }
 
 // ── drawDiceOverlay ───────────────────────────────────────────────
