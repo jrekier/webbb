@@ -32,6 +32,7 @@ function buildRosterFromTeam(teamDef, side, startId, formation) {
             ma:         p.ma,
             st:         p.st,
             ag:         p.ag || 3,
+            pa:         p.pa,
             av:         p.av,
             skills:     p.skills || [],
             maLeft:     p.ma,

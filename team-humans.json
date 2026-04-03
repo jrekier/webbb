@@ -2,19 +2,19 @@
     "name": "Reavers",
     "colour": [255, 0, 0],
     "players": [
-        { "name": "Jack Stone",  "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "av": 8, "skills": [],
+        { "name": "Jack Stone",  "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y": 162, "w": 25, "h": 27 }, "armour": { "x": 26, "y": 162, "w": 25, "h": 27 } } },
-        { "name": "Tom Hardy",   "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "av": 8, "skills": [],
+        { "name": "Tom Hardy",   "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y": 162, "w": 25, "h": 27 }, "armour": { "x": 26, "y": 162, "w": 25, "h": 27 } } },
-        { "name": "Bill Tanner", "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "av": 8, "skills": [],
+        { "name": "Bill Tanner", "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y": 162, "w": 25, "h": 27 }, "armour": { "x": 26, "y": 162, "w": 25, "h": 27 } } },
-        { "name": "Ed Cross",    "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "av": 8, "skills": [],
+        { "name": "Ed Cross",    "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y": 162, "w": 25, "h": 27 }, "armour": { "x": 26, "y": 162, "w": 25, "h": 27 } } },
-        { "name": "Rex Blade",   "pos": "Blitzer", "ma": 7, "st": 3, "ag": 3, "av": 8, "skills": ["Block"],
+        { "name": "Rex Blade",   "pos": "Blitzer", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": ["Block"],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y": 190, "w": 25, "h": 26 }, "armour": { "x": 26, "y": 190, "w": 25, "h": 26 } } },
-        { "name": "Sam Quick",   "pos": "Thrower", "ma": 6, "st": 3, "ag": 3, "av": 7, "skills": ["Pass", "Sure Hands"],
+        { "name": "Sam Quick",   "pos": "Thrower", "ma": 6, "st": 3, "ag": 3, "pa": 2, "av": 7, "skills": ["Pass", "Sure Hands"],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y": 108, "w": 25, "h": 26 }, "armour": { "x": 26, "y": 108, "w": 25, "h": 26 } } },
-        { "name": "Pip Dart",    "pos": "Catcher", "ma": 8, "st": 2, "ag": 3, "av": 7, "skills": ["Dodge", "Catch"],
+        { "name": "Pip Dart",    "pos": "Catcher", "ma": 8, "st": 2, "ag": 3, "pa": 5, "av": 7, "skills": ["Dodge", "Catch"],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y":  27, "w": 25, "h": 26 }, "armour": { "x": 26, "y":  27, "w": 25, "h": 26 } } }
     ]
 }

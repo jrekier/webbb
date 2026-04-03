@@ -65,6 +65,7 @@ function render() {
     }
     drawBall();
     drawPlayers();
+    drawPassTargetingOverlay();
     ctx.restore();
 
     // Overlays in screen space

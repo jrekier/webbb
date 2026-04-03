@@ -109,6 +109,116 @@ function drawInspectOverlay() {
     });
 }
 
+// ── drawPassTargetingOverlay ──────────────────────────────────────
+// Called at the end of render() when G.passing === 'targeting'.
+// Draws per-cell range bands and a hover highlight centered on the passer.
+
+function drawPassTargetingOverlay() {
+    if (G.passing !== 'targeting' || !G.activated || !ctx) return;
+    const p = G.activated;
+    if (!p.hasBall) return;
+
+    // Drawn in world space (inside ctx.save/translate/restore in render()).
+    // No cameraY adjustment needed here.
+
+    ctx.save();
+
+    const BANDS = [
+        { max: 3,  fill: 'rgba(60,200,80,0.15)',  stroke: 'rgba(60,200,80,0.75)',  label: 'Quick' },
+        { max: 6,  fill: 'rgba(220,210,30,0.13)', stroke: 'rgba(220,210,30,0.75)', label: 'Short' },
+        { max: 9,  fill: 'rgba(240,130,20,0.13)', stroke: 'rgba(240,130,20,0.75)', label: 'Long'  },
+        { max: 99, fill: 'rgba(220,50,50,0.11)',  stroke: 'rgba(220,50,50,0.75)',  label: 'Bomb'  },
+    ];
+
+    // Per-cell tint
+    for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < ROWS; r++) {
+            const dist = Math.max(Math.abs(c - p.col), Math.abs(r - p.row));
+            if (dist === 0) continue;
+            const band = BANDS.find(b => dist <= b.max);
+            if (!band) continue;
+            ctx.fillStyle = band.fill;
+            ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+        }
+    }
+
+    // Band boundary squares at distances 3, 6, 9
+    ctx.lineWidth = 1.5;
+    for (const band of BANDS.slice(0, 3)) {
+        const d  = band.max;
+        ctx.strokeStyle = band.stroke;
+        ctx.strokeRect((p.col - d) * CELL, (p.row - d) * CELL, (d * 2 + 1) * CELL, (d * 2 + 1) * CELL);
+    }
+
+    // Range labels — drawn at mid-band height in the passer's column
+    const fs = Math.max(8, Math.floor(CELL * 0.22));
+    ctx.font         = `bold ${fs}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    const midDists   = [2, 5, 8];   // centre of Quick, Short, Long bands
+    for (let i = 0; i < 3; i++) {
+        const ly = (p.row - midDists[i]) * CELL + CELL / 2;
+        if (ly < 0 || ly > ROWS * CELL) continue;
+        ctx.fillStyle = BANDS[i].stroke;
+        ctx.fillText(BANDS[i].label, p.col * CELL + CELL / 2, ly);
+    }
+
+    // Hover highlight with range tooltip
+    if (passHover && !(passHover.col === p.col && passHover.row === p.row)) {
+        const { col: hc, row: hr } = passHover;
+        const dist = Math.max(Math.abs(hc - p.col), Math.abs(hr - p.row));
+        const band = BANDS.find(b => dist <= b.max);
+        if (band) {
+            ctx.fillStyle   = band.stroke.replace('0.75', '0.30');
+            ctx.fillRect(hc * CELL, hr * CELL, CELL, CELL);
+            ctx.strokeStyle = band.stroke;
+            ctx.lineWidth   = 2;
+            ctx.strokeRect(hc * CELL, hr * CELL, CELL, CELL);
+
+            // Tooltip above the hovered cell
+            const label = `${band.label} (${dist}sq)`;
+            ctx.font      = `bold ${fs}px 'IBM Plex Mono', monospace`;
+            ctx.textAlign = 'center';
+            const tw      = ctx.measureText(label).width + 8;
+            const tx      = hc * CELL + CELL / 2;
+            const ty      = hr * CELL - fs - 6;
+            ctx.fillStyle = 'rgba(0,0,0,0.72)';
+            ctx.fillRect(tx - tw / 2, ty, tw, fs + 4);
+            ctx.fillStyle    = '#fff';
+            ctx.textBaseline = 'top';
+            ctx.fillText(label, tx, ty + 2);
+        }
+
+        // Trajectory corridor — thick semi-transparent line from passer to hover
+        const ax = p.col  * CELL + CELL / 2;
+        const ay = p.row  * CELL + CELL / 2;
+        const bx = hc    * CELL + CELL / 2;
+        const by = hr    * CELL + CELL / 2;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+        ctx.lineWidth   = CELL * 2;
+        ctx.lineCap     = 'round';
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+        ctx.restore();
+
+        // Interceptor cell highlights
+        const interceptors = (typeof getInterceptors === 'function')
+            ? getInterceptors(G, p, hc, hr) : [];
+        for (const ip of interceptors) {
+            ctx.fillStyle   = 'rgba(255,140,0,0.35)';
+            ctx.fillRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
+            ctx.strokeStyle = 'rgba(255,140,0,0.90)';
+            ctx.lineWidth   = 2;
+            ctx.strokeRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
+        }
+    }
+
+    ctx.restore();
+}
+
 // ── drawWheelOverlay ──────────────────────────────────────────────
 // Called at the end of render(). Draws inspect card first, then wheel.
 
@@ -201,10 +311,13 @@ function syncMobileHud() {
     const mySetup   = inSetup && (!NET.online || NET.side === G.setupSide);
     mobileShow('mobile-btn-confirm-setup', mySetup);
     mobileShow('mobile-btn-cancel',
-        !inSetup && !inSpecial && myTurn && (G.block === 'targeting'
+        !inSetup && !inSpecial && myTurn && (G.passing === 'targeting'
+            || G.block === 'targeting'
             || (G.activated && canStillCancel(G) && !G.block)));
+    mobileShow('mobile-btn-throw',
+        !inSetup && !inSpecial && myTurn && G.passing === true && G.activated && G.activated.hasBall);
     mobileShow('mobile-btn-stop',
-        !inSetup && !inSpecial && myTurn && G.activated && !canStillCancel(G) && !G.block);
+        !inSetup && !inSpecial && myTurn && G.activated && !canStillCancel(G) && !G.block && G.passing !== 'targeting');
     mobileShow('mobile-btn-end-turn',
         !inSetup && !inSpecial && myTurn && !G.block);
 }
@@ -387,12 +500,18 @@ function _openWheel(player, px, py) {
 
     // Activated player — navigation options
     if (G.activated && G.activated.id === player.id && !G.block) {
+        if (G.passing === true && G.activated.hasBall) {
+            actions.push({
+                label: 'Throw', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
+                fn: onClickThrow,
+            });
+        }
         if (canStillCancel(G)) {
             actions.push({
                 label: 'Cancel', color: '#ffd080', bg: 'rgba(130,70,0,0.90)',
                 fn: onClickCancel,
             });
-        } else {
+        } else if (G.passing !== true) {
             actions.push({
                 label: 'Stop', color: '#90f090', bg: 'rgba(20,110,20,0.90)',
                 fn: onClickStop,
@@ -430,6 +549,11 @@ function _openWheel(player, px, py) {
                 actions.push({
                     label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)',
                     fn: onClickSecureBall,
+                });
+            if (!G.hasPassed)
+                actions.push({
+                    label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
+                    fn: onClickPass,
                 });
         }
     }

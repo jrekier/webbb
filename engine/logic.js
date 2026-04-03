@@ -21,9 +21,12 @@ function createInitialState() {
         block:              null,
         blitz:              null,
         hasBlitzed:         false,
+        hasPassed:          false,
         hasDodged:          false,
         blitzFromProne:     false,
         securingBall:       false,
+        passing:            false,
+        hasPassReroll:      false,
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
     };
@@ -100,6 +103,8 @@ function cancelActivation(G) {
         G.blitz          = null;
     }
     G.securingBall = false;
+    G.passing      = false;
+    G.hasPassReroll = false;
     G.activated    = null;
     return `${name} — action cancelled`;
 }
@@ -108,9 +113,11 @@ function endActivation(G) {
     if (!G.activated) return null;
     const name = G.activated.pos;
     G.activated.usedAction = true;
-    G.activated = null;
-    G.blitz     = null;
-    G.hasDodged = false;
+    G.activated    = null;
+    G.blitz        = null;
+    G.hasDodged    = false;
+    G.passing      = false;
+    G.hasPassReroll = false;
     return `${name} done`;
 }
 
@@ -129,9 +136,12 @@ function endTurn(G) {
     G.active         = G.active === 'home' ? 'away' : 'home';
     G.sel            = null;
     G.hasBlitzed     = false;
+    G.hasPassed      = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
     G.securingBall   = false;
+    G.passing        = false;
+    G.hasPassReroll  = false;
     // Turn increments when the receiver becomes active again (completing a full round).
     if (G.active === G.receiver) G.turn += 1;
 
@@ -185,6 +195,7 @@ function startHalfTime(G) {
     G.block          = null;
     G.blitz          = null;
     G.hasBlitzed     = false;
+    G.hasPassed      = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
     G.securingBall   = false;
@@ -308,6 +319,7 @@ function resetAfterTouchdown(G, scoringSide) {
     G.block          = null;
     G.blitz          = null;
     G.hasBlitzed     = false;
+    G.hasPassed      = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
     G.securingBall   = false;

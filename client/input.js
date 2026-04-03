@@ -9,6 +9,9 @@ var _dragMoved    = false;
 // Hover cell during kick phase — read by render.js for aim indicator
 var kickHover     = null;  // { col, row }
 
+// Hover cell during pass targeting — read by mobile.js for range overlay
+var passHover     = null;  // { col, row }
+
 // Validation errors from the last failed confirmSetup — drawn on canvas by render.js
 var setupErrors   = null;  // string[] | null
 
@@ -17,7 +20,7 @@ function setupInput() {
     canvas.addEventListener('mousedown',  _onMouseDown);
     canvas.addEventListener('mousemove',  _onMouseMove);
     canvas.addEventListener('mouseup',    _onMouseUp);
-    canvas.addEventListener('mouseleave', () => { kickHover = null; render(); });
+    canvas.addEventListener('mouseleave', () => { kickHover = null; passHover = null; render(); });
     setupTouch();
 }
 
@@ -48,6 +51,14 @@ function _onMouseMove(e) {
     if (G.phase === 'kick') {
         const rect = canvas.getBoundingClientRect();
         kickHover  = {
+            col: Math.floor((e.clientX - rect.left) / CELL),
+            row: Math.floor((e.clientY - rect.top + cameraY) / CELL),
+        };
+        render();
+    }
+    if (G.passing === 'targeting') {
+        const rect = canvas.getBoundingClientRect();
+        passHover  = {
             col: Math.floor((e.clientX - rect.left) / CELL),
             row: Math.floor((e.clientY - rect.top + cameraY) / CELL),
         };
@@ -220,6 +231,13 @@ function clickPlayer(player) {
 
     G.sel = player;
 
+    // Pass targeting mode — throw to this player's square
+    if (G.passing === 'targeting' && G.activated && player.id !== G.activated.id) {
+        passHover = null;
+        _doThrow(player.col, player.row);
+        return;
+    }
+
     // Block targeting — must be adjacent already
     if (G.block === 'targeting') {
         if (player.side !== G.active && isAdjacent(G.activated, player)) {
@@ -280,6 +298,13 @@ function clickCell(col, row) {
                 if (msg) log(msg);
             }
         }
+        return;
+    }
+
+    // Pass targeting mode — any click resolves the throw
+    if (G.passing === 'targeting' && G.activated) {
+        passHover = null;
+        _doThrow(col, row);
         return;
     }
 
@@ -354,7 +379,61 @@ function onClickBlitz() {
     }
 }
 
+// ── _doThrow ──────────────────────────────────────────────────────
+// Called when the player clicks a target square in throw-targeting mode.
+// Checks for interceptors and asks confirmation if any are found.
+
+function _doThrow(col, row) {
+    if (!G.activated) return;
+    const interceptors = getInterceptors(G, G.activated, col, row);
+    const execute = () => {
+        if (NET.online) {
+            sendAction({ type: 'THROW_BALL', col, row });
+        } else {
+            const msg = throwBall(G, col, row);
+            if (msg) log(msg);
+        }
+    };
+    if (interceptors.length === 0) {
+        execute();
+    } else {
+        const names = interceptors.map(p => p.name).join(', ');
+        G.confirm = {
+            prompt: `${names} may intercept! Throw anyway?`,
+            onYes: execute,
+            onNo:  () => { G.passing = 'targeting'; render(); },
+        };
+        render();
+    }
+}
+
+function onClickThrow() {
+    if (!G.passing || !G.activated || !G.activated.hasBall) return;
+    G.passing = 'targeting';
+    passHover = null;
+    log(`${G.activated.name} ready to throw — click target square.`);
+    render();
+}
+
+function onClickPass() {
+    if (!G.sel || G.sel.side !== G.active) return;
+    if (NET.online) {
+        sendAction({ type: 'PASS_DECLARE', playerId: G.sel.id });
+    } else {
+        const msg = declarePass(G, G.sel.id);
+        if (msg) log(msg);
+        render();
+    }
+}
+
 function onClickCancel() {
+    if (G.passing === 'targeting') {
+        G.passing = true;
+        passHover = null;
+        log('Throw cancelled — move if needed, then press Throw again.');
+        render();
+        return;
+    }
     if (G.block === 'targeting') {
         G.block     = null;
         G.activated = null;
@@ -415,7 +494,7 @@ function onClickEndTurn() {
 // ── updateButtons ────────────────────────────────────────────────
 function updateButtons() {
     const ALL_BTNS = ['btn-move','btn-block','btn-blitz','btn-stand-up',
-                       'btn-secure-ball','btn-cancel','btn-stop','btn-end-turn',
+                       'btn-secure-ball','btn-pass','btn-throw','btn-cancel','btn-stop','btn-end-turn',
                        'btn-confirm-setup'];
 
     if (G.phase === 'setup') {
@@ -458,15 +537,20 @@ function updateButtons() {
     const hasTargets  = canDeclare && G.sel
         && getBlockTargets(G, G.sel).length > 0;
     const canSecure   = canDeclare && !G.ball.carrier;
+    const canPass     = canDeclare && !G.hasPassed;
+    const canThrow    = myTurn && G.passing === true && G.activated && G.activated.hasBall;
 
-    show('btn-move',        canDeclare);
-    show('btn-block',       hasTargets);
-    show('btn-blitz',       canBlitz);
+    show('btn-move',        canDeclare && G.passing !== true);
+    show('btn-block',       hasTargets && G.passing !== true);
+    show('btn-blitz',       canBlitz   && G.passing !== true);
     show('btn-stand-up',    canStand);
-    show('btn-secure-ball', canSecure);
-    show('btn-cancel',   myTurn && (G.block === 'targeting'
+    show('btn-secure-ball', canSecure  && G.passing !== true);
+    show('btn-pass',        canPass    && G.passing !== true);
+    show('btn-throw',       canThrow);
+    show('btn-cancel',   myTurn && (G.passing === 'targeting'
+                            || G.block === 'targeting'
                             || (G.activated && canStillCancel(G) && !G.block)));
-    show('btn-stop',     myTurn && G.activated && !canStillCancel(G) && !G.block);
+    show('btn-stop',     myTurn && G.activated && !canStillCancel(G) && !G.block && G.passing !== 'targeting');
     show('btn-end-turn', myTurn && !G.block);
 
     const btnEnd = document.getElementById('btn-end-turn');
