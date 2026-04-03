@@ -75,6 +75,22 @@ function rollArmourAndInjury(p, attacker) {
     return { armorRoll, armorBroken: true, injuryRoll, outcome };
 }
 
+// ── rollCrowdInjury ───────────────────────────────────────────────
+// Crowd always breaks armour — rolls only 2d6 injury.
+// Returns { injuryRoll, outcome }.
+
+function rollCrowdInjury(p) {
+    const d1 = Math.floor(Math.random() * 6) + 1;
+    const d2 = Math.floor(Math.random() * 6) + 1;
+    const injuryRoll = d1 + d2;
+    const thickSkull = p.skills?.includes('Thick Skull');
+    let outcome;
+    if      (injuryRoll <= 7) outcome = thickSkull ? 'ko' : 'stunned';
+    else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
+    else                      outcome = 'casualty';
+    return { injuryRoll, outcome };
+}
+
 if (typeof module !== 'undefined') {
-    module.exports = { rush, dodge, BLOCK_FACES, rollBlockDice, rollArmourAndInjury };
+    module.exports = { rush, dodge, BLOCK_FACES, rollBlockDice, rollArmourAndInjury, rollCrowdInjury };
 }

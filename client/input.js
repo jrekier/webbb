@@ -179,7 +179,12 @@ function handleClick(event) {
 
 // ── clickPlayer ──────────────────────────────────────────────────
 function clickPlayer(player) {
-    if (G.block && G.block.phase === 'pick-push') return;
+    if (G.block && G.block.phase === 'pick-push') {
+        // Chain push: push squares are occupied — route through clickCell so
+        // the push-square validation there handles occupied destinations too.
+        clickCell(player.col, player.row);
+        return;
+    }
 
     G.sel = player;
 

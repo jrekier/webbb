@@ -4,7 +4,7 @@
 if (typeof module !== 'undefined') {
     var { playerAt, isAdjacent, isStanding, inTackleZoneOf,
           endTurn, endActivation } = require('./logic.js');
-    var { BLOCK_FACES, rollBlockDice, rollArmourAndInjury } = require('./dice.js');
+    var { BLOCK_FACES, rollBlockDice, rollArmourAndInjury, rollCrowdInjury } = require('./dice.js');
     var { scatterBall } = require('./ball.js');
 }
 
@@ -84,9 +84,9 @@ function getPushSquares(G, att, def) {
     const free = candidates.filter(([c, r]) =>
         c >= 0 && c < COLS && r >= 0 && r < ROWS && !playerAt(G, c, r)
     );
-    return free.length > 0 ? free : candidates.filter(([c, r]) =>
-        c >= 0 && c < COLS && r >= 0 && r < ROWS
-    );
+    // When no free in-bounds squares exist, all candidates are valid, including
+    // out-of-bounds ones (crowd push).
+    return free.length > 0 ? free : candidates;
 }
 
 // ── knockDown ─────────────────────────────────────────────────────
@@ -186,7 +186,13 @@ function pickBlockFace(G, face) {
             G.block.phase       = 'pick-push';
             G.block.pushSquares = getPushSquares(G, att, def);
             const falls = face.id !== 'PUSH';
-            return `${def.name} is pushed back${falls ? ' and falls!' : '.'}  Choose push square.`;
+            const prefix = `${def.name} is pushed back${falls ? ' and falls!' : '.'}  `;
+            // If every candidate is off-pitch, auto-resolve into the crowd.
+            if (G.block.pushSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
+                const [cc, cr] = G.block.pushSquares[0];
+                return prefix + pickPushSquare(G, cc, cr);
+            }
+            return prefix + 'Choose push square.';
         }
     }
 }
@@ -198,6 +204,42 @@ function pickPushSquare(G, col, row) {
     const { att, def, chosenFace } = G.block;
     const vacCol = def.col;
     const vacRow = def.row;
+
+    // Out-of-bounds: crowd injury, then proceed to follow-up.
+    const oob = col < 0 || col >= COLS || row < 0 || row >= ROWS;
+    if (oob) {
+        if (def.hasBall) {
+            def.hasBall    = false;
+            G.ball.carrier = null;
+            G.ball.col     = def.col;
+            G.ball.row     = def.row;
+        }
+        const { injuryRoll, outcome } = rollCrowdInjury(def);
+        let msg = `${def.name} pushed into the crowd! Inj ${injuryRoll}: `;
+        if (outcome === 'stunned') {
+            def.status = 'stunned';
+            msg += `Stunned — placed in reserves.`;
+            def.col = -1;
+            def.row = -1;
+        } else if (outcome === 'ko') {
+            def.status = 'ko';
+            msg += `KO'd!`;
+            def.col = -1;
+            def.row = -1;
+        } else {
+            def.status = 'casualty';
+            msg += `CASUALTY!`;
+            def.col = -1;
+            def.row = -1;
+        }
+        if (!G.ball.carrier) msg += ' ' + scatterBall(G);
+        const followUp = G.block.pendingFollowUp || { att, vacCol, vacRow };
+        G.block = { phase: 'follow-up', att: followUp.att, vacCol: followUp.vacCol, vacRow: followUp.vacRow };
+        return msg + ' Follow up?';
+    }
+
+    // Detect chain push victim before moving def into the square.
+    const chainVictim = playerAt(G, col, row);
 
     def.col = col;
     def.row = row;
@@ -213,7 +255,31 @@ function pickPushSquare(G, col, row) {
         msg += ` ${def.name} is knocked down! ${injMsg}`;
     }
 
-    G.block = { phase: 'follow-up', att, vacCol, vacRow };
+    if (chainVictim) {
+        // Preserve the original follow-up data so we can restore it after all
+        // chain pushes resolve. For nested chains, pendingFollowUp already holds it.
+        const pendingFollowUp = G.block.pendingFollowUp || { att, vacCol, vacRow };
+        // The chain direction is away from def's old square.
+        const fakeAtt = { col: vacCol, row: vacRow };
+        const chainSquares = getPushSquares(G, fakeAtt, chainVictim);
+        G.block = {
+            phase: 'pick-push',
+            att: fakeAtt,
+            def: chainVictim,
+            chosenFace: { id: 'PUSH' },
+            pushSquares: chainSquares,
+            pendingFollowUp,
+        };
+        // If every candidate is off-pitch, auto-resolve into the crowd.
+        if (chainSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
+            const [cc, cr] = chainSquares[0];
+            return msg + ` Chain push — ${pickPushSquare(G, cc, cr)}`;
+        }
+        return msg + ` Chain push — choose where ${chainVictim.name} goes.`;
+    }
+
+    const followUp = G.block.pendingFollowUp || { att, vacCol, vacRow };
+    G.block = { phase: 'follow-up', att: followUp.att, vacCol: followUp.vacCol, vacRow: followUp.vacRow };
     return msg + ' Follow up?';
 }
 
