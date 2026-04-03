@@ -24,12 +24,13 @@ function initToss(G) {
 // Transitions to setup phase with the kicker setting up first.
 
 function chooseTossResult(G, choice) {
-    G.kicker    = choice === 'kick'
+    G.kicker             = choice === 'kick'
         ? G.tossWinner
         : (G.tossWinner === 'home' ? 'away' : 'home');
-    G.receiver  = G.kicker === 'home' ? 'away' : 'home';
-    G.phase     = 'setup';
-    G.setupSide = G.kicker;
+    G.receiver           = G.kicker === 'home' ? 'away' : 'home';
+    G.firstHalfReceiver  = G.receiver;
+    G.phase              = 'setup';
+    G.setupSide          = G.kicker;
     return `${G.kicker.toUpperCase()} kicks off — set up your team.`;
 }
 

@@ -170,10 +170,15 @@ function updateSidebar() {
         lbl.textContent = 'TOUCHBACK';
         lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
         document.getElementById('lbl-turn').textContent = '';
+    } else if (G.phase === 'gameover') {
+        const { home, away } = G.score || { home: 0, away: 0 };
+        lbl.textContent = home > away ? 'HOME WINS' : away > home ? 'AWAY WINS' : 'DRAW';
+        lbl.className   = home > away ? 'team-home' : away > home ? 'team-away' : '';
+        document.getElementById('lbl-turn').textContent = 'FT';
     } else {
         lbl.textContent = G.active.toUpperCase();
         lbl.className   = G.active === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = G.turn;
+        document.getElementById('lbl-turn').textContent = `H${G.half} T${G.turn}`;
     }
 
     // Score

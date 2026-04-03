@@ -140,8 +140,9 @@ function checkTouchdown(G, p) {
     if (!scored) return null;
     G.score         = G.score || { home: 0, away: 0 };
     G.score[p.side] += 1;
-    const msg = `TOUCHDOWN! ${p.side.toUpperCase()} scores! (${G.score.home}–${G.score.away})`;
+    let msg = `TOUCHDOWN! ${p.side.toUpperCase()} scores! (${G.score.home}–${G.score.away})`;
     resetAfterTouchdown(G, p.side);
+    if (G._koRollMsg) { msg += ` KO rolls: ${G._koRollMsg}.`; G._koRollMsg = null; }
     return msg;
 }
 

@@ -188,7 +188,7 @@ function syncMobileHud() {
         activeEl.className   = side === 'home' ? 'team-home' : 'team-away';
     }
     if (turnEl)
-        turnEl.textContent = (G.phase === 'play') ? `T${G.turn}` : '';
+        turnEl.textContent = (G.phase === 'play') ? `H${G.half} T${G.turn}` : G.phase === 'gameover' ? 'FT' : '';
 
     const score = G.score || { home: 0, away: 0 };
     const sh = document.getElementById('mobile-score-home');

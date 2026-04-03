@@ -74,7 +74,7 @@ function _onMouseUp(e) {
 
 // ── handleClick ──────────────────────────────────────────────────
 function handleClick(event) {
-    if (G.phase === 'toss' || G.phase === 'setup') return;
+    if (G.phase === 'toss' || G.phase === 'setup' || G.phase === 'gameover') return;
     const rect = canvas.getBoundingClientRect();
     const px   = event.clientX - rect.left;
     const py   = event.clientY - rect.top;
@@ -428,7 +428,7 @@ function updateButtons() {
         return;
     }
 
-    if (G.phase === 'kick' || G.phase === 'touchback') {
+    if (G.phase === 'kick' || G.phase === 'touchback' || G.phase === 'gameover') {
         ALL_BTNS.forEach(id => show(id, false));
         syncMobileHud();
         return;

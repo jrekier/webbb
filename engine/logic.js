@@ -6,25 +6,26 @@
 
 function createInitialState() {
     return {
-        phase:         'toss',   // 'toss' | 'setup' | 'play'
-        tossWinner:    null,
-        kicker:        null,
-        receiver:      null,
-        setupSide:     null,
-        active:        'home',
-        turn:          1,
-        half:          1,
-        score:         { home: 0, away: 0 },
-        activated:     null,
-        sel:           null,
-        block:         null,
-        blitz:         null,
-        hasBlitzed:    false,
-        hasDodged:     false,
-        blitzFromProne: false,
-        securingBall:  false,
-        ball:          { col: 5, row: 10, carrier: null },
-        players:       [],
+        phase:              'toss',   // 'toss' | 'setup' | 'play' | 'gameover'
+        tossWinner:         null,
+        kicker:             null,
+        receiver:           null,
+        firstHalfReceiver:  null,  // who received in half 1 — kicks off in half 2
+        setupSide:          null,
+        active:             'home',
+        turn:               1,
+        half:               1,
+        score:              { home: 0, away: 0 },
+        activated:          null,
+        sel:                null,
+        block:              null,
+        blitz:              null,
+        hasBlitzed:         false,
+        hasDodged:          false,
+        blitzFromProne:     false,
+        securingBall:       false,
+        ball:               { col: 5, row: 10, carrier: null },
+        players:            [],
     };
 }
 
@@ -123,14 +124,89 @@ function endTurn(G) {
             if (p.status === 'stunned') p.status = 'prone';
         }
     }
+
+    const justFinished = G.active;
     G.active         = G.active === 'home' ? 'away' : 'home';
     G.sel            = null;
     G.hasBlitzed     = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
     G.securingBall   = false;
-    if (G.active === 'home') G.turn += 1;
+    // Turn increments when the receiver becomes active again (completing a full round).
+    if (G.active === G.receiver) G.turn += 1;
+
+    // The kicker goes second, so they finish each round last.
+    // Half 1 ends after both teams complete TURNS turns (kicker finishes turn TURNS).
+    const firstHalfKicker = G.firstHalfReceiver === 'home' ? 'away' : 'home';
+    if (G.half === 1 && justFinished === firstHalfKicker && G.turn > TURNS) {
+        return startHalfTime(G);
+    }
+    // Half 2: receiver is firstHalfKicker, kicker is firstHalfReceiver.
+    if (G.half === 2 && justFinished === G.firstHalfReceiver && G.turn > TURNS * 2) {
+        return startGameOver(G);
+    }
+
     return `Turn ${G.turn} · ${G.active.toUpperCase()}`;
+}
+
+// ── startHalfTime ────────────────────────────────────────────────
+// KO roll for each KO'd player (4+ returns to dugout/reserves).
+// Roles swap: half-1 receiver now kicks. Reset to setup.
+
+function startHalfTime(G) {
+    const koMsgs = [];
+    for (const p of G.players) {
+        if (p.status === 'ko') {
+            const roll = Math.floor(Math.random() * 6) + 1;
+            if (roll >= 4) {
+                p.status = 'active';
+                // Place off-pitch until setup positions them.
+                p.col = -1; p.row = -1;
+                koMsgs.push(`${p.name} recovers (rolled ${roll})`);
+            } else {
+                koMsgs.push(`${p.name} stays KO (rolled ${roll})`);
+            }
+        }
+    }
+
+    // Swap roles for second half
+    G.half     = 2;
+    G.turn     = TURNS + 1;
+    G.kicker   = G.firstHalfReceiver;
+    G.receiver = G.kicker === 'home' ? 'away' : 'home';
+
+    // Reset available players and place them in default formation so they appear on pitch.
+    // Compact indices: skip KO/casualty so there are no formation gaps.
+    _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME, [5, 15]);
+    _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY, [5, 4]);
+
+    G.activated      = null;
+    G.sel            = null;
+    G.block          = null;
+    G.blitz          = null;
+    G.hasBlitzed     = false;
+    G.hasDodged      = false;
+    G.blitzFromProne = false;
+    G.securingBall   = false;
+    G.ball           = { col: -1, row: -1, carrier: null };
+    G.phase          = 'setup';
+    G.setupSide      = G.kicker;
+
+    const koSummary = koMsgs.length ? ` KO rolls: ${koMsgs.join(', ')}.` : '';
+    return `HALF TIME!${koSummary} Half 2: ${G.kicker.toUpperCase()} kicks off — set up your team.`;
+}
+
+// ── startGameOver ────────────────────────────────────────────────
+
+function startGameOver(G) {
+    G.phase     = 'gameover';
+    G.activated = null;
+    G.sel       = null;
+    G.block     = null;
+    G.blitz     = null;
+    const { home, away } = G.score || { home: 0, away: 0 };
+    const result = home > away ? 'HOME wins!' : away > home ? 'AWAY wins!' : 'Draw!';
+    return `FULL TIME! ${result} Final score: ${home}–${away}`;
 }
 
 // ── fixReferences ─────────────────────────────────────────────────
@@ -180,27 +256,52 @@ function initFormations() {
     }
 }
 
+// ── _placeInFormation ─────────────────────────────────────────────
+// Places available (non-KO, non-casualty) players into formation slots,
+// compacting indices so missing players don't leave gaps.
+// KO/casualty players are moved off-pitch.
+
+function _placeInFormation(players, formation, fallback) {
+    let fi = 0;
+    for (const p of players) {
+        if (p.status === 'ko' || p.status === 'casualty') {
+            p.col = -1; p.row = -1;
+            continue;
+        }
+        const [col, row] = formation[fi++] || fallback;
+        p.col        = col;
+        p.row        = row;
+        p.status     = 'active';
+        p.hasBall    = false;
+        p.maLeft     = p.ma;
+        p.rushLeft   = 2;
+        p.usedAction = false;
+    }
+}
+
 // ── resetAfterTouchdown ───────────────────────────────────────────
 // Resets all players to their formation positions and returns the
 // ball to the centre. The team that did NOT score goes next (they
 // receive the kickoff from the scoring team).
 
 function resetAfterTouchdown(G, scoringSide) {
-    const homePlayers = G.players.filter(p => p.side === 'home');
-    const awayPlayers = G.players.filter(p => p.side === 'away');
+    // KO recovery roll (4+) before resetting positions
+    const koMsgs = [];
+    for (const p of G.players) {
+        if (p.status === 'ko') {
+            const roll = Math.floor(Math.random() * 6) + 1;
+            if (roll >= 4) {
+                p.status = 'active';
+                koMsgs.push(`${p.name} recovers (rolled ${roll})`);
+            } else {
+                koMsgs.push(`${p.name} stays KO (rolled ${roll})`);
+            }
+        }
+    }
+    if (koMsgs.length) G._koRollMsg = koMsgs.join(', ');
 
-    homePlayers.forEach((p, i) => {
-        const [col, row] = FORMATION_HOME[i] || [5, 15];
-        p.col = col; p.row = row;
-        p.status = 'active'; p.hasBall = false;
-        p.maLeft = p.ma; p.rushLeft = 2; p.usedAction = false;
-    });
-    awayPlayers.forEach((p, i) => {
-        const [col, row] = FORMATION_AWAY[i] || [5, 4];
-        p.col = col; p.row = row;
-        p.status = 'active'; p.hasBall = false;
-        p.maLeft = p.ma; p.rushLeft = 2; p.usedAction = false;
-    });
+    _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME, [5, 15]);
+    _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY, [5, 4]);
 
     G.activated      = null;
     G.sel            = null;
@@ -226,6 +327,6 @@ if (typeof module !== 'undefined') {
         activatePlayer, cancelActivation, endActivation, endTurn,
         fixReferences,
         FORMATION_HOME, FORMATION_AWAY, initFormations,
-        resetAfterTouchdown,
+        resetAfterTouchdown, startHalfTime, startGameOver,
     };
 }
