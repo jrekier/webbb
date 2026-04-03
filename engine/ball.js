@@ -6,12 +6,12 @@ if (typeof module !== 'undefined') {
           resetAfterTouchdown, countTackleZones } = require('./logic.js');
 }
 
-// ── _throwIn ──────────────────────────────────────────────────────
+// ── throwIn ──────────────────────────────────────────────────────
 // Ball left the pitch from lastCol/lastRow heading toward nc/nr.
 // The crowd throws it back: pick 1 of 3 inward directions (1d6),
 // travel 2d6-1 squares. Repeat if it goes out again.
 
-function _throwIn(G, lastCol, lastRow, nc, nr) {
+function throwIn(G, lastCol, lastRow, nc, nr) {
     // Determine which edge was crossed and the two tangential directions.
     // The three valid throw-in directions are: straight in + two diagonals.
     const fromLeft  = nc < 0;
@@ -51,7 +51,7 @@ function _throwIn(G, lastCol, lastRow, nc, nr) {
         // Still out — repeat from the last in-bounds point along this edge
         const edgeC = Math.max(0, Math.min(COLS - 1, tc));
         const edgeR = Math.max(0, Math.min(ROWS - 1, tr));
-        return msg + ` Out again. ` + _throwIn(G, edgeC, edgeR, tc, tr);
+        return msg + ` Out again. ` + throwIn(G, edgeC, edgeR, tc, tr);
     }
 
     G.ball.col = tc;
@@ -86,7 +86,7 @@ function scatterBall(G) {
     const nr  = G.ball.row + DR[dir];
 
     if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) {
-        return `Ball scattered out of bounds. ` + _throwIn(G, G.ball.col, G.ball.row, nc, nr);
+        return `Ball scattered out of bounds. ` + throwIn(G, G.ball.col, G.ball.row, nc, nr);
     }
 
     G.ball.col = nc;
@@ -269,7 +269,7 @@ function touchbackGiveBall(G, playerId) {
 
 if (typeof module !== 'undefined') {
     module.exports = {
-        scatterBall, tryPickup, checkTouchdown,
+        scatterBall, throwIn, tryPickup, checkTouchdown,
         doSecureRoll, secureBall,
         isValidKickTarget, declareKick, touchbackGiveBall,
     };

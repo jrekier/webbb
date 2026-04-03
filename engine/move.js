@@ -63,7 +63,7 @@ function movePlayer(G, col, row) {
                 p.col = col;
                 p.row = row;
                 msg += knockDown(G, p);
-                if (!G.ball.carrier) msg += ' ' + scatterBall(G);
+                if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
                 endTurn(G);
                 return msg + ' TURNOVER';
             }
@@ -82,7 +82,7 @@ function movePlayer(G, col, row) {
             p.col = col;
             p.row = row;
             msg += knockDown(G, p);
-            if (!G.ball.carrier) msg += ' ' + scatterBall(G);
+            if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
             endTurn(G);
             return msg;
         }
@@ -113,7 +113,7 @@ function movePlayer(G, col, row) {
                 p.col = col;
                 p.row = row;
                 msg += knockDown(G, p);
-                if (!G.ball.carrier) msg += ' ' + scatterBall(G);
+                if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
                 endTurn(G);
                 return msg + ' TURNOVER';
             }
@@ -173,7 +173,7 @@ function standUp(G, playerId) {
         rolls.push(roll);
         if (failed) {
             let injMsg = knockDown(G, p);
-            if (!G.ball.carrier) injMsg += ' ' + scatterBall(G);
+            if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) injMsg += ' ' + scatterBall(G);
             endTurn(G);
             return `${p.name} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
         }

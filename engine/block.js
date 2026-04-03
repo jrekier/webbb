@@ -5,7 +5,7 @@ if (typeof module !== 'undefined') {
     var { playerAt, isAdjacent, isStanding, inTackleZoneOf,
           endTurn, endActivation } = require('./logic.js');
     var { BLOCK_FACES, rollBlockDice, rollArmourAndInjury, rollCrowdInjury } = require('./dice.js');
-    var { scatterBall } = require('./ball.js');
+    var { scatterBall, throwIn } = require('./ball.js');
 }
 
 // ── countAssists ─────────────────────────────────────────────────
@@ -151,7 +151,7 @@ function pickBlockFace(G, face) {
 
         case 'ATT_DOWN': {
             let injMsg = knockDown(G, att);
-            if (!G.ball.carrier) injMsg += ' ' + scatterBall(G);
+            if (!G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row) injMsg += ' ' + scatterBall(G);
             G.block = null;
             G.blitz = null;
             G.activated = null;
@@ -165,7 +165,9 @@ function pickBlockFace(G, face) {
             const defHasBlock = def.skills?.includes('Block');
             const attInj      = attHasBlock ? null : knockDown(G, att);
             const defInj      = defHasBlock ? null : knockDown(G, def, { attacker: att });
-            const scatterMsg  = !G.ball.carrier ? ' ' + scatterBall(G) : '';
+            const _ballAtAtt = !G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row;
+            const _ballAtDef = !G.ball.carrier && G.ball.col === def.col && G.ball.row === def.row;
+            const scatterMsg  = (_ballAtAtt || _ballAtDef) ? ' ' + scatterBall(G) : '';
             G.block = null;
             G.blitz = null;
             att.usedAction = true;
@@ -208,31 +210,27 @@ function pickPushSquare(G, col, row) {
     // Out-of-bounds: crowd injury, then proceed to follow-up.
     const oob = col < 0 || col >= COLS || row < 0 || row >= ROWS;
     if (oob) {
-        if (def.hasBall) {
+        const hadBall = def.hasBall;
+        if (hadBall) {
             def.hasBall    = false;
             G.ball.carrier = null;
-            G.ball.col     = def.col;
-            G.ball.row     = def.row;
         }
         const { injuryRoll, outcome } = rollCrowdInjury(def);
         let msg = `${def.name} pushed into the crowd! Inj ${injuryRoll}: `;
         if (outcome === 'stunned') {
             def.status = 'stunned';
             msg += `Stunned — placed in reserves.`;
-            def.col = -1;
-            def.row = -1;
         } else if (outcome === 'ko') {
             def.status = 'ko';
             msg += `KO'd!`;
-            def.col = -1;
-            def.row = -1;
         } else {
             def.status = 'casualty';
             msg += `CASUALTY!`;
-            def.col = -1;
-            def.row = -1;
         }
-        if (!G.ball.carrier) msg += ' ' + scatterBall(G);
+        def.col = -1;
+        def.row = -1;
+        // Ball thrown back in from the boundary (no scatter).
+        if (hadBall) msg += ' ' + throwIn(G, vacCol, vacRow, col, row);
         const followUp = G.block.pendingFollowUp || { att, vacCol, vacRow };
         G.block = { phase: 'follow-up', att: followUp.att, vacCol: followUp.vacCol, vacRow: followUp.vacRow };
         return msg + ' Follow up?';
