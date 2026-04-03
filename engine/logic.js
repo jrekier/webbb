@@ -49,6 +49,14 @@ function inTackleZoneOf(p, threat) {
     return isStanding(threat) && isAdjacent(p, threat);
 }
 
+function countTackleZones(G, side, col, row) {
+    return G.players.filter(e =>
+        e.side !== side && isStanding(e)
+        && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
+        && !(e.col === col && e.row === row)
+    ).length;
+}
+
 // ── Move-state queries ────────────────────────────────────────────
 
 function hasMovedYet(G) {
@@ -213,7 +221,7 @@ function resetAfterTouchdown(G, scoringSide) {
 if (typeof module !== 'undefined') {
     module.exports = {
         createInitialState,
-        playerAt, isStanding, isAdjacent, inTackleZoneOf,
+        playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
         hasMovedYet, canStillCancel,
         activatePlayer, cancelActivation, endActivation, endTurn,
         fixReferences,

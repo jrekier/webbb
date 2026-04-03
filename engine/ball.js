@@ -3,18 +3,7 @@
 
 if (typeof module !== 'undefined') {
     var { playerAt, isStanding, endTurn, endActivation,
-          resetAfterTouchdown } = require('./logic.js');
-}
-
-// ── _countTackleZones ─────────────────────────────────────────────
-// Count opposing standing players whose tackle zone covers (col, row).
-
-function _countTackleZones(G, side, col, row) {
-    return G.players.filter(e =>
-        e.side !== side && isStanding(e)
-        && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
-        && !(e.col === col && e.row === row)
-    ).length;
+          resetAfterTouchdown, countTackleZones } = require('./logic.js');
 }
 
 // ── scatterBall ───────────────────────────────────────────────────
@@ -46,7 +35,7 @@ function scatterBall(G) {
         return `Ball bounces off ${lander.pos}. ` + scatterBall(G);
     }
 
-    const tzs    = _countTackleZones(G, lander.side, nc, nr);
+    const tzs    = countTackleZones(G, lander.side, nc, nr);
     const target = Math.min(lander.ag + tzs, 6);
     const roll   = Math.floor(Math.random() * 6) + 1;
     if (roll >= target || roll === 6) {
@@ -63,7 +52,7 @@ function scatterBall(G) {
 
 function tryPickup(G, p) {
     if (G.ball.carrier || G.ball.col !== p.col || G.ball.row !== p.row) return null;
-    const tzs    = _countTackleZones(G, p.side, p.col, p.row);
+    const tzs    = countTackleZones(G, p.side, p.col, p.row);
     const target = Math.min(p.ag + tzs, 6);
     const roll   = Math.floor(Math.random() * 6) + 1;
     if (roll >= target || roll === 6) {
@@ -92,12 +81,12 @@ function checkTouchdown(G, p) {
     return msg;
 }
 
-// ── _doSecureRoll ─────────────────────────────────────────────────
+// ── doSecureRoll ─────────────────────────────────────────────────
 // Rolls 2+ for Secure the Ball. Called once the player is on the
 // ball's square. Ends activation on success; turnover on failure.
 
-function _doSecureRoll(G, p) {
-    const tzs    = _countTackleZones(G, p.side, G.ball.col, G.ball.row);
+function doSecureRoll(G, p) {
+    const tzs    = countTackleZones(G, p.side, G.ball.col, G.ball.row);
     const target = Math.min(2 + tzs, 6);
     const roll   = Math.floor(Math.random() * 6) + 1;
     G.securingBall = false;
@@ -125,7 +114,7 @@ function secureBall(G, playerId) {
 
     // Standing player already on the ball — resolve immediately
     if (p.status === 'active' && p.col === G.ball.col && p.row === G.ball.row) {
-        return _doSecureRoll(G, p);
+        return doSecureRoll(G, p);
     }
 
     G.activated    = p;
@@ -179,7 +168,7 @@ function declareKick(G, col, row) {
 
     const lander = playerAt(G, nc, nr);
     if (lander && isStanding(lander)) {
-        const tzs    = _countTackleZones(G, lander.side, nc, nr);
+        const tzs    = countTackleZones(G, lander.side, nc, nr);
         const target = Math.min(lander.ag + tzs, 6);
         const roll   = Math.floor(Math.random() * 6) + 1;
         if (roll >= target || roll === 6) {
@@ -215,8 +204,8 @@ function touchbackGiveBall(G, playerId) {
 
 if (typeof module !== 'undefined') {
     module.exports = {
-        _countTackleZones, scatterBall, tryPickup, checkTouchdown,
-        _doSecureRoll, secureBall,
+        scatterBall, tryPickup, checkTouchdown,
+        doSecureRoll, secureBall,
         isValidKickTarget, declareKick, touchbackGiveBall,
     };
 }

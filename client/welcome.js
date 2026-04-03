@@ -18,7 +18,12 @@ function startApp(homeTeam, awayTeam) {
     // Stash default teams for local play
     window._defaultHomeTeam = homeTeam;
     window._defaultAwayTeam = awayTeam;
+
     showScreen('welcome');
+
+    // Attempt silent reconnect in background if a saved session exists
+    const saved = _loadReconnectToken();
+    if (saved) connect().catch(() => {});
 }
 
 // ── Local game ────────────────────────────────────────────────────

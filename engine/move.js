@@ -2,11 +2,11 @@
 // Player movement: walking, rushing, dodging, standing up.
 
 if (typeof module !== 'undefined') {
-    var { playerAt, isAdjacent, isStanding,
+    var { playerAt, isAdjacent, isStanding, countTackleZones,
           endTurn, endActivation }           = require('./logic.js');
     var { rush, dodge }                      = require('./dice.js');
     var { scatterBall, tryPickup,
-          checkTouchdown, _doSecureRoll }    = require('./ball.js');
+          checkTouchdown, doSecureRoll }     = require('./ball.js');
     var { knockDown }                        = require('./block.js');
 }
 
@@ -32,13 +32,7 @@ function canMoveTo(G, player, col, row) {
 
     let dodgerolltarget = 0;
     if (needsDodge) {
-        const destTZs = G.players.filter(enemy =>
-            enemy.side !== player.side
-            && isStanding(enemy)
-            && Math.abs(enemy.col - col) <= 1
-            && Math.abs(enemy.row - row) <= 1
-            && !(enemy.col === col && enemy.row === row)
-        ).length;
+        const destTZs = countTackleZones(G, player.side, col, row);
         dodgerolltarget = Math.min(player.ag + destTZs, 6);
     }
 
@@ -138,7 +132,7 @@ function movePlayer(G, col, row) {
     // Ball pickup / secure
     let pickupMsg;
     if (G.securingBall && p.col === G.ball.col && p.row === G.ball.row) {
-        pickupMsg = _doSecureRoll(G, p);
+        pickupMsg = doSecureRoll(G, p);
     } else {
         pickupMsg = tryPickup(G, p);
     }

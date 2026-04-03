@@ -20,8 +20,8 @@ function connect() {
 
         NET.ws.onopen    = () => {
             resolve();
-            const token = _loadReconnectToken();
-            if (token) sendAction({ type: 'RECONNECT', roomId: token.roomId, side: token.side });
+            const saved = _loadReconnectToken();
+            if (saved) sendAction({ type: 'RECONNECT', roomId: saved.roomId, side: saved.side, token: saved.token });
         };
         NET.ws.onmessage = (event) => netReceive(JSON.parse(event.data));
         NET.ws.onclose   = () => {
@@ -80,7 +80,7 @@ function netReceive(msg) {
             NET.side   = msg.side;
             NET.roomId = msg.roomId;
             NET.online = true;
-            localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side }));
+            localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side, token: msg.token }));
             onRoomReady(msg.side);  // home waits for opponent
             break;
 
@@ -88,7 +88,7 @@ function netReceive(msg) {
             NET.side   = msg.side;
             NET.roomId = msg.roomId;
             NET.online = true;
-            localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side }));
+            localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side, token: msg.token }));
             // away player goes straight to game when START arrives — no waiting screen
             break;
 
@@ -97,6 +97,7 @@ function netReceive(msg) {
             // fall through to apply the initial G
 
         case 'UPDATE': {
+            document.getElementById('reconnect-overlay').classList.add('hidden');
             if (msg.logMsg) log(msg.logMsg);
             const prevSetupSide = G.setupSide;
             Object.assign(G, msg.G);
@@ -120,18 +121,29 @@ function netReceive(msg) {
             document.getElementById('reconnect-overlay').classList.remove('hidden');
             break;
 
-        case 'RECONNECTED':
-            document.getElementById('reconnect-overlay').classList.add('hidden');
+        case 'RECONNECTED': {
+            const saved = _loadReconnectToken();
+            NET.side   = saved.side;
+            NET.roomId = saved.roomId;
+            NET.online = true;
+            startGame(msg.homeTeam, msg.awayTeam);
             Object.assign(G, msg.G);
             fixReferences(G);
+            render();
+            document.getElementById('reconnect-overlay').classList.add('hidden');
+            break;
+        }
+
+        case 'OPPONENT_RECONNECTED':
+            Object.assign(G, msg.G);
+            fixReferences(G);
+            document.getElementById('reconnect-overlay').classList.add('hidden');
             render();
             break;
 
         case 'RECONNECT_FAILED':
             _clearReconnectToken();
-            document.getElementById('reconnect-overlay').classList.add('hidden');
             console.warn('Reconnect failed:', msg.msg);
-            showScreen('lobby');
             break;
 
         case 'ERROR':

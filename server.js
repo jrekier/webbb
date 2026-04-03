@@ -20,9 +20,13 @@ const MIME_TYPES = {
 };
 
 const httpServer = http.createServer((req, res) => {
-    const filePath = req.url === '/' ? '/index.html' : req.url;
-    const fullPath = path.join(__dirname, filePath);
-    const ext      = path.extname(filePath);
+    const rawPath  = req.url.split('?')[0];
+    const filePath = rawPath === '/' ? '/index.html' : rawPath;
+    const fullPath = path.join(__dirname, path.normalize(filePath));
+    if (!fullPath.startsWith(__dirname + path.sep)) {
+        res.writeHead(403); res.end('Forbidden'); return;
+    }
+    const ext      = path.extname(fullPath);
     const mimeType = MIME_TYPES[ext] || 'text/plain';
 
     fs.readFile(fullPath, (err, data) => {
@@ -86,6 +90,11 @@ function generateRoomId() {
     return id;
 }
 
+function generateToken() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    return Array.from({ length: 32 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
 function _releaseFromRoom(ws) {
     const old = roomOf(ws);
     if (!old) return;
@@ -95,11 +104,12 @@ function _releaseFromRoom(ws) {
 
 function createRoom(ws) {
     _releaseFromRoom(ws);  // drop any stale room association (e.g. from auto-reconnect)
-    const id   = generateRoomId();
-    const room = { id, home: ws, away: null, G: null, lastLogMsg: null };
+    const id        = generateRoomId();
+    const homeToken = generateToken();
+    const room      = { id, home: ws, away: null, G: null, lastLogMsg: null, tokens: { home: homeToken, away: null } };
     rooms.set(id, room);
     leaveLobby(ws);
-    ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id }));
+    ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id, token: homeToken }));
     console.log(`Room ${id} created`);
     broadcastLobbyUpdate();
     return room;
@@ -110,10 +120,12 @@ function joinRoom(ws, roomId) {
     const room = rooms.get(roomId);
     if (!room)       return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
     if (room.away)   return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room is full' }));
-    room.away = ws;
+    const awayToken   = generateToken();
+    room.away         = ws;
+    room.tokens.away  = awayToken;
     leaveLobby(ws);
     // Tell away player their side before START arrives so NET.side is set in time
-    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId }));
+    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId, token: awayToken }));
     console.log(`Room ${roomId}: away joined — starting game`);
     startGame(room);
     broadcastLobbyUpdate();
@@ -138,23 +150,25 @@ function broadcast(room, msg) {
     if (room.away) room.away.send(text);
 }
 
-function reconnectToRoom(ws, roomId, side) {
+function reconnectToRoom(ws, roomId, side, token) {
     const room = rooms.get(roomId);
     if (!room || !room.G) {
         ws.send(JSON.stringify({ type: 'RECONNECT_FAILED', msg: 'Room not found or game not started' }));
         return;
     }
-    if (room[side] !== null) {
-        ws.send(JSON.stringify({ type: 'RECONNECT_FAILED', msg: 'Slot already occupied' }));
+    if (!token || token !== room.tokens[side]) {
+        ws.send(JSON.stringify({ type: 'RECONNECT_FAILED', msg: 'Invalid token' }));
         return;
     }
+    // If the old socket is still open (refresh race condition), overwrite it — it will close on its
+    // own and the close handler will be a no-op since roomOf(oldWs) will return null.
     // Clear the countdown and reattach
     clearTimeout(room.reconnectTimer);
     room[side] = ws;
-    ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G }));
+    ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G, homeTeam: room.homeTeam, awayTeam: room.awayTeam }));
     const other = side === 'home' ? room.away : room.home;
-    if (other) other.send(JSON.stringify({ type: 'RECONNECTED', G: room.G }));
-    console.log(`Room ${roomId}: ${side} reconnected`);
+    console.log(`Room ${roomId}: ${side} reconnected — other slot: ${other ? 'present (readyState=' + other.readyState + ')' : 'empty'}`);
+    if (other && other.readyState === 1) other.send(JSON.stringify({ type: 'OPPONENT_RECONNECTED', G: room.G }));
 }
 
 function destroyRoom(room) {
@@ -171,7 +185,9 @@ function startGame(room) {
 
     GL.initFormations();
 
-    room.G = GL.createInitialState();
+    room.G        = GL.createInitialState();
+    room.homeTeam = DEFAULT_HOME;
+    room.awayTeam = DEFAULT_AWAY;
 
     const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   GL.FORMATION_HOME);
     const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, GL.FORMATION_AWAY);
@@ -202,7 +218,11 @@ wss.on('connection', (ws) => {
         if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);              return; }
         if (msg.type === 'CREATE_ROOM') { createRoom(ws);              return; }
         if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId);    return; }
-        if (msg.type === 'RECONNECT')   { reconnectToRoom(ws, msg.roomId, msg.side); return; }
+        if (msg.type === 'RECONNECT') {
+            if (msg.side !== 'home' && msg.side !== 'away') return;
+            reconnectToRoom(ws, msg.roomId, msg.side, msg.token);
+            return;
+        }
 
         // ── In-game messages ──
 
@@ -238,6 +258,10 @@ wss.on('connection', (ws) => {
         const room = roomOf(ws);
         if (!room) return;
         const side = sideOf(room, ws);
+
+        // If a new socket already took this slot (reconnect race), do nothing
+        if (room[side] !== ws) return;
+
         console.log(`Room ${room.id}: ${side} disconnected`);
 
         // Null out the socket but keep the room alive for 2 minutes
@@ -245,6 +269,7 @@ wss.on('connection', (ws) => {
         const other = side === 'home' ? room.away : room.home;
         if (other) other.send(JSON.stringify({ type: 'OPPONENT_DISCONNECTED' }));
 
+        clearTimeout(room.reconnectTimer);
         room.reconnectTimer = setTimeout(() => {
             console.log(`Room ${room.id}: reconnect timeout — destroying`);
             if (room.home) room.home.send(JSON.stringify({ type: 'ERROR', msg: 'Opponent did not reconnect' }));
@@ -323,7 +348,9 @@ function handleAction(room, msg) {
         }
         case 'BLOCK_FACE': {
             if (G.block && G.block.phase === 'pick-face') {
-                const face = G.block.rolls[msg.faceIdx];
+                const idx = msg.faceIdx;
+                if (!Number.isInteger(idx) || idx < 0 || idx >= G.block.rolls.length) break;
+                const face = G.block.rolls[idx];
                 if (face) room.lastLogMsg = GL.pickBlockFace(G, face);
             }
             break;
