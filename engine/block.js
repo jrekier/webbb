@@ -4,7 +4,7 @@
 if (typeof module !== 'undefined') {
     var { playerAt, isAdjacent, isStanding, inTackleZoneOf,
           endTurn, endActivation } = require('./logic.js');
-    var { BLOCK_FACES, rollBlockDice, rollArmourAndInjury, rollCrowdInjury } = require('./dice.js');
+    var { BLOCK_FACES, rollBlockDice, rollArmourAndInjury, rollInjury, rollCrowdInjury } = require('./dice.js');
     var { scatterBall, throwIn } = require('./ball.js');
 }
 
@@ -311,6 +311,128 @@ function resolveFollowUp(G, followUp) {
     return followUp ? `${att.name} follows up` : `${att.name} stays`;
 }
 
+// ── declareFoul / executeFoul / resolveArgueCall ──────────────────
+// Foul action: standing player moves adjacent to a prone/stunned enemy
+// and kicks them. Armor checked with 2d6 + assists − TZs.
+// Doubles on armor OR injury dice → ref spots it → Argue the Call.
+// Argue: roll 1d6 — 6 cancels ejection; 1-5 upholds it and ejects the coach
+// (that team can never argue again this game). One foul per team per turn.
+
+function declareFoul(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
+    if (p.status !== 'active') return null;
+    if (G.hasFouled) return null;
+    G.activated = p;
+    G.sel       = p;
+    G.fouling   = true;
+    return `${p.name} declares Foul — move adjacent to a prone/stunned enemy.`;
+}
+
+function executeFoul(G, targetId) {
+    if (!G.fouling || !G.activated) return null;
+    const att = G.activated;
+    const def = G.players.find(p => p.id === targetId);
+    if (!def || def.side === att.side) return null;
+    if (!isAdjacent(att, def)) return null;
+    if (def.status !== 'prone' && def.status !== 'stunned') return null;
+
+    // Assists: friendly standing players adjacent to def, not themselves marked by an enemy
+    const assists = G.players.filter(p =>
+        p.side === att.side && p.id !== att.id && isStanding(p) && isAdjacent(p, def)
+        && !G.players.some(e => e.side !== att.side && isStanding(e) && e.id !== def.id && isAdjacent(p, e))
+    ).length;
+
+    // Tackle zones on def's square from att's team
+    const tzs = G.players.filter(e =>
+        e.side === att.side && isStanding(e)
+        && Math.abs(e.col - def.col) <= 1 && Math.abs(e.row - def.row) <= 1
+        && !(e.col === def.col && e.row === def.row)
+    ).length;
+
+    const d1 = Math.floor(Math.random() * 6) + 1;
+    const d2 = Math.floor(Math.random() * 6) + 1;
+    const roll = d1 + d2 + assists - tzs;
+    let spotted = d1 === d2;  // ref may also spot doubles on the injury roll below
+
+    let modStr = '';
+    if (assists) modStr += `+${assists}`;
+    if (tzs)     modStr += `-${tzs}`;
+    let msg = `${att.name} fouls ${def.name}! ${d1}+${d2}${modStr} = ${roll} vs AV${def.av}. `;
+
+    const defCol = def.col, defRow = def.row;
+
+    if (roll > def.av) {
+        const { d1: di1, d2: di2, injuryRoll, outcome } = rollInjury(def);
+        if (di1 === di2) spotted = true;
+        msg += `AV broken! Inj ${injuryRoll}: `;
+        if (outcome === 'stunned') {
+            def.status = 'stunned';
+            msg += 'Stunned.';
+        } else if (outcome === 'ko') {
+            def.status = 'ko'; def.col = -1; def.row = -1;
+            msg += "KO'd!";
+        } else {
+            def.status = 'casualty'; def.col = -1; def.row = -1;
+            msg += 'CASUALTY!';
+        }
+        if (!G.ball.carrier && G.ball.col === defCol && G.ball.row === defRow) {
+            G.ball.col = defCol; G.ball.row = defRow;
+            msg += ' ' + scatterBall(G);
+        }
+    } else {
+        msg += 'AV holds.';
+    }
+
+    G.fouling   = false;
+    G.hasFouled = true;
+    endActivation(G);
+
+    if (spotted) {
+        msg += ' Ref spots the foul!';
+        if (G.coachEjected[att.side]) {
+            // Coach already gone — eject immediately, no argue
+            att.status = 'casualty'; att.col = -1; att.row = -1;
+            endTurn(G);
+            return msg + ` ${att.name} ejected (coach already sent off). TURNOVER`;
+        }
+        G.argueCallPending = { attId: att.id, side: att.side };
+        return msg + ' Argue the call?';
+    }
+
+    return msg;
+}
+
+// ── resolveArgueCall ──────────────────────────────────────────────
+// Called after executeFoul suspends into G.argueCallPending.
+// use=true: roll 1d6 — 6 cancels ejection, 1-5 upholds it and ejects the coach.
+// use=false: accept the ejection without risking the coach.
+
+function resolveArgueCall(G, use) {
+    if (!G.argueCallPending) return null;
+    const { attId, side } = G.argueCallPending;
+    G.argueCallPending = null;
+    const att = G.players.find(p => p.id === attId);
+    if (!att) return null;
+
+    if (use) {
+        const roll = Math.floor(Math.random() * 6) + 1;
+        if (roll === 6) {
+            return `Argue the call — rolled ${roll}: ejection overruled! ${att.name} stays on the pitch.`;
+        }
+        // Upheld — coach ejected too
+        G.coachEjected[side] = true;
+        att.status = 'casualty'; att.col = -1; att.row = -1;
+        endTurn(G);
+        return `Argue the call — rolled ${roll}: upheld! ${att.name} ejected! ${side.toUpperCase()} coach sent off for the rest of the game. TURNOVER`;
+    }
+
+    // Accept the call
+    att.status = 'casualty'; att.col = -1; att.row = -1;
+    endTurn(G);
+    return `${att.name} ejected. TURNOVER`;
+}
+
 // ── activateBlitz ─────────────────────────────────────────────────
 // Step 1: declare blitz. Prone blitzer stands up immediately.
 
@@ -352,5 +474,6 @@ if (typeof module !== 'undefined') {
         countAssists, blockDiceCount, getBlockTargets, getPushSquares,
         knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
         activateBlitz, setBlitzTarget, blitzBlock,
+        declareFoul, executeFoul, resolveArgueCall,
     };
 }

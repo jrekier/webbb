@@ -250,6 +250,20 @@ function clickPlayer(player) {
         return;
     }
 
+    // Foul — click an adjacent prone/stunned enemy while in foul mode
+    if (G.fouling && G.activated && player.side !== G.active
+            && (player.status === 'prone' || player.status === 'stunned')
+            && isAdjacent(G.activated, player)) {
+        if (NET.online) {
+            sendAction({ type: 'DO_FOUL', targetId: player.id });
+        } else {
+            const msg = executeFoul(G, player.id);
+            if (msg) log(msg);
+        }
+        render();
+        return;
+    }
+
     // Handoff — click an adjacent standing teammate while carrying the ball
     if (G.handingOff && G.activated && G.activated.hasBall
             && player.side === G.active && player.id !== G.activated.id
@@ -448,6 +462,17 @@ function onClickNoIntercept() {
     }
 }
 
+function onClickFoul() {
+    if (!G.sel || G.sel.side !== G.active) return;
+    if (NET.online) {
+        sendAction({ type: 'FOUL_DECLARE', playerId: G.sel.id });
+    } else {
+        const msg = declareFoul(G, G.sel.id);
+        if (msg) log(msg);
+        render();
+    }
+}
+
 function onClickHandoff() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (NET.online) {
@@ -537,8 +562,24 @@ function onClickEndTurn() {
 
 // ── updateButtons ────────────────────────────────────────────────
 function updateButtons() {
-    // Pass reroll choice — active player decides whether to spend the Pass skill
+    // Argue the call — fouling team decides whether to challenge the referee
     const myTurnNow = !NET.online || NET.side === G.active;
+    if (G.argueCallPending && !G.confirm
+            && (!NET.online || NET.side === G.argueCallPending.side)) {
+        G.confirm = {
+            prompt: 'Ref spotted the foul! Argue the call?',
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'ARGUE_CALL', use: true });
+                else { const m = resolveArgueCall(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'ARGUE_CALL', use: false });
+                else { const m = resolveArgueCall(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Pass reroll choice — active player decides whether to spend the Pass skill
     if (G.passRerollChoice && myTurnNow && !G.confirm) {
         const isFumble = G.passRerollChoice.isFumble;
         G.confirm = {
@@ -554,7 +595,7 @@ function updateButtons() {
         };
     }
 
-    const ALL_BTNS = ['btn-move','btn-block','btn-blitz',
+    const ALL_BTNS = ['btn-move','btn-block','btn-blitz','btn-foul',
                        'btn-secure-ball','btn-handoff','btn-pass','btn-throw','btn-no-intercept',
                        'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
 
@@ -596,6 +637,11 @@ function updateButtons() {
     const hasTargets  = canDeclare && G.sel
         && getBlockTargets(G, G.sel).length > 0;
     const canSecure   = canDeclare && !G.ball.carrier;
+    const canFoul     = myTurn && G.sel && G.sel.side === G.active
+        && !G.sel.usedAction && noAction && !G.hasFouled
+        && G.sel.status === 'active'
+        && G.players.some(p => p.side !== G.active
+            && (p.status === 'prone' || p.status === 'stunned') && p.col >= 0);
     const canHandoff  = myTurn && G.sel && G.sel.side === G.active
         && !G.sel.usedAction && noAction && !G.hasHandedOff
         && G.sel.status !== 'stunned';
@@ -605,6 +651,7 @@ function updateButtons() {
     const canThrow    = myTurn && G.passing === true && G.activated && G.activated.hasBall;
 
     show('btn-move',        canDeclare && G.passing !== true);
+    show('btn-foul',        canFoul    && G.passing !== true);
     show('btn-block',       hasTargets && !selProne && G.passing !== true);
     show('btn-blitz',       canBlitz   && G.passing !== true);
     show('btn-secure-ball', canSecure  && G.passing !== true);

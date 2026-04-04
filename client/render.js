@@ -378,6 +378,17 @@ function drawHighlights() {
         hlCell(def.col, def.row, fill, border, false);
     }
 
+    // Foul targets — dark red on adjacent prone/stunned enemies
+    if (G.fouling && G.activated) {
+        G.players.filter(p =>
+            p.side !== G.active
+            && (p.status === 'prone' || p.status === 'stunned')
+            && p.col >= 0 && isAdjacent(G.activated, p)
+        ).forEach(t => {
+            hlCell(t.col, t.row, 'rgba(180,30,30,0.30)', 'rgba(220,50,50,0.8)', false);
+        });
+    }
+
     // Handoff targets — cyan on adjacent standing teammates when carrier has ball
     if (G.handingOff && G.activated && G.activated.hasBall) {
         G.players.filter(p =>

@@ -23,6 +23,10 @@ function createInitialState() {
         hasBlitzed:         false,
         hasPassed:          false,
         hasHandedOff:       false,
+        hasFouled:          false,
+        fouling:            false,
+        argueCallPending:   null,
+        coachEjected:       { home: false, away: false },
         handingOff:         false,
         hasDodged:          false,
         blitzFromProne:     false,
@@ -114,6 +118,8 @@ function cancelActivation(G) {
         G.blitz          = null;
     }
     G.securingBall       = false;
+    G.fouling            = false;
+    G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
     G.hasPassReroll      = false;
@@ -131,6 +137,8 @@ function endActivation(G) {
     G.blitz              = null;
     G.stoodUpFromProne   = false;
     G.hasDodged          = false;
+    G.fouling            = false;
+    G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
     G.hasPassReroll      = false;
@@ -156,9 +164,12 @@ function endTurn(G) {
     G.hasBlitzed     = false;
     G.hasPassed      = false;
     G.hasHandedOff   = false;
+    G.hasFouled      = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
     G.securingBall       = false;
+    G.fouling            = false;
+    G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
     G.hasPassReroll      = false;
@@ -219,10 +230,13 @@ function startHalfTime(G) {
     G.hasBlitzed         = false;
     G.hasPassed          = false;
     G.hasHandedOff       = false;
+    G.hasFouled          = false;
     G.hasDodged          = false;
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
+    G.fouling            = false;
+    G.argueCallPending   = null;
     G.handingOff         = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
@@ -347,12 +361,14 @@ function resetAfterTouchdown(G, scoringSide) {
     G.blitz              = null;
     G.hasBlitzed         = false;
     G.hasPassed          = false;
+    G.hasHandedOff       = false;
+    G.hasFouled          = false;
     G.hasDodged          = false;
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
-    G.handingOff         = false;
-    G.hasHandedOff       = false;
+    G.fouling            = false;
+    G.argueCallPending   = null;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
 

@@ -129,7 +129,7 @@ function movePlayer(G, col, row) {
     G.sel = p;
     // Don't auto-end if a declared action that costs no MA still needs resolving
     // (blitz is excluded: the block costs 1 MA, so MA=0 means no block possible)
-    if (p.maLeft + p.rushLeft === 0 && !G.passing && !G.handingOff) endActivation(G);
+    if (p.maLeft + p.rushLeft === 0 && !G.passing && !G.handingOff && !G.fouling) endActivation(G);
 
     // Ball pickup / secure
     let pickupMsg;

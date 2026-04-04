@@ -649,6 +649,12 @@ function _openWheel(player, px, py) {
                     label: 'Block', color: '#ff9090', bg: 'rgba(160,30,30,0.90)',
                     fn: onClickBlock,
                 });
+            if (!G.hasFouled && G.players.some(p =>
+                    p.side !== G.active && (p.status === 'prone' || p.status === 'stunned') && p.col >= 0))
+                actions.push({
+                    label: 'Foul', color: '#ff9090', bg: 'rgba(120,20,20,0.90)',
+                    fn: onClickFoul,
+                });
             if (!G.hasBlitzed && G.players.some(p => p.side !== G.active && isStanding(p)))
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
