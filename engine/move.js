@@ -99,6 +99,7 @@ function movePlayer(G, col, row) {
     p.row = row;
     if (!needsrush) p.maLeft   -= 1;
     else            p.rushLeft -= 1;
+    G.stoodUpFromProne = false;
     G.sel = p;
     // Don't auto-end if a declared action that costs no MA still needs resolving
     // (blitz is excluded: the block costs 1 MA, so MA=0 means no block possible)

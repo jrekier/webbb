@@ -554,15 +554,18 @@ function updateButtons() {
     const myTurn     = !NET.online || NET.side === G.active;
     const noAction   = !G.activated && !G.block;
     const selProne   = G.sel && G.sel.status === 'prone';
+    const selStunned = G.sel && G.sel.status === 'stunned';
     const canDeclare = myTurn && G.sel
         && G.sel.side    === G.active
         && !G.sel.usedAction
         && noAction
+        && !selStunned
         && (!selProne || G.sel.maLeft + G.sel.rushLeft >= 3);
     const canBlitz = myTurn && G.sel
         && G.sel.side    === G.active
         && !G.sel.usedAction
         && noAction
+        && !selStunned
         && !G.hasBlitzed
         && G.players.some(p => p.side !== G.active && isStanding(p));
     const hasTargets  = canDeclare && G.sel

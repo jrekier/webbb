@@ -617,7 +617,7 @@ function _openWheel(player, px, py) {
         }
     }
     // Unactivated player on active side — declare actions
-    else if (myTurn && noAction && player.side === G.active && !player.usedAction) {
+    else if (myTurn && noAction && player.side === G.active && !player.usedAction && player.status !== 'stunned') {
         if (player.status === 'prone') {
             if (player.maLeft + player.rushLeft >= 3)
                 actions.push({
