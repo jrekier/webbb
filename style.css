@@ -438,6 +438,9 @@ canvas {
 .action-btn.end-turn         { border-color: var(--gold); color: var(--gold); flex-basis: 100%; }
 .action-btn.end-turn:hover   { background: rgba(138,106,32,0.08); }
 
+#btn-no-intercept,
+#mobile-btn-no-intercept     { letter-spacing: 0.5px; min-width: 82px; }
+
 /* ── Online strip ─────────────────────────────────────────────── */
 #online-strip {
     padding: 8px 14px;

@@ -27,6 +27,7 @@ function createInitialState() {
         securingBall:       false,
         passing:            false,
         hasPassReroll:      false,
+        interceptionChoice: null,
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
     };
@@ -102,10 +103,11 @@ function cancelActivation(G) {
         G.hasBlitzed     = false;
         G.blitz          = null;
     }
-    G.securingBall = false;
-    G.passing      = false;
-    G.hasPassReroll = false;
-    G.activated    = null;
+    G.securingBall      = false;
+    G.passing           = false;
+    G.hasPassReroll     = false;
+    G.interceptionChoice = null;
+    G.activated         = null;
     return `${name} — action cancelled`;
 }
 
@@ -114,10 +116,11 @@ function endActivation(G) {
     const name = G.activated.pos;
     G.activated.usedAction = true;
     G.activated    = null;
-    G.blitz        = null;
-    G.hasDodged    = false;
-    G.passing      = false;
-    G.hasPassReroll = false;
+    G.blitz              = null;
+    G.hasDodged          = false;
+    G.passing            = false;
+    G.hasPassReroll      = false;
+    G.interceptionChoice = null;
     return `${name} done`;
 }
 
@@ -139,9 +142,10 @@ function endTurn(G) {
     G.hasPassed      = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
-    G.securingBall   = false;
-    G.passing        = false;
-    G.hasPassReroll  = false;
+    G.securingBall       = false;
+    G.passing            = false;
+    G.hasPassReroll      = false;
+    G.interceptionChoice = null;
     // Turn increments when the receiver becomes active again (completing a full round).
     if (G.active === G.receiver) G.turn += 1;
 
@@ -190,18 +194,19 @@ function startHalfTime(G) {
     _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME, [5, 15]);
     _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY, [5, 4]);
 
-    G.activated      = null;
-    G.sel            = null;
-    G.block          = null;
-    G.blitz          = null;
-    G.hasBlitzed     = false;
-    G.hasPassed      = false;
-    G.hasDodged      = false;
-    G.blitzFromProne = false;
-    G.securingBall   = false;
-    G.ball           = { col: -1, row: -1, carrier: null };
-    G.phase          = 'setup';
-    G.setupSide      = G.kicker;
+    G.activated          = null;
+    G.sel                = null;
+    G.block              = null;
+    G.blitz              = null;
+    G.hasBlitzed         = false;
+    G.hasPassed          = false;
+    G.hasDodged          = false;
+    G.blitzFromProne     = false;
+    G.securingBall       = false;
+    G.interceptionChoice = null;
+    G.ball               = { col: -1, row: -1, carrier: null };
+    G.phase              = 'setup';
+    G.setupSide          = G.kicker;
 
     const koSummary = koMsgs.length ? ` KO rolls: ${koMsgs.join(', ')}.` : '';
     return `HALF TIME!${koSummary} Half 2: ${G.kicker.toUpperCase()} kicks off — set up your team.`;
@@ -314,15 +319,16 @@ function resetAfterTouchdown(G, scoringSide) {
     _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME, [5, 15]);
     _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY, [5, 4]);
 
-    G.activated      = null;
-    G.sel            = null;
-    G.block          = null;
-    G.blitz          = null;
-    G.hasBlitzed     = false;
-    G.hasPassed      = false;
-    G.hasDodged      = false;
-    G.blitzFromProne = false;
-    G.securingBall   = false;
+    G.activated          = null;
+    G.sel                = null;
+    G.block              = null;
+    G.blitz              = null;
+    G.hasBlitzed         = false;
+    G.hasPassed          = false;
+    G.hasDodged          = false;
+    G.blitzFromProne     = false;
+    G.securingBall       = false;
+    G.interceptionChoice = null;
 
     // Scoring team kicks off the next drive; both sides set up again
     G.kicker    = scoringSide;

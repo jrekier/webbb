@@ -242,7 +242,7 @@ wss.on('connection', (ws) => {
         if (msg.type === 'KICK_AIM')      { handleKickAim(room, side, msg);           return; }
         if (msg.type === 'TOUCHBACK')     { handleTouchback(room, side, msg);         return; }
 
-        const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP'].includes(msg.type);
+        const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP', 'CHOOSE_INTERCEPTOR'].includes(msg.type);
         if (!turnFree && side !== room.G.active) {
             ws.send(JSON.stringify({ type: 'ERROR', msg: 'Not your turn' }));
             return;
@@ -333,8 +333,9 @@ function handleAction(room, msg) {
         case 'END_TURN':      room.lastLogMsg = GL.endTurn(G);                          break;
         case 'STAND_UP':      room.lastLogMsg = GL.standUp(G, msg.playerId);            break;
         case 'SECURE_BALL':   room.lastLogMsg = GL.secureBall(G, msg.playerId);         break;
-        case 'PASS_DECLARE':  room.lastLogMsg = GL.declarePass(G, msg.playerId);        break;
-        case 'THROW_BALL':    room.lastLogMsg = GL.throwBall(G, msg.col, msg.row);      break;
+        case 'PASS_DECLARE':        room.lastLogMsg = GL.declarePass(G, msg.playerId);          break;
+        case 'THROW_BALL':          room.lastLogMsg = GL.throwBall(G, msg.col, msg.row);        break;
+        case 'CHOOSE_INTERCEPTOR':  room.lastLogMsg = GL.chooseInterceptor(G, msg.playerId);    break;
         case 'BLITZ_DECLARE': room.lastLogMsg = GL.activateBlitz(G, msg.playerId);      break;
         case 'BLITZ_TARGET':  room.lastLogMsg = GL.setBlitzTarget(G, msg.defId);        break;
         case 'BLITZ_START': {

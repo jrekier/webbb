@@ -114,9 +114,11 @@ function drawInspectOverlay() {
 // Draws per-cell range bands and a hover highlight centered on the passer.
 
 function drawPassTargetingOverlay() {
-    if (G.passing !== 'targeting' || !G.activated || !ctx) return;
+    if (!G.activated || !ctx) return;
     const p = G.activated;
-    if (!p.hasBall) return;
+    const inTargeting        = G.passing === 'targeting' && p.hasBall;
+    const inInterceptionChoice = !!G.interceptionChoice;
+    if (!inTargeting && !inInterceptionChoice) return;
 
     // Drawn in world space (inside ctx.save/translate/restore in render()).
     // No cameraY adjustment needed here.
@@ -130,89 +132,142 @@ function drawPassTargetingOverlay() {
         { max: 99, fill: 'rgba(220,50,50,0.11)',  stroke: 'rgba(220,50,50,0.75)',  label: 'Bomb'  },
     ];
 
-    // Per-cell tint
-    for (let c = 0; c < COLS; c++) {
-        for (let r = 0; r < ROWS; r++) {
-            const dist = Math.max(Math.abs(c - p.col), Math.abs(r - p.row));
-            if (dist === 0) continue;
-            const band = BANDS.find(b => dist <= b.max);
-            if (!band) continue;
-            ctx.fillStyle = band.fill;
-            ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
-        }
-    }
-
-    // Band boundary squares at distances 3, 6, 9
-    ctx.lineWidth = 1.5;
-    for (const band of BANDS.slice(0, 3)) {
-        const d  = band.max;
-        ctx.strokeStyle = band.stroke;
-        ctx.strokeRect((p.col - d) * CELL, (p.row - d) * CELL, (d * 2 + 1) * CELL, (d * 2 + 1) * CELL);
-    }
-
-    // Range labels — drawn at mid-band height in the passer's column
     const fs = Math.max(8, Math.floor(CELL * 0.22));
-    ctx.font         = `bold ${fs}px 'IBM Plex Mono', monospace`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    const midDists   = [2, 5, 8];   // centre of Quick, Short, Long bands
-    for (let i = 0; i < 3; i++) {
-        const ly = (p.row - midDists[i]) * CELL + CELL / 2;
-        if (ly < 0 || ly > ROWS * CELL) continue;
-        ctx.fillStyle = BANDS[i].stroke;
-        ctx.fillText(BANDS[i].label, p.col * CELL + CELL / 2, ly);
-    }
 
-    // Hover highlight with range tooltip
-    if (passHover && !(passHover.col === p.col && passHover.row === p.row)) {
-        const { col: hc, row: hr } = passHover;
-        const dist = Math.max(Math.abs(hc - p.col), Math.abs(hr - p.row));
-        const band = BANDS.find(b => dist <= b.max);
-        if (band) {
-            ctx.fillStyle   = band.stroke.replace('0.75', '0.30');
-            ctx.fillRect(hc * CELL, hr * CELL, CELL, CELL);
-            ctx.strokeStyle = band.stroke;
-            ctx.lineWidth   = 2;
-            ctx.strokeRect(hc * CELL, hr * CELL, CELL, CELL);
-
-            // Tooltip above the hovered cell
-            const label = `${band.label} (${dist}sq)`;
-            ctx.font      = `bold ${fs}px 'IBM Plex Mono', monospace`;
-            ctx.textAlign = 'center';
-            const tw      = ctx.measureText(label).width + 8;
-            const tx      = hc * CELL + CELL / 2;
-            const ty      = hr * CELL - fs - 6;
-            ctx.fillStyle = 'rgba(0,0,0,0.72)';
-            ctx.fillRect(tx - tw / 2, ty, tw, fs + 4);
-            ctx.fillStyle    = '#fff';
-            ctx.textBaseline = 'top';
-            ctx.fillText(label, tx, ty + 2);
+    // Range bands — only shown while actively targeting, not during interception choice
+    if (inTargeting) {
+        for (let c = 0; c < COLS; c++) {
+            for (let r = 0; r < ROWS; r++) {
+                const dist = Math.max(Math.abs(c - p.col), Math.abs(r - p.row));
+                if (dist === 0) continue;
+                const band = BANDS.find(b => dist <= b.max);
+                if (!band) continue;
+                ctx.fillStyle = band.fill;
+                ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+            }
         }
 
-        // Trajectory corridor — thick semi-transparent line from passer to hover
-        const ax = p.col  * CELL + CELL / 2;
-        const ay = p.row  * CELL + CELL / 2;
-        const bx = hc    * CELL + CELL / 2;
-        const by = hr    * CELL + CELL / 2;
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.20)';
-        ctx.lineWidth   = CELL * 2;
-        ctx.lineCap     = 'round';
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-        ctx.restore();
+        ctx.lineWidth = 1.5;
+        for (const band of BANDS.slice(0, 3)) {
+            const d = band.max;
+            ctx.strokeStyle = band.stroke;
+            ctx.strokeRect((p.col - d) * CELL, (p.row - d) * CELL, (d * 2 + 1) * CELL, (d * 2 + 1) * CELL);
+        }
 
-        // Interceptor cell highlights
-        const interceptors = (typeof getInterceptors === 'function')
-            ? getInterceptors(G, p, hc, hr) : [];
-        for (const ip of interceptors) {
-            ctx.fillStyle   = 'rgba(255,140,0,0.35)';
-            ctx.fillRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
-            ctx.strokeStyle = 'rgba(255,140,0,0.90)';
-            ctx.lineWidth   = 2;
-            ctx.strokeRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
+        ctx.font         = `bold ${fs}px 'IBM Plex Mono', monospace`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        const midDists   = [2, 5, 8];
+        for (let i = 0; i < 3; i++) {
+            const ly = (p.row - midDists[i]) * CELL + CELL / 2;
+            if (ly < 0 || ly > ROWS * CELL) continue;
+            ctx.fillStyle = BANDS[i].stroke;
+            ctx.fillText(BANDS[i].label, p.col * CELL + CELL / 2, ly);
+        }
+    }
+
+    // Determine trajectory endpoints
+    let idealTgt = null;  // declared/accurate destination (passer's intended square)
+    let actualTgt = null; // post-scatter actual destination (what opponents intercept)
+
+    if (inTargeting && passHover && !(passHover.col === p.col && passHover.row === p.row)) {
+        // Pre-throw: only the ideal trajectory is known
+        idealTgt  = passHover;
+        actualTgt = null; // not yet known
+    } else if (inInterceptionChoice) {
+        const ic = G.interceptionChoice;
+        idealTgt  = { col: ic.declaredCol, row: ic.declaredRow };
+        actualTgt = { col: ic.actualCol,   row: ic.actualRow   };
+    }
+
+    if (idealTgt || actualTgt) {
+        const px0 = p.col * CELL + CELL / 2;
+        const py0 = p.row * CELL + CELL / 2;
+
+        // Shared corridor drawing helper — modify color here to restyle both trajectories at once
+        const drawTrajectory = (col, row, color) => {
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth   = CELL * 2;
+            ctx.lineCap     = 'round';
+            ctx.beginPath();
+            ctx.moveTo(px0, py0);
+            ctx.lineTo(col * CELL + CELL / 2, row * CELL + CELL / 2);
+            ctx.stroke();
+            ctx.restore();
+        };
+
+        if (idealTgt) {
+            const { col: hc, row: hr } = idealTgt;
+
+            // Hover highlight + tooltip (targeting mode only)
+            if (inTargeting) {
+                const dist = Math.max(Math.abs(hc - p.col), Math.abs(hr - p.row));
+                const band = BANDS.find(b => dist <= b.max);
+                if (band) {
+                    ctx.fillStyle   = band.stroke.replace('0.75', '0.30');
+                    ctx.fillRect(hc * CELL, hr * CELL, CELL, CELL);
+                    ctx.strokeStyle = band.stroke;
+                    ctx.lineWidth   = 2;
+                    ctx.strokeRect(hc * CELL, hr * CELL, CELL, CELL);
+
+                    const label = `${band.label} (${dist}sq)`;
+                    ctx.font      = `bold ${fs}px 'IBM Plex Mono', monospace`;
+                    ctx.textAlign = 'center';
+                    const tw      = ctx.measureText(label).width + 8;
+                    const tx      = hc * CELL + CELL / 2;
+                    const ty      = hr * CELL - fs - 6;
+                    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                    ctx.fillRect(tx - tw / 2, ty, tw, fs + 4);
+                    ctx.fillStyle    = '#fff';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(label, tx, ty + 2);
+                }
+            }
+
+            // Ideal trajectory — white in targeting mode, blue-white during interception choice
+            drawTrajectory(hc, hr,
+                inInterceptionChoice ? 'rgba(160,200,255,0.20)' : 'rgba(255,255,255,0.20)');
+        }
+
+        // Draw actual (post-scatter) trajectory — same corridor style, orange tint
+        if (actualTgt) {
+            const { col: ac, row: ar } = actualTgt;
+            const isDifferent = ac !== idealTgt?.col || ar !== idealTgt?.row;
+
+            drawTrajectory(ac, ar, 'rgba(255,180,80,0.22)');
+
+            // Mark actual landing square, with an X if different from declared target
+            if (isDifferent) {
+                ctx.fillStyle   = 'rgba(255,200,50,0.30)';
+                ctx.fillRect(ac * CELL, ar * CELL, CELL, CELL);
+                ctx.strokeStyle = 'rgba(255,200,50,0.90)';
+                ctx.lineWidth   = 2;
+                ctx.strokeRect(ac * CELL, ar * CELL, CELL, CELL);
+            }
+
+            // Interceptor highlights along the actual trajectory
+            const interceptorList = G.players.filter(pl =>
+                G.interceptionChoice.interceptorIds.includes(pl.id));
+            for (const ip of interceptorList) {
+                ctx.fillStyle   = 'rgba(255,140,0,0.35)';
+                ctx.fillRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
+                ctx.strokeStyle = 'rgba(255,140,0,0.90)';
+                ctx.lineWidth   = 2;
+                ctx.strokeRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
+            }
+        } else if (idealTgt && inTargeting) {
+            // Targeting mode: show interceptors on ideal trajectory
+            const { col: hc, row: hr } = idealTgt;
+            const interceptorList = typeof getInterceptors === 'function'
+                ? getInterceptors(G, p, hc, hr) : [];
+            for (const ip of interceptorList) {
+                ctx.fillStyle   = 'rgba(255,140,0,0.35)';
+                ctx.fillRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
+                ctx.strokeStyle = 'rgba(255,140,0,0.90)';
+                ctx.lineWidth   = 2;
+                ctx.strokeRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
+            }
         }
     }
 
@@ -316,6 +371,8 @@ function syncMobileHud() {
             || (G.activated && canStillCancel(G) && !G.block)));
     mobileShow('mobile-btn-throw',
         !inSetup && !inSpecial && myTurn && G.passing === true && G.activated && G.activated.hasBall);
+    mobileShow('mobile-btn-no-intercept',
+        !inSetup && !inSpecial && !!G.interceptionChoice && (!NET.online || NET.side !== G.active));
     mobileShow('mobile-btn-stop',
         !inSetup && !inSpecial && myTurn && G.activated && !canStillCancel(G) && !G.block && G.passing !== 'targeting');
     mobileShow('mobile-btn-end-turn',
@@ -494,12 +551,29 @@ function _onLongPress(clientX, clientY) {
 function _openWheel(player, px, py) {
     const myTurn   = !NET.online || NET.side === G.active;
     const noAction = !G.activated && !G.block;
-    if (!myTurn) return false;
+
+    // Non-active player may tap a highlighted interceptor during interception choice
+    const canIntercept = G.interceptionChoice
+        && G.interceptionChoice.interceptorIds.includes(player.id)
+        && (!NET.online || NET.side !== G.active);
+
+    if (!myTurn && !canIntercept) return false;
 
     const actions = [];
 
-    // Activated player — navigation options
-    if (G.activated && G.activated.id === player.id && !G.block) {
+    if (canIntercept) {
+        const pid = player.id;
+        actions.push({
+            label: 'Inter-\ncept', color: '#ffaa40', bg: 'rgba(160,80,0,0.90)',
+            fn: () => {
+                if (NET.online) sendAction({ type: 'CHOOSE_INTERCEPTOR', playerId: pid });
+                else { const m = chooseInterceptor(G, pid); if (m) log(m); }
+            },
+        });
+    }
+
+    // Active-player actions (only for the team whose turn it is)
+    if (myTurn && G.activated && G.activated.id === player.id && !G.block) {
         if (G.passing === true && G.activated.hasBall) {
             actions.push({
                 label: 'Throw', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
@@ -519,7 +593,7 @@ function _openWheel(player, px, py) {
         }
     }
     // Unactivated player on active side — declare actions
-    else if (noAction && player.side === G.active && !player.usedAction) {
+    else if (myTurn && noAction && player.side === G.active && !player.usedAction) {
         if (player.status === 'prone') {
             actions.push({
                 label: 'Stand\nUp', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
@@ -529,6 +603,11 @@ function _openWheel(player, px, py) {
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
                     fn: onClickBlitz,
+                });
+            if (!G.hasPassed)
+                actions.push({
+                    label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
+                    fn: onClickPass,
                 });
         } else {
             actions.push({

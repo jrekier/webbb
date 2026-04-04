@@ -231,6 +231,25 @@ function clickPlayer(player) {
 
     G.sel = player;
 
+    // Interception choice — non-active player taps a highlighted interceptor
+    if (G.interceptionChoice && G.interceptionChoice.interceptorIds.includes(player.id)
+            && (!NET.online || NET.side !== G.active)) {
+        G.confirm = {
+            prompt: `Use ${player.name} to intercept?`,
+            onYes: () => {
+                if (NET.online) {
+                    sendAction({ type: 'CHOOSE_INTERCEPTOR', playerId: player.id });
+                } else {
+                    const m = chooseInterceptor(G, player.id);
+                    if (m) log(m);
+                }
+            },
+            onNo: null,
+        };
+        render();
+        return;
+    }
+
     // Pass targeting mode — throw to this player's square
     if (G.passing === 'targeting' && G.activated && player.id !== G.activated.id) {
         passHover = null;
@@ -387,6 +406,7 @@ function _doThrow(col, row) {
     if (!G.activated) return;
     const interceptors = getInterceptors(G, G.activated, col, row);
     const execute = () => {
+        passHover = null;
         if (NET.online) {
             sendAction({ type: 'THROW_BALL', col, row });
         } else {
@@ -397,9 +417,10 @@ function _doThrow(col, row) {
     if (interceptors.length === 0) {
         execute();
     } else {
-        const names = interceptors.map(p => p.name).join(', ');
+        // Show trajectory + interceptors in the overlay while confirm is visible
+        passHover = { col, row };
         G.confirm = {
-            prompt: `${names} may intercept! Throw anyway?`,
+            prompt: `Confirm throw?`,
             onYes: execute,
             onNo:  () => { G.passing = 'targeting'; render(); },
         };
@@ -413,6 +434,16 @@ function onClickThrow() {
     passHover = null;
     log(`${G.activated.name} ready to throw — click target square.`);
     render();
+}
+
+function onClickNoIntercept() {
+    if (!G.interceptionChoice) return;
+    if (NET.online) {
+        sendAction({ type: 'CHOOSE_INTERCEPTOR', playerId: null });
+    } else {
+        const msg = chooseInterceptor(G, null);
+        if (msg) log(msg);
+    }
 }
 
 function onClickPass() {
@@ -494,8 +525,8 @@ function onClickEndTurn() {
 // ── updateButtons ────────────────────────────────────────────────
 function updateButtons() {
     const ALL_BTNS = ['btn-move','btn-block','btn-blitz','btn-stand-up',
-                       'btn-secure-ball','btn-pass','btn-throw','btn-cancel','btn-stop','btn-end-turn',
-                       'btn-confirm-setup'];
+                       'btn-secure-ball','btn-pass','btn-throw','btn-no-intercept',
+                       'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
 
     if (G.phase === 'setup') {
         ALL_BTNS.forEach(id => show(id, false));
@@ -537,7 +568,9 @@ function updateButtons() {
     const hasTargets  = canDeclare && G.sel
         && getBlockTargets(G, G.sel).length > 0;
     const canSecure   = canDeclare && !G.ball.carrier;
-    const canPass     = canDeclare && !G.hasPassed;
+    const canPass     = myTurn && G.sel && G.sel.side === G.active
+        && !G.sel.usedAction && noAction && !G.hasPassed
+        && G.sel.status !== 'stunned';
     const canThrow    = myTurn && G.passing === true && G.activated && G.activated.hasBall;
 
     show('btn-move',        canDeclare && G.passing !== true);
@@ -545,8 +578,10 @@ function updateButtons() {
     show('btn-blitz',       canBlitz   && G.passing !== true);
     show('btn-stand-up',    canStand);
     show('btn-secure-ball', canSecure  && G.passing !== true);
-    show('btn-pass',        canPass    && G.passing !== true);
-    show('btn-throw',       canThrow);
+    show('btn-pass',         canPass    && G.passing !== true);
+    show('btn-throw',        canThrow);
+    const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
+    show('btn-no-intercept', canChooseNoIntercept);
     show('btn-cancel',   myTurn && (G.passing === 'targeting'
                             || G.block === 'targeting'
                             || (G.activated && canStillCancel(G) && !G.block)));

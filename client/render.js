@@ -350,7 +350,7 @@ function drawPitch() {
 // ── Highlights ────────────────────────────────────────────────────
 function drawHighlights() {
     // Movement highlights — green fill + inset border – orange if rush needed
-    if (G.activated && !G.block && G.blitz !== 'targeting') {
+    if (G.activated && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && !G.interceptionChoice) {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, G.activated, c, r);

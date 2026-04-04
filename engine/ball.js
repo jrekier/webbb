@@ -265,23 +265,6 @@ function _checkPassTurnover(G, passerSide, msg) {
     return msg + ' TURNOVER';
 }
 
-function _resolveInaccuratePass(G, p, targetCol, targetRow, msg) {
-    const passerSide = p.side;
-    p.hasBall      = false;
-    G.ball.carrier = null;
-    G.ball.col     = targetCol;
-    G.ball.row     = targetRow;
-    G.passing      = false;
-    G.hasPassed    = true;
-    endActivation(G);
-
-    msg += `Inaccurate! Ball scatters ×3 from (${targetCol},${targetRow}):`;
-    const { msg: scatterMsg, done } = _scatterNTimes(G, 3);
-    msg += ' ' + scatterMsg;
-    if (!done) msg += _catchAtSquare(G, G.ball.col, G.ball.row, true);
-
-    return _checkPassTurnover(G, passerSide, msg);
-}
 
 function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
     const passerSide = p.side;
@@ -395,29 +378,102 @@ function throwBall(G, targetCol, targetRow) {
         accurate = reroll === 6 || reroll >= target;
     }
 
-    // Interception attempts (modifier depends on whether pass is accurate)
-    for (const interceptor of getInterceptors(G, p, targetCol, targetRow)) {
-        const iMod    = accurate ? 3 : 2;
-        const iTzs    = countTackleZones(G, interceptor.side, interceptor.col, interceptor.row);
-        const iTarget = Math.min(interceptor.ag + iMod + iTzs, 6);
-        const iRoll   = Math.floor(Math.random() * 6) + 1;
-        const iHit    = iRoll === 6 || iRoll >= iTarget;
-        msg += `${interceptor.name} intercepts (${iRoll} vs ${iTarget}+): ${iHit ? 'SUCCESS!' : 'failed.'} `;
-        if (iHit) {
-            interceptor.hasBall = true;
-            G.ball.carrier      = interceptor;
-            G.ball.col          = interceptor.col;
-            G.ball.row          = interceptor.row;
-            p.hasBall           = false;
-            G.passing           = false;
-            G.hasPassed         = true;
-            endTurn(G);
-            return msg + 'TURNOVER';
+    // For inaccurate passes: pre-scatter to find the actual landing square.
+    // This determines the real trajectory that opponents can intercept.
+    let actualCol = targetCol, actualRow = targetRow;
+    let scatterMsg = '';
+
+    if (!accurate) {
+        p.hasBall      = false;
+        G.ball.carrier = null;
+        G.ball.col     = targetCol;
+        G.ball.row     = targetRow;
+        msg += `Inaccurate! Ball scatters ×3 from (${targetCol},${targetRow}): `;
+        const sc = _scatterNTimes(G, 3);
+        scatterMsg = sc.msg + ' ';
+        msg       += scatterMsg;
+        if (sc.done) {
+            // Ball went OOB — throwIn already resolved, no interception possible
+            G.passing   = false;
+            G.hasPassed = true;
+            const passerSide = p.side;
+            endActivation(G);
+            return _checkPassTurnover(G, passerSide, msg);
         }
+        actualCol = G.ball.col;
+        actualRow = G.ball.row;
+    }
+
+    // Check for interceptors on the actual trajectory (passer → actual landing)
+    const interceptors = getInterceptors(G, p, actualCol, actualRow);
+    if (interceptors.length > 0) {
+        G.passing            = false;
+        G.interceptionChoice = {
+            declaredCol: targetCol, declaredRow: targetRow,   // ideal (accurate) trajectory
+            actualCol,   actualRow,                           // post-scatter trajectory
+            accurate,    scatterMsg,
+            interceptorIds: interceptors.map(i => i.id),
+        };
+        return msg + `Pass in flight — opponent must choose an interceptor.`;
     }
 
     if (accurate) return _resolveAccuratePass(G, p, targetCol, targetRow, msg);
-    return _resolveInaccuratePass(G, p, targetCol, targetRow, msg);
+    return _resolveInaccurateAtLanding(G, p, actualCol, actualRow, msg);
+}
+
+// ── _resolveInaccurateAtLanding ───────────────────────────────────
+// Ball has already been pre-scattered to G.ball.col/row (= actualCol,actualRow)
+// and p.hasBall has already been cleared. Attempt catch and check turnover.
+
+function _resolveInaccurateAtLanding(G, p, actualCol, actualRow, msg) {
+    const passerSide = p.side;
+    G.passing   = false;
+    G.hasPassed = true;
+    endActivation(G);
+    msg += _catchAtSquare(G, actualCol, actualRow, true);
+    return _checkPassTurnover(G, passerSide, msg);
+}
+
+// ── chooseInterceptor ─────────────────────────────────────────────
+// Called after throwBall suspends into G.interceptionChoice.
+// interceptorId: a player id (attempt interception) or null (decline).
+
+function chooseInterceptor(G, interceptorId) {
+    if (!G.interceptionChoice) return null;
+    const { declaredCol, declaredRow, actualCol, actualRow,
+            accurate, scatterMsg, interceptorIds } = G.interceptionChoice;
+    G.interceptionChoice = null;
+    const p = G.activated;
+    if (!p) return null;
+
+    let msg = scatterMsg || '';
+
+    if (interceptorId !== null) {
+        const interceptor = G.players.find(pl => pl.id === interceptorId
+                                              && interceptorIds.includes(pl.id));
+        if (interceptor) {
+            const iMod    = accurate ? 3 : 2;
+            const iTzs    = countTackleZones(G, interceptor.side, interceptor.col, interceptor.row);
+            const iTarget = Math.min(interceptor.ag + iMod + iTzs, 6);
+            const iRoll   = Math.floor(Math.random() * 6) + 1;
+            const iHit    = iRoll === 6 || iRoll >= iTarget;
+            msg += `${interceptor.name} intercepts (${iRoll} vs ${iTarget}+): ${iHit ? 'SUCCESS!' : 'failed.'} `;
+            if (iHit) {
+                interceptor.hasBall = true;
+                G.ball.carrier      = interceptor;
+                G.ball.col          = interceptor.col;
+                G.ball.row          = interceptor.row;
+                p.hasBall           = false;
+                G.passing           = false;
+                G.hasPassed         = true;
+                endTurn(G);
+                return msg + 'TURNOVER';
+            }
+        }
+    }
+
+    if (accurate) return _resolveAccuratePass(G, p, declaredCol, declaredRow, msg);
+    return _resolveInaccurateAtLanding(G, p, actualCol, actualRow, msg);
 }
 
 // ── Kick mechanics ────────────────────────────────────────────────
@@ -503,7 +559,7 @@ if (typeof module !== 'undefined') {
     module.exports = {
         scatterBall, throwIn, tryPickup, checkTouchdown,
         doSecureRoll, secureBall,
-        declarePass, throwBall, getInterceptors,
+        declarePass, throwBall, getInterceptors, chooseInterceptor,
         isValidKickTarget, declareKick, touchbackGiveBall,
     };
 }
