@@ -85,7 +85,7 @@ function drawInspectOverlay() {
     const cardW = maxW + padX * 2;
     const cardH = padY * 2 + lines.length * lineH;
 
-    // Position above the player in screen space (subtract cameraY)
+    // Float above the player (below if too close to the top edge)
     let cardX = p.col * CELL + CELL / 2 - cardW / 2;
     let cardY = p.row * CELL - cameraY - cardH - 6;
     if (cardY < 0) cardY = p.row * CELL - cameraY + CELL + 6;
@@ -412,10 +412,14 @@ function setupTouch() {
     canvas.addEventListener('touchmove',  _onTouchMove,  { passive: false });
 }
 
-var _pressTimer  = null;
-var _pressOrigin = null;
-var _dragging    = false;
+var _pressTimer   = null;
+var _pressOrigin  = null;
+var _dragging     = false;
 var _dragCamStart = 0;
+var _lastTapTime  = 0;
+var _lastTapCol   = -1;
+var _lastTapRow   = -1;
+var _pendingTap   = null;  // { timer } — delayed single-tap during targeting states
 
 function _onTouchStart(e) {
     e.preventDefault();
@@ -514,18 +518,38 @@ function _onTap(clientX, clientY) {
         return;
     }
 
-    const col    = Math.floor(px / CELL);
-    const row    = Math.floor((py + cameraY) / CELL);
+    const col = Math.floor(px / CELL);
+    const row = Math.floor((py + cameraY) / CELL);
+    const now = Date.now();
 
-    // During touchback: tap a player to give them the ball (no inspect)
-    if (G.phase === 'touchback') {
-        handleClick({ clientX, clientY });
+    const isDoubleTap = now - _lastTapTime < 300 && col === _lastTapCol && row === _lastTapRow;
+    _lastTapTime = now;
+    _lastTapCol  = col;
+    _lastTapRow  = row;
+
+    // Double-tap: always toggle inspect card, cancel any pending single-tap, never act
+    if (isDoubleTap && !wheelState && G.phase !== 'touchback') {
+        if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
+        const player = playerAt(G, col, row);
+        inspectState = player && inspectState?.id !== player.id ? player : null;
+        render();
         return;
     }
 
-    // Show inspect card on player tap; dismiss on tap elsewhere
-    inspectState = playerAt(G, col, row) || null;
+    // In states where tapping picks a target, delay the action so a double-tap can cancel it
+    const needsDelay = G.passing === 'targeting' || !!G.interceptionChoice;
+    if (needsDelay) {
+        if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
+        _pendingTap = { timer: setTimeout(() => {
+            _pendingTap  = null;
+            inspectState = null;
+            handleClick({ clientX, clientY });
+        }, 260) };
+        return;
+    }
 
+    // Immediate single tap in all other states
+    inspectState = null;
     handleClick({ clientX, clientY });
 }
 
