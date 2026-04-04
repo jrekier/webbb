@@ -25,6 +25,7 @@ function createInitialState() {
         hasDodged:          false,
         blitzFromProne:     false,
         securingBall:       false,
+        stoodUpFromProne:   false,
         passing:            false,
         hasPassReroll:      false,
         passRerollChoice:   null,
@@ -73,7 +74,7 @@ function hasMovedYet(G) {
 // True when cancel is still legal: not yet moved, or blitz declared from prone.
 function canStillCancel(G) {
     if (!G.activated) return false;
-    return !hasMovedYet(G) || G.blitzFromProne;
+    return !hasMovedYet(G) || G.blitzFromProne || G.stoodUpFromProne;
 }
 
 // ── Activation ────────────────────────────────────────────────────
@@ -95,6 +96,12 @@ function cancelActivation(G) {
     if (!canStillCancel(G)) return null;
     const p    = G.activated;
     const name = p.name;
+    if (G.stoodUpFromProne) {
+        p.status   = 'prone';
+        p.maLeft   = p.ma;
+        p.rushLeft = 2;
+        G.stoodUpFromProne = false;
+    }
     if (G.blitz !== null) {
         if (G.blitzFromProne) {
             p.status = 'prone';
@@ -119,6 +126,7 @@ function endActivation(G) {
     G.activated.usedAction = true;
     G.activated    = null;
     G.blitz              = null;
+    G.stoodUpFromProne   = false;
     G.hasDodged          = false;
     G.passing            = false;
     G.hasPassReroll      = false;
@@ -206,6 +214,7 @@ function startHalfTime(G) {
     G.hasPassed          = false;
     G.hasDodged          = false;
     G.blitzFromProne     = false;
+    G.stoodUpFromProne   = false;
     G.securingBall       = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
@@ -332,6 +341,7 @@ function resetAfterTouchdown(G, scoringSide) {
     G.hasPassed          = false;
     G.hasDodged          = false;
     G.blitzFromProne     = false;
+    G.stoodUpFromProne   = false;
     G.securingBall       = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;

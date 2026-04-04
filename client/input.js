@@ -341,18 +341,6 @@ function clickCell(col, row) {
 }
 
 // ── Button handlers ──────────────────────────────────────────────
-function onClickStandUp() {
-    if (!G.sel || G.sel.side !== G.active || G.sel.status !== 'prone') return;
-    if (G.sel.usedAction || G.activated) return;
-    if (NET.online) {
-        sendAction({ type: 'STAND_UP', playerId: G.sel.id });
-    } else {
-        const msg = standUp(G, G.sel.id);
-        if (msg) log(msg);
-        render();
-    }
-}
-
 function onClickSecureBall() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (NET.online) {
@@ -370,7 +358,7 @@ function onClickMove() {
     if (NET.online) {
         sendAction({ type: 'ACTIVATE', playerId: G.sel.id });
     } else {
-        const msg = activatePlayer(G, G.sel.id);
+        const msg = activateMover(G, G.sel.id);
         if (msg) log(msg);
         render();
     }
@@ -541,7 +529,7 @@ function updateButtons() {
         };
     }
 
-    const ALL_BTNS = ['btn-move','btn-block','btn-blitz','btn-stand-up',
+    const ALL_BTNS = ['btn-move','btn-block','btn-blitz',
                        'btn-secure-ball','btn-pass','btn-throw','btn-no-intercept',
                        'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
 
@@ -570,18 +558,13 @@ function updateButtons() {
         && G.sel.side    === G.active
         && !G.sel.usedAction
         && noAction
-        && !selProne;
+        && (!selProne || G.sel.maLeft + G.sel.rushLeft >= 3);
     const canBlitz = myTurn && G.sel
         && G.sel.side    === G.active
         && !G.sel.usedAction
         && noAction
-        && !G.hasBlitzed 
-        && G.players.some(p => p.side !== G.active && isStanding(p));     
-    const canStand   = myTurn && G.sel
-        && G.sel.side    === G.active
-        && !G.sel.usedAction
-        && noAction
-        && selProne;
+        && !G.hasBlitzed
+        && G.players.some(p => p.side !== G.active && isStanding(p));
     const hasTargets  = canDeclare && G.sel
         && getBlockTargets(G, G.sel).length > 0;
     const canSecure   = canDeclare && !G.ball.carrier;
@@ -591,9 +574,8 @@ function updateButtons() {
     const canThrow    = myTurn && G.passing === true && G.activated && G.activated.hasBall;
 
     show('btn-move',        canDeclare && G.passing !== true);
-    show('btn-block',       hasTargets && G.passing !== true);
+    show('btn-block',       hasTargets && !selProne && G.passing !== true);
     show('btn-blitz',       canBlitz   && G.passing !== true);
-    show('btn-stand-up',    canStand);
     show('btn-secure-ball', canSecure  && G.passing !== true);
     show('btn-pass',         canPass    && G.passing !== true);
     show('btn-throw',        canThrow);

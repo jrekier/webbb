@@ -3,7 +3,7 @@
 
 if (typeof module !== 'undefined') {
     var { playerAt, isAdjacent, isStanding, countTackleZones,
-          endTurn, endActivation }           = require('./logic.js');
+          activatePlayer, endTurn, endActivation } = require('./logic.js');
     var { rush, dodge }                      = require('./dice.js');
     var { scatterBall, tryPickup,
           checkTouchdown, doSecureRoll }     = require('./ball.js');
@@ -16,15 +16,13 @@ if (typeof module !== 'undefined') {
 function canMoveTo(G, player, col, row) {
     const dc    = Math.abs(player.col - col);
     const dr    = Math.abs(player.row - row);
-    const minMA = player.status === 'prone' ? 3 : 1;
     const allowed = (
         dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0)
-        && player.maLeft + player.rushLeft >= minMA
+        && player.maLeft + player.rushLeft >= 1
         && playerAt(G, col, row) === null
     );
 
-    let needsrush = (player.maLeft === 0);
-    if (player.status === 'prone') needsrush = (player.maLeft < 3);
+    const needsrush = (player.maLeft === 0);
 
     const needsDodge = G.players.some(enemy =>
         enemy.side !== player.side && isStanding(enemy) && isAdjacent(player, enemy)
@@ -50,32 +48,9 @@ function movePlayer(G, col, row) {
 
     const p = G.activated;
     let msg = '';
-    let standingUp = false;
 
-    // Stand up from prone — costs 3 MA total; rush rolls cover shortfall
-    if (p.status === 'prone') {
-        standingUp = true;
-        const rushesNeeded = Math.max(0, 3 - p.maLeft);
-        for (let i = 0; i < rushesNeeded; i++) {
-            const { roll, failed } = rush();
-            if (failed) {
-                msg += `${p.name} fails to stand (rolled ${roll}). `;
-                p.col = col;
-                p.row = row;
-                msg += knockDown(G, p);
-                if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
-                endTurn(G);
-                return msg + ' TURNOVER';
-            }
-            msg += `${p.name} rushes to stand (rolled ${roll}). `;
-        }
-        p.rushLeft -= rushesNeeded;
-        p.maLeft    = 0;
-        p.status    = 'active';
-    }
-
-    // Rush for regular movement (already standing)
-    if (!standingUp && needsrush) {
+    // Rush for regular movement
+    if (needsrush) {
         const { roll: rushroll, failed: rushFailed } = rush();
         if (rushFailed) {
             msg += `${p.name} fails rush (rolled ${rushroll}). `;
@@ -122,10 +97,8 @@ function movePlayer(G, col, row) {
 
     p.col = col;
     p.row = row;
-    if (!standingUp) {
-        if (!needsrush) p.maLeft   -= 1;
-        else            p.rushLeft -= 1;
-    }
+    if (!needsrush) p.maLeft   -= 1;
+    else            p.rushLeft -= 1;
     G.sel = p;
     // Don't auto-end if a declared action that costs no MA still needs resolving
     // (blitz is excluded: the block costs 1 MA, so MA=0 means no block possible)
@@ -149,26 +122,26 @@ function movePlayer(G, col, row) {
     return msg;
 }
 
-// ── standUp ──────────────────────────────────────────────────────
-// Stand-up only action for prone players (no move follows).
-// Costs 3 MA; rush rolls cover any shortfall.
+// ── activateMover ─────────────────────────────────────────────────
+// Activates a player for a move action.
+// Prone players stand up immediately: costs 3 MA with rush rolls as needed.
+// Sets G.stoodUpFromProne so cancel can restore the player to prone.
 
-function standUp(G, playerId) {
+function activateMover(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
-    if (!p || p.side !== G.active || p.usedAction || G.activated || p.status !== 'prone') return null;
+    if (!p || p.side !== G.active || p.usedAction || G.activated || p.status === 'stunned') return null;
+
+    if (p.status !== 'prone') {
+        return activatePlayer(G, playerId);
+    }
+
+    // Prone: need at least 3 total MA+rush to stand
+    if (p.maLeft + p.rushLeft < 3) return null;
 
     G.activated = p;
     G.sel       = p;
 
     const rushesNeeded = Math.max(0, 3 - p.maLeft);
-
-    if (rushesNeeded === 0) {
-        p.maLeft -= 3;
-        p.status  = 'active';
-        if (p.maLeft === 0) endActivation(G);
-        return `${p.name} stands up · ${p.maLeft} MA left`;
-    }
-
     const rolls = [];
     for (let i = 0; i < rushesNeeded; i++) {
         const { roll, failed } = rush();
@@ -181,12 +154,16 @@ function standUp(G, playerId) {
         }
     }
 
-    p.maLeft = 0;
-    p.status  = 'active';
-    endActivation(G);
-    return `${p.name} stands up on a rush (rolled ${rolls.join(', ')})`;
+    p.rushLeft -= rushesNeeded;
+    p.maLeft    = Math.max(0, p.maLeft - 3);
+    p.status    = 'active';
+    G.stoodUpFromProne = true;
+
+    const rollStr = rolls.length ? ` (rushed: ${rolls.join(', ')})` : '';
+    const maStr   = p.maLeft > 0 ? ` · ${p.maLeft} MA left` : '';
+    return `${p.name} stands up${rollStr}${maStr}`;
 }
 
 if (typeof module !== 'undefined') {
-    module.exports = { canMoveTo, movePlayer, standUp };
+    module.exports = { canMoveTo, movePlayer, activateMover };
 }

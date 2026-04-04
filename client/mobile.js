@@ -619,10 +619,11 @@ function _openWheel(player, px, py) {
     // Unactivated player on active side — declare actions
     else if (myTurn && noAction && player.side === G.active && !player.usedAction) {
         if (player.status === 'prone') {
-            actions.push({
-                label: 'Stand\nUp', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
-                fn: onClickStandUp,
-            });
+            if (player.maLeft + player.rushLeft >= 3)
+                actions.push({
+                    label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
+                    fn: onClickMove,
+                });
             if (!G.hasBlitzed && G.players.some(p => p.side !== G.active && isStanding(p)))
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',

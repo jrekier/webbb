@@ -326,12 +326,11 @@ function handleConfirmSetup(room, side) {
 function handleAction(room, msg) {
     const G = room.G;
     switch (msg.type) {
-        case 'ACTIVATE':      room.lastLogMsg = GL.activatePlayer(G, msg.playerId);     break;
+        case 'ACTIVATE':      room.lastLogMsg = GL.activateMover(G, msg.playerId);      break;
         case 'MOVE':          room.lastLogMsg = GL.movePlayer(G, msg.col, msg.row);     break;
         case 'CANCEL':        room.lastLogMsg = GL.cancelActivation(G);                 break;
         case 'STOP':          room.lastLogMsg = GL.endActivation(G);                    break;
         case 'END_TURN':      room.lastLogMsg = GL.endTurn(G);                          break;
-        case 'STAND_UP':      room.lastLogMsg = GL.standUp(G, msg.playerId);            break;
         case 'SECURE_BALL':   room.lastLogMsg = GL.secureBall(G, msg.playerId);         break;
         case 'PASS_DECLARE':        room.lastLogMsg = GL.declarePass(G, msg.playerId);          break;
         case 'THROW_BALL':          room.lastLogMsg = GL.throwBall(G, msg.col, msg.row);        break;
