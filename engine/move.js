@@ -16,13 +16,16 @@ if (typeof module !== 'undefined') {
 function canMoveTo(G, player, col, row) {
     const dc    = Math.abs(player.col - col);
     const dr    = Math.abs(player.row - row);
+    const minMA  = player.status === 'prone' ? 3 : 1;
     const allowed = (
         dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0)
-        && player.maLeft + player.rushLeft >= 1
+        && player.maLeft + player.rushLeft >= minMA
         && playerAt(G, col, row) === null
     );
 
-    const needsrush = (player.maLeft === 0);
+    const needsrush = player.status === 'prone'
+        ? player.maLeft < 3
+        : player.maLeft === 0;
 
     const needsDodge = G.players.some(enemy =>
         enemy.side !== player.side && isStanding(enemy) && isAdjacent(player, enemy)
@@ -48,6 +51,29 @@ function movePlayer(G, col, row) {
 
     const p = G.activated;
     let msg = '';
+
+    // Stand up from prone — fires for passers/handoff-declarers (not for activateMover
+    // players who are already active by the time they reach here).
+    if (p.status === 'prone') {
+        const rushesNeeded = Math.max(0, 3 - p.maLeft);
+        const rolls = [];
+        for (let i = 0; i < rushesNeeded; i++) {
+            const { roll, failed } = rush();
+            rolls.push(roll);
+            if (failed) {
+                let injMsg = knockDown(G, p);
+                if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) injMsg += ' ' + scatterBall(G);
+                endTurn(G);
+                return `${p.name} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
+            }
+        }
+        p.rushLeft -= rushesNeeded;
+        p.maLeft    = Math.max(0, p.maLeft - 3);
+        p.status    = 'active';
+        G.stoodUpFromProne = true;
+        const rollStr = rolls.length ? ` (rushed: ${rolls.join(', ')})` : '';
+        msg += `${p.name} stands up${rollStr}. `;
+    }
 
     // Rush for regular movement
     if (needsrush) {
@@ -103,7 +129,7 @@ function movePlayer(G, col, row) {
     G.sel = p;
     // Don't auto-end if a declared action that costs no MA still needs resolving
     // (blitz is excluded: the block costs 1 MA, so MA=0 means no block possible)
-    if (p.maLeft + p.rushLeft === 0 && !G.passing) endActivation(G);
+    if (p.maLeft + p.rushLeft === 0 && !G.passing && !G.handingOff) endActivation(G);
 
     // Ball pickup / secure
     let pickupMsg;

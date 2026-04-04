@@ -332,6 +332,8 @@ function handleAction(room, msg) {
         case 'STOP':          room.lastLogMsg = GL.endActivation(G);                    break;
         case 'END_TURN':      room.lastLogMsg = GL.endTurn(G);                          break;
         case 'SECURE_BALL':   room.lastLogMsg = GL.secureBall(G, msg.playerId);         break;
+        case 'HANDOFF_DECLARE':     room.lastLogMsg = GL.declareHandoff(G, msg.playerId);       break;
+        case 'DO_HANDOFF':          room.lastLogMsg = GL.doHandoff(G, msg.receiverId);          break;
         case 'PASS_DECLARE':        room.lastLogMsg = GL.declarePass(G, msg.playerId);          break;
         case 'THROW_BALL':          room.lastLogMsg = GL.throwBall(G, msg.col, msg.row);        break;
         case 'PASS_REROLL':         room.lastLogMsg = GL.resolvePassReroll(G, msg.use);         break;

@@ -629,6 +629,11 @@ function _openWheel(player, px, py) {
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
                     fn: onClickBlitz,
                 });
+            if (!G.hasHandedOff)
+                actions.push({
+                    label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
+                    fn: onClickHandoff,
+                });
             if (!G.hasPassed)
                 actions.push({
                     label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
@@ -653,6 +658,11 @@ function _openWheel(player, px, py) {
                 actions.push({
                     label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)',
                     fn: onClickSecureBall,
+                });
+            if (!G.hasHandedOff)
+                actions.push({
+                    label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
+                    fn: onClickHandoff,
                 });
             if (!G.hasPassed)
                 actions.push({

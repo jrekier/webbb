@@ -378,6 +378,16 @@ function drawHighlights() {
         hlCell(def.col, def.row, fill, border, false);
     }
 
+    // Handoff targets — cyan on adjacent standing teammates when carrier has ball
+    if (G.handingOff && G.activated && G.activated.hasBall) {
+        G.players.filter(p =>
+            p.side === G.active && p.id !== G.activated.id
+            && isStanding(p) && isAdjacent(G.activated, p)
+        ).forEach(t => {
+            hlCell(t.col, t.row, 'rgba(80,220,200,0.25)', 'rgba(80,220,200,0.7)', false);
+        });
+    }
+
     // Push squares — orange for attacker (interactive), dimmer for defender (informational)
     if (G.block && G.block.phase === 'pick-push') {
         const isAttacker = !NET.online || NET.side === G.active;

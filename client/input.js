@@ -250,6 +250,20 @@ function clickPlayer(player) {
         return;
     }
 
+    // Handoff — click an adjacent standing teammate while carrying the ball
+    if (G.handingOff && G.activated && G.activated.hasBall
+            && player.side === G.active && player.id !== G.activated.id
+            && isStanding(player) && isAdjacent(G.activated, player)) {
+        if (NET.online) {
+            sendAction({ type: 'DO_HANDOFF', receiverId: player.id });
+        } else {
+            const msg = doHandoff(G, player.id);
+            if (msg) log(msg);
+        }
+        render();
+        return;
+    }
+
     // Pass targeting mode — throw to this player's square
     if (G.passing === 'targeting' && G.activated && player.id !== G.activated.id) {
         passHover = null;
@@ -434,6 +448,17 @@ function onClickNoIntercept() {
     }
 }
 
+function onClickHandoff() {
+    if (!G.sel || G.sel.side !== G.active) return;
+    if (NET.online) {
+        sendAction({ type: 'HANDOFF_DECLARE', playerId: G.sel.id });
+    } else {
+        const msg = declareHandoff(G, G.sel.id);
+        if (msg) log(msg);
+        render();
+    }
+}
+
 function onClickPass() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (NET.online) {
@@ -530,7 +555,7 @@ function updateButtons() {
     }
 
     const ALL_BTNS = ['btn-move','btn-block','btn-blitz',
-                       'btn-secure-ball','btn-pass','btn-throw','btn-no-intercept',
+                       'btn-secure-ball','btn-handoff','btn-pass','btn-throw','btn-no-intercept',
                        'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
 
     if (G.phase === 'setup') {
@@ -571,6 +596,9 @@ function updateButtons() {
     const hasTargets  = canDeclare && G.sel
         && getBlockTargets(G, G.sel).length > 0;
     const canSecure   = canDeclare && !G.ball.carrier;
+    const canHandoff  = myTurn && G.sel && G.sel.side === G.active
+        && !G.sel.usedAction && noAction && !G.hasHandedOff
+        && G.sel.status !== 'stunned';
     const canPass     = myTurn && G.sel && G.sel.side === G.active
         && !G.sel.usedAction && noAction && !G.hasPassed
         && G.sel.status !== 'stunned';
@@ -580,7 +608,8 @@ function updateButtons() {
     show('btn-block',       hasTargets && !selProne && G.passing !== true);
     show('btn-blitz',       canBlitz   && G.passing !== true);
     show('btn-secure-ball', canSecure  && G.passing !== true);
-    show('btn-pass',         canPass    && G.passing !== true);
+    show('btn-handoff',     canHandoff && G.passing !== true);
+    show('btn-pass',        canPass    && G.passing !== true);
     show('btn-throw',        canThrow);
     const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
     show('btn-no-intercept', canChooseNoIntercept);

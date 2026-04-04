@@ -2,7 +2,7 @@
 // Ball mechanics: scatter, pickup, secure, touchdown.
 
 if (typeof module !== 'undefined') {
-    var { playerAt, isStanding, endTurn, endActivation,
+    var { playerAt, isStanding, isAdjacent, endTurn, endActivation,
           resetAfterTouchdown, countTackleZones } = require('./logic.js');
 }
 
@@ -501,6 +501,49 @@ function chooseInterceptor(G, interceptorId) {
     return _resolveInaccurateAtLanding(G, p, actualCol, actualRow, msg);
 }
 
+// ── Handoff Action ────────────────────────────────────────────────
+
+// Declare handoff: activates the player (allowed prone, ball not required yet).
+// One handoff allowed per team per turn.
+
+function declareHandoff(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
+    if (p.status === 'stunned') return null;
+    if (G.hasHandedOff) return null;
+
+    G.activated  = p;
+    G.sel        = p;
+    G.handingOff = true;
+    return `${p.name} declares Handoff — move to a teammate and hand off.`;
+}
+
+// Execute the handoff to an adjacent standing teammate.
+// Receiver makes an AG catch roll (no throw modifier, TZs apply).
+
+function doHandoff(G, receiverId) {
+    if (!G.handingOff || !G.activated) return null;
+    const p = G.activated;
+    if (!p.hasBall) return null;
+
+    const receiver = G.players.find(pl => pl.id === receiverId);
+    if (!receiver || receiver.side !== p.side) return null;
+    if (!isStanding(receiver)) return null;
+    if (!isAdjacent(p, receiver)) return null;
+
+    const passerSide   = p.side;
+    p.hasBall          = false;
+    G.ball.carrier     = null;
+    G.ball.col         = receiver.col;
+    G.ball.row         = receiver.row;
+    G.handingOff       = false;
+    G.hasHandedOff     = true;
+    endActivation(G);
+
+    const msg = `${p.name} hands off to ${receiver.name}.`;
+    return _checkPassTurnover(G, passerSide, msg + _catchAtSquare(G, receiver.col, receiver.row, false));
+}
+
 // ── Kick mechanics ────────────────────────────────────────────────
 
 function _isInKickerHalf(kicker, row) {
@@ -585,6 +628,7 @@ if (typeof module !== 'undefined') {
         scatterBall, throwIn, tryPickup, checkTouchdown,
         doSecureRoll, secureBall,
         declarePass, throwBall, resolvePassReroll, getInterceptors, chooseInterceptor,
+        declareHandoff, doHandoff,
         isValidKickTarget, declareKick, touchbackGiveBall,
     };
 }

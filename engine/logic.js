@@ -22,6 +22,8 @@ function createInitialState() {
         blitz:              null,
         hasBlitzed:         false,
         hasPassed:          false,
+        hasHandedOff:       false,
+        handingOff:         false,
         hasDodged:          false,
         blitzFromProne:     false,
         securingBall:       false,
@@ -111,12 +113,13 @@ function cancelActivation(G) {
         G.hasBlitzed     = false;
         G.blitz          = null;
     }
-    G.securingBall      = false;
-    G.passing           = false;
-    G.hasPassReroll     = false;
+    G.securingBall       = false;
+    G.handingOff         = false;
+    G.passing            = false;
+    G.hasPassReroll      = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
-    G.activated         = null;
+    G.activated          = null;
     return `${name} — action cancelled`;
 }
 
@@ -128,6 +131,7 @@ function endActivation(G) {
     G.blitz              = null;
     G.stoodUpFromProne   = false;
     G.hasDodged          = false;
+    G.handingOff         = false;
     G.passing            = false;
     G.hasPassReroll      = false;
     G.passRerollChoice   = null;
@@ -151,9 +155,11 @@ function endTurn(G) {
     G.sel            = null;
     G.hasBlitzed     = false;
     G.hasPassed      = false;
+    G.hasHandedOff   = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
     G.securingBall       = false;
+    G.handingOff         = false;
     G.passing            = false;
     G.hasPassReroll      = false;
     G.passRerollChoice   = null;
@@ -212,10 +218,12 @@ function startHalfTime(G) {
     G.blitz              = null;
     G.hasBlitzed         = false;
     G.hasPassed          = false;
+    G.hasHandedOff       = false;
     G.hasDodged          = false;
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
+    G.handingOff         = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.ball               = { col: -1, row: -1, carrier: null };
@@ -343,6 +351,8 @@ function resetAfterTouchdown(G, scoringSide) {
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
+    G.handingOff         = false;
+    G.hasHandedOff       = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
 
