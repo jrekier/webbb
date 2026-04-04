@@ -229,7 +229,7 @@ function _scatterNTimes(G, n) {
 
 function _catchAtSquare(G, col, row, bouncePenalty) {
     const lander = playerAt(G, col, row);
-    if (!lander) return ' Ball on the ground.';
+    if (!lander) return ' Ball hits the ground. ' + scatterBall(G);
     if (!isStanding(lander)) return ` ${lander.name} is prone. ` + scatterBall(G);
 
     const tzs    = countTackleZones(G, lander.side, col, row);
