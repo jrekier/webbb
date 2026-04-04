@@ -272,20 +272,6 @@ function updateDetail() {
     `;
 }
 
-// ── Buttons ───────────────────────────────────────────────────────
-function updateButtons() {
-    const myTurn     = !NET.online || NET.side === G.active;
-    const canDeclare = myTurn && G.sel && G.sel.side === G.active
-                    && !G.sel.usedAction && !G.activated;
-
-    show('btn-move',     canDeclare);
-    show('btn-cancel',   myTurn && G.activated && !hasMovedYet(G));
-    show('btn-stop',     myTurn && G.activated &&  hasMovedYet(G));
-    show('btn-end-turn', myTurn);
-
-    document.getElementById('btn-end-turn').textContent =
-        `End ${G.active.toUpperCase()} Turn`;
-}
 
 function show(id, visible) {
     document.getElementById(id).style.display = visible ? '' : 'none';
