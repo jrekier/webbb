@@ -325,61 +325,26 @@ function getInterceptors(G, passer, targetCol, targetRow) {
     });
 }
 
-// ── throwBall ─────────────────────────────────────────────────────
-// Resolves the throw from G.activated to (targetCol, targetRow).
-// BB2025 outcomes:
-//   Natural 1           → Fumble (scatter from passer, TURNOVER)
-//   Roll < target       → Inaccurate (Scatter ×3 from target square)
-//   Roll ≥ target or 6  → Accurate (catch attempt at target square)
-// Pass skill: re-roll once on Inaccurate (not on Fumble).
-// Interceptions: checked after accuracy is resolved, before landing.
+// ── _doFumble ─────────────────────────────────────────────────────
 
-function throwBall(G, targetCol, targetRow) {
-    if (!G.passing || !G.activated) return null;
-    const p = G.activated;
-    if (!p.hasBall) return null;
-    if (targetCol < 0 || targetCol >= COLS || targetRow < 0 || targetRow >= ROWS) return null;
+function _doFumble(G, p, msg) {
+    p.hasBall      = false;
+    G.ball.carrier = null;
+    G.ball.col     = p.col;
+    G.ball.row     = p.row;
+    G.passing      = false;
+    G.hasPassed    = true;
+    const sm = scatterBall(G);
+    endTurn(G);
+    return msg + `FUMBLE! ${sm} TURNOVER`;
+}
 
-    // Range (Chebyshev distance)
-    const dist  = Math.max(Math.abs(p.col - targetCol), Math.abs(p.row - targetRow));
-    const range = dist <= 3 ? { label: 'Quick Pass', mod: 0 }
-                : dist <= 6 ? { label: 'Short Pass',  mod: 1 }
-                : dist <= 9 ? { label: 'Long Pass',   mod: 2 }
-                :             { label: 'Long Bomb',   mod: 3 };
+// ── _continueThrow ────────────────────────────────────────────────
+// Shared second half of a throw: pre-scatter if inaccurate, check
+// interceptors, then resolve or suspend into interceptionChoice.
+// Called by throwBall and resolvePassReroll to avoid duplication.
 
-    const tzs     = countTackleZones(G, p.side, p.col, p.row);
-    const target  = Math.min(p.pa + range.mod + tzs, 6);
-    const rawRoll = Math.floor(Math.random() * 6) + 1;
-    let msg = `${p.name} throws a ${range.label} (PA ${p.pa}+, +${range.mod + tzs} mods → ${target}+): rolled ${rawRoll}. `;
-
-    // Shared fumble handler
-    const fumble = () => {
-        p.hasBall      = false;
-        G.ball.carrier = null;
-        G.ball.col     = p.col;
-        G.ball.row     = p.row;
-        G.passing      = false;
-        G.hasPassed    = true;
-        const sm = scatterBall(G);
-        endTurn(G);
-        return msg + `FUMBLE! ${sm} TURNOVER`;
-    };
-
-    if (rawRoll === 1) return fumble();
-
-    let accurate = rawRoll === 6 || rawRoll >= target;
-
-    // Pass skill: one re-roll on Inaccurate (not on Fumble)
-    if (!accurate && p.skills?.includes('Pass') && !G.hasPassReroll) {
-        G.hasPassReroll = true;
-        const reroll = Math.floor(Math.random() * 6) + 1;
-        msg += `Inaccurate — uses Pass skill, rerolls: ${reroll}. `;
-        if (reroll === 1) return fumble();
-        accurate = reroll === 6 || reroll >= target;
-    }
-
-    // For inaccurate passes: pre-scatter to find the actual landing square.
-    // This determines the real trajectory that opponents can intercept.
+function _continueThrow(G, p, targetCol, targetRow, accurate, msg) {
     let actualCol = targetCol, actualRow = targetRow;
     let scatterMsg = '';
 
@@ -393,7 +358,6 @@ function throwBall(G, targetCol, targetRow) {
         scatterMsg = sc.msg + ' ';
         msg       += scatterMsg;
         if (sc.done) {
-            // Ball went OOB — throwIn already resolved, no interception possible
             G.passing   = false;
             G.hasPassed = true;
             const passerSide = p.side;
@@ -404,13 +368,12 @@ function throwBall(G, targetCol, targetRow) {
         actualRow = G.ball.row;
     }
 
-    // Check for interceptors on the actual trajectory (passer → actual landing)
     const interceptors = getInterceptors(G, p, actualCol, actualRow);
     if (interceptors.length > 0) {
         G.passing            = false;
         G.interceptionChoice = {
-            declaredCol: targetCol, declaredRow: targetRow,   // ideal (accurate) trajectory
-            actualCol,   actualRow,                           // post-scatter trajectory
+            declaredCol: targetCol, declaredRow: targetRow,
+            actualCol,   actualRow,
             accurate,    scatterMsg,
             interceptorIds: interceptors.map(i => i.id),
         };
@@ -419,6 +382,68 @@ function throwBall(G, targetCol, targetRow) {
 
     if (accurate) return _resolveAccuratePass(G, p, targetCol, targetRow, msg);
     return _resolveInaccurateAtLanding(G, p, actualCol, actualRow, msg);
+}
+
+// ── throwBall ─────────────────────────────────────────────────────
+// BB2025 outcomes:
+//   Natural 1           → Fumble (scatter from passer, TURNOVER)
+//   Roll < target       → Inaccurate (Scatter ×3 from target square)
+//   Roll ≥ target or 6  → Accurate (catch attempt at target square)
+// Pass skill: one re-roll on Fumble OR Inaccurate (player's choice).
+
+function throwBall(G, targetCol, targetRow) {
+    if (!G.passing || !G.activated) return null;
+    const p = G.activated;
+    if (!p.hasBall) return null;
+    if (targetCol < 0 || targetCol >= COLS || targetRow < 0 || targetRow >= ROWS) return null;
+
+    const dist  = Math.max(Math.abs(p.col - targetCol), Math.abs(p.row - targetRow));
+    const range = dist <= 3 ? { label: 'Quick Pass', mod: 0 }
+                : dist <= 6 ? { label: 'Short Pass',  mod: 1 }
+                : dist <= 9 ? { label: 'Long Pass',   mod: 2 }
+                :             { label: 'Long Bomb',   mod: 3 };
+
+    const tzs     = countTackleZones(G, p.side, p.col, p.row);
+    const target  = Math.min(p.pa + range.mod + tzs, 6);
+    const rawRoll = Math.floor(Math.random() * 6) + 1;
+    const msg     = `${p.name} throws a ${range.label} (PA ${p.pa}+, +${range.mod + tzs} mods → ${target}+): rolled ${rawRoll}. `;
+
+    const isFumble = rawRoll === 1;
+    const accurate = !isFumble && (rawRoll === 6 || rawRoll >= target);
+
+    // Pass skill: offer one re-roll on Fumble or Inaccurate (player's choice)
+    if ((isFumble || !accurate) && p.skills?.includes('Pass') && !G.hasPassReroll) {
+        G.passing          = false;
+        G.passRerollChoice = { targetCol, targetRow, target, msg, isFumble };
+        return msg + (isFumble ? `Fumble` : `Inaccurate`) + ` — Pass skill available.`;
+    }
+
+    if (isFumble) return _doFumble(G, p, msg);
+    return _continueThrow(G, p, targetCol, targetRow, accurate, msg);
+}
+
+// ── resolvePassReroll ─────────────────────────────────────────────
+// Called after throwBall suspends into G.passRerollChoice.
+// use=true: spend the Pass skill reroll. use=false: accept the result.
+
+function resolvePassReroll(G, use) {
+    if (!G.passRerollChoice) return null;
+    const { targetCol, targetRow, target, msg: prevMsg, isFumble } = G.passRerollChoice;
+    G.passRerollChoice = null;
+    const p = G.activated;
+    if (!p) return null;
+
+    if (!use) {
+        if (isFumble) return _doFumble(G, p, prevMsg);
+        return _continueThrow(G, p, targetCol, targetRow, false, prevMsg);
+    }
+
+    G.hasPassReroll  = true;
+    const reroll     = Math.floor(Math.random() * 6) + 1;
+    const msg        = prevMsg + `Uses Pass skill, rerolls: ${reroll}. `;
+    if (reroll === 1) return _doFumble(G, p, msg);
+    const accurate   = reroll === 6 || reroll >= target;
+    return _continueThrow(G, p, targetCol, targetRow, accurate, msg);
 }
 
 // ── _resolveInaccurateAtLanding ───────────────────────────────────
@@ -559,7 +584,7 @@ if (typeof module !== 'undefined') {
     module.exports = {
         scatterBall, throwIn, tryPickup, checkTouchdown,
         doSecureRoll, secureBall,
-        declarePass, throwBall, getInterceptors, chooseInterceptor,
+        declarePass, throwBall, resolvePassReroll, getInterceptors, chooseInterceptor,
         isValidKickTarget, declareKick, touchbackGiveBall,
     };
 }

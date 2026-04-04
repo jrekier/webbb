@@ -56,7 +56,7 @@ function _onMouseMove(e) {
         };
         render();
     }
-    if (G.passing === 'targeting') {
+    if (G.passing === 'targeting' && !G.confirm) {
         const rect = canvas.getBoundingClientRect();
         passHover  = {
             col: Math.floor((e.clientX - rect.left) / CELL),
@@ -524,6 +524,23 @@ function onClickEndTurn() {
 
 // ── updateButtons ────────────────────────────────────────────────
 function updateButtons() {
+    // Pass reroll choice — active player decides whether to spend the Pass skill
+    const myTurnNow = !NET.online || NET.side === G.active;
+    if (G.passRerollChoice && myTurnNow && !G.confirm) {
+        const isFumble = G.passRerollChoice.isFumble;
+        G.confirm = {
+            prompt: isFumble ? 'Fumble — use Pass skill to reroll?' : 'Inaccurate — use Pass skill to reroll?',
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'PASS_REROLL', use: true });
+                else { const m = resolvePassReroll(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'PASS_REROLL', use: false });
+                else { const m = resolvePassReroll(G, false); if (m) log(m); }
+            },
+        };
+    }
+
     const ALL_BTNS = ['btn-move','btn-block','btn-blitz','btn-stand-up',
                        'btn-secure-ball','btn-pass','btn-throw','btn-no-intercept',
                        'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];

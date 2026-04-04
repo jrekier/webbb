@@ -335,6 +335,7 @@ function handleAction(room, msg) {
         case 'SECURE_BALL':   room.lastLogMsg = GL.secureBall(G, msg.playerId);         break;
         case 'PASS_DECLARE':        room.lastLogMsg = GL.declarePass(G, msg.playerId);          break;
         case 'THROW_BALL':          room.lastLogMsg = GL.throwBall(G, msg.col, msg.row);        break;
+        case 'PASS_REROLL':         room.lastLogMsg = GL.resolvePassReroll(G, msg.use);         break;
         case 'CHOOSE_INTERCEPTOR':  room.lastLogMsg = GL.chooseInterceptor(G, msg.playerId);    break;
         case 'BLITZ_DECLARE': room.lastLogMsg = GL.activateBlitz(G, msg.playerId);      break;
         case 'BLITZ_TARGET':  room.lastLogMsg = GL.setBlitzTarget(G, msg.defId);        break;

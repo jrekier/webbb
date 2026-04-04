@@ -27,6 +27,7 @@ function createInitialState() {
         securingBall:       false,
         passing:            false,
         hasPassReroll:      false,
+        passRerollChoice:   null,
         interceptionChoice: null,
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
@@ -106,6 +107,7 @@ function cancelActivation(G) {
     G.securingBall      = false;
     G.passing           = false;
     G.hasPassReroll     = false;
+    G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.activated         = null;
     return `${name} — action cancelled`;
@@ -120,6 +122,7 @@ function endActivation(G) {
     G.hasDodged          = false;
     G.passing            = false;
     G.hasPassReroll      = false;
+    G.passRerollChoice   = null;
     G.interceptionChoice = null;
     return `${name} done`;
 }
@@ -145,6 +148,7 @@ function endTurn(G) {
     G.securingBall       = false;
     G.passing            = false;
     G.hasPassReroll      = false;
+    G.passRerollChoice   = null;
     G.interceptionChoice = null;
     // Turn increments when the receiver becomes active again (completing a full round).
     if (G.active === G.receiver) G.turn += 1;
@@ -203,6 +207,7 @@ function startHalfTime(G) {
     G.hasDodged          = false;
     G.blitzFromProne     = false;
     G.securingBall       = false;
+    G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.ball               = { col: -1, row: -1, carrier: null };
     G.phase              = 'setup';
@@ -328,6 +333,7 @@ function resetAfterTouchdown(G, scoringSide) {
     G.hasDodged          = false;
     G.blitzFromProne     = false;
     G.securingBall       = false;
+    G.passRerollChoice   = null;
     G.interceptionChoice = null;
 
     // Scoring team kicks off the next drive; both sides set up again
