@@ -251,6 +251,7 @@ function pickPushSquare(G, col, row) {
     ) {
         const injMsg = knockDown(G, def, { attacker: att });
         msg += ` ${def.name} is knocked down! ${injMsg}`;
+        if (!G.ball.carrier && G.ball.col === col && G.ball.row === row) msg += ' ' + scatterBall(G);
     }
 
     if (chainVictim) {
@@ -295,8 +296,6 @@ function resolveFollowUp(G, followUp) {
 
     G.block = null;
 
-    const scatterMsg = !G.ball.carrier ? ' ' + scatterBall(G) : '';
-
     if (G.blitz) {
         G.blitz = null;
         const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
@@ -304,12 +303,12 @@ function resolveFollowUp(G, followUp) {
             att.usedAction = true;
             G.activated    = null;
         }
-        return (followUp ? `${att.name} follows up` : `${att.name} stays`) + scatterMsg + maMsg;
+        return (followUp ? `${att.name} follows up` : `${att.name} stays`) + maMsg;
     }
 
     att.usedAction = true;
     G.activated    = null;
-    return (followUp ? `${att.name} follows up` : `${att.name} stays`) + scatterMsg;
+    return followUp ? `${att.name} follows up` : `${att.name} stays`;
 }
 
 // ── activateBlitz ─────────────────────────────────────────────────
