@@ -320,8 +320,16 @@ function getInterceptors(G, passer, targetCol, targetRow) {
         if (!isStanding(p)) return false;
         if (p.col === passer.col && p.row === passer.row) return false;
         if (p.col === targetCol  && p.row === targetRow)  return false;
-        // Any part of the player's square within 1 cell of the line
-        return _ptSegDist(p.col + 0.5, p.row + 0.5, ax, ay, bx, by) < 1.0;
+        // Corridor overlaps the player's square if the nearest point of that
+        // square (corners + centre) is within 1 cell of the segment.
+        const pts = [
+            [p.col,       p.row      ],
+            [p.col + 1,   p.row      ],
+            [p.col,       p.row + 1  ],
+            [p.col + 1,   p.row + 1  ],
+            [p.col + 0.5, p.row + 0.5],
+        ];
+        return pts.some(([px, py]) => _ptSegDist(px, py, ax, ay, bx, by) < 1.0);
     });
 }
 
@@ -397,7 +405,9 @@ function throwBall(G, targetCol, targetRow) {
     if (!p.hasBall) return null;
     if (targetCol < 0 || targetCol >= COLS || targetRow < 0 || targetRow >= ROWS) return null;
 
-    const dist  = Math.max(Math.abs(p.col - targetCol), Math.abs(p.row - targetRow));
+    const dx    = Math.abs(p.col - targetCol);
+    const dy    = Math.abs(p.row - targetRow);
+    const dist  = Math.floor(Math.sqrt(dx * dx + dy * dy));
     const range = dist <= 3 ? { label: 'Quick Pass', mod: 0 }
                 : dist <= 6 ? { label: 'Short Pass',  mod: 1 }
                 : dist <= 9 ? { label: 'Long Pass',   mod: 2 }

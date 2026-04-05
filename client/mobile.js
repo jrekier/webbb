@@ -136,9 +136,13 @@ function drawPassTargetingOverlay() {
 
     // Range bands — only shown while actively targeting, not during interception choice
     if (inTargeting) {
+        const cx = p.col * CELL + CELL / 2;
+        const cy = p.row * CELL + CELL / 2;
+
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
-                const dist = Math.max(Math.abs(c - p.col), Math.abs(r - p.row));
+                const dx = c - p.col, dy = r - p.row;
+                const dist = Math.floor(Math.sqrt(dx * dx + dy * dy));
                 if (dist === 0) continue;
                 const band = BANDS.find(b => dist <= b.max);
                 if (!band) continue;
@@ -149,9 +153,11 @@ function drawPassTargetingOverlay() {
 
         ctx.lineWidth = 1.5;
         for (const band of BANDS.slice(0, 3)) {
-            const d = band.max;
+            const r = (band.max + 0.5) * CELL;
             ctx.strokeStyle = band.stroke;
-            ctx.strokeRect((p.col - d) * CELL, (p.row - d) * CELL, (d * 2 + 1) * CELL, (d * 2 + 1) * CELL);
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
         }
 
         ctx.font         = `bold ${fs}px 'IBM Plex Mono', monospace`;
@@ -159,10 +165,10 @@ function drawPassTargetingOverlay() {
         ctx.textBaseline = 'middle';
         const midDists   = [2, 5, 8];
         for (let i = 0; i < 3; i++) {
-            const ly = (p.row - midDists[i]) * CELL + CELL / 2;
+            const ly = cy - (midDists[i] + 0.5) * CELL;
             if (ly < 0 || ly > ROWS * CELL) continue;
             ctx.fillStyle = BANDS[i].stroke;
-            ctx.fillText(BANDS[i].label, p.col * CELL + CELL / 2, ly);
+            ctx.fillText(BANDS[i].label, cx, ly);
         }
     }
 
