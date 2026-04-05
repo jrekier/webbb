@@ -136,39 +136,69 @@ function drawPassTargetingOverlay() {
 
     // Range bands — only shown while actively targeting, not during interception choice
     if (inTargeting) {
-        const cx = p.col * CELL + CELL / 2;
-        const cy = p.row * CELL + CELL / 2;
+        // Build a dist map for every cell, then fill + draw inter-band borders cell-by-cell
+        const distAt = (c, r) => {
+            const dx = c - p.col, dy = r - p.row;
+            return Math.floor(Math.sqrt(dx * dx + dy * dy));
+        };
+        const bandOf = dist => BANDS.find(b => dist <= b.max) ?? null;
 
+        // Fill each cell with its band colour
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
-                const dx = c - p.col, dy = r - p.row;
-                const dist = Math.floor(Math.sqrt(dx * dx + dy * dy));
+                const dist = distAt(c, r);
                 if (dist === 0) continue;
-                const band = BANDS.find(b => dist <= b.max);
+                const band = bandOf(dist);
                 if (!band) continue;
                 ctx.fillStyle = band.fill;
                 ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
             }
         }
 
+        // Draw a border on each edge where the band changes
         ctx.lineWidth = 1.5;
-        for (const band of BANDS.slice(0, 3)) {
-            const r = (band.max + 0.5) * CELL;
-            ctx.strokeStyle = band.stroke;
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
-            ctx.stroke();
+        const DIRS = [[1, 0], [0, 1]]; // right edge, bottom edge
+        for (let c = 0; c < COLS; c++) {
+            for (let r = 0; r < ROWS; r++) {
+                const bd = bandOf(distAt(c, r));
+                for (const [dc, dr] of DIRS) {
+                    const nc = c + dc, nr = r + dr;
+                    if (nc >= COLS || nr >= ROWS) continue;
+                    const nb = bandOf(distAt(nc, nr));
+                    if (bd === nb) continue;
+                    // Pick the colour of the outer (higher-dist) band for the border
+                    const colour = (nb && (!bd || nb.max > bd.max)) ? nb.stroke : (bd ? bd.stroke : null);
+                    if (!colour) continue;
+                    ctx.strokeStyle = colour;
+                    ctx.beginPath();
+                    if (dc === 1) { // vertical edge between c and c+1
+                        ctx.moveTo((c + 1) * CELL, r * CELL);
+                        ctx.lineTo((c + 1) * CELL, (r + 1) * CELL);
+                    } else {        // horizontal edge between r and r+1
+                        ctx.moveTo(c * CELL,       (r + 1) * CELL);
+                        ctx.lineTo((c + 1) * CELL, (r + 1) * CELL);
+                    }
+                    ctx.stroke();
+                }
+            }
         }
 
+        // Band labels — placed just above the topmost cell of each band
         ctx.font         = `bold ${fs}px 'IBM Plex Mono', monospace`;
         ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        const midDists   = [2, 5, 8];
+        ctx.textBaseline = 'bottom';
         for (let i = 0; i < 3; i++) {
-            const ly = cy - (midDists[i] + 0.5) * CELL;
+            const maxDist = BANDS[i].max;
+            // Find the topmost row in this band directly above the passer's column
+            let labelRow = -1;
+            for (let r = 0; r < ROWS; r++) {
+                if (distAt(p.col, r) === maxDist) { labelRow = r; break; }
+            }
+            if (labelRow < 0) continue;
+            const ly = labelRow * CELL;
             if (ly < 0 || ly > ROWS * CELL) continue;
             ctx.fillStyle = BANDS[i].stroke;
-            ctx.fillText(BANDS[i].label, cx, ly);
+            ctx.fillText(BANDS[i].label, p.col * CELL + CELL / 2, ly);
         }
     }
 
