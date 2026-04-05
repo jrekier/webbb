@@ -337,28 +337,17 @@ function executeFoul(G, targetId) {
     if (!isAdjacent(att, def)) return null;
     if (def.status !== 'prone' && def.status !== 'stunned') return null;
 
-    // Assists: friendly standing players adjacent to def, not themselves marked by an enemy
-    const assists = G.players.filter(p =>
-        p.side === att.side && p.id !== att.id && isStanding(p) && isAdjacent(p, def)
-        && !G.players.some(e => e.side !== att.side && isStanding(e) && e.id !== def.id && isAdjacent(p, e))
-    ).length;
-
-    // Tackle zones on def's square from att's team
-    const tzs = G.players.filter(e =>
-        e.side === att.side && isStanding(e)
-        && Math.abs(e.col - def.col) <= 1 && Math.abs(e.row - def.row) <= 1
-        && !(e.col === def.col && e.row === def.row)
-    ).length;
+    const { attAssists: attAssists, defAssists: defAssists } = countAssists(G, att, def);
 
     const d1 = Math.floor(Math.random() * 6) + 1;
     const d2 = Math.floor(Math.random() * 6) + 1;
-    const roll = d1 + d2 + assists - tzs;
+    const roll = d1 + d2 + attAssists - defAssists;
     let spotted = d1 === d2;  // ref may also spot doubles on the injury roll below
 
-    let modStr = '';
-    if (assists) modStr += `+${assists}`;
-    if (tzs)     modStr += `-${tzs}`;
-    let msg = `${att.name} fouls ${def.name}! ${d1}+${d2}${modStr} = ${roll} vs AV${def.av}. `;
+    let modFoul = '';
+    if (attAssists) modFoul += `+${attAssists}`;
+    if (defAssists)     modFoul += `-${defAssists}`;
+    let msg = `${att.name} fouls ${def.name}! ${d1}+${d2}${modFoul} = ${roll} vs AV${def.av}. `;
 
     const defCol = def.col, defRow = def.row;
 
