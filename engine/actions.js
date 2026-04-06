@@ -6,91 +6,12 @@
 if (typeof module !== 'undefined') {
     var { COLS, ROWS,
           playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
-          activatePlayer, endTurn, endActivation,
+          countAssists, blockDiceCount, getBlockTargets, getPushSquares,
+          _isInKickerHalf, isValidKickTarget, canMoveTo } = require('./helpers.js');
+    var { activatePlayer, endTurn, endActivation,
           resetAfterTouchdown } = require('./core.js');
     var { rush, dodge, BLOCK_FACES, rollBlockDice,
           rollArmourAndInjury, rollInjury, rollCrowdInjury } = require('./dice.js');
-}
-
-// ── countAssists ─────────────────────────────────────────────────
-// Returns effective strength of each side after counting assists.
-// An assist is a standing friendly player adjacent to the target
-// who is not themselves marked by any other enemy.
-
-function countAssists(G, att, def) {
-    const friends = (side) => G.players.filter(p =>
-        p.side === side && isStanding(p) && p.id !== att.id && p.id !== def.id
-    );
-
-    const attAssists = friends(att.side).filter(helper => {
-        if (!isAdjacent(helper, def)) return false;
-        return !G.players.some(enemy =>
-            enemy.side === def.side && isStanding(enemy)
-            && enemy.id !== def.id && isAdjacent(helper, enemy)
-        );
-    }).length;
-
-    const defAssists = friends(def.side).filter(helper => {
-        if (!isAdjacent(helper, att)) return false;
-        return !G.players.some(enemy =>
-            enemy.side === att.side && isStanding(enemy)
-            && enemy.id !== att.id && isAdjacent(helper, enemy)
-        );
-    }).length;
-
-    return {
-        attStr: att.st + attAssists,
-        defStr: def.st + defAssists,
-        attAssists,
-        defAssists,
-    };
-}
-
-// ── blockDiceCount ───────────────────────────────────────────────
-// Returns { dice, chooser } based on strength comparison.
-
-function blockDiceCount(attStr, defStr) {
-    if      (attStr > defStr * 2) return { dice: 3, chooser: 'att' };
-    else if (defStr > attStr * 2) return { dice: 3, chooser: 'def' };
-    else if (attStr > defStr)     return { dice: 2, chooser: 'att' };
-    else if (defStr > attStr)     return { dice: 2, chooser: 'def' };
-    else                          return { dice: 1, chooser: 'att' };
-}
-
-// ── getBlockTargets ──────────────────────────────────────────────
-// Adjacent standing enemies of att.
-
-function getBlockTargets(G, att) {
-    return G.players.filter(p =>
-        p.side !== att.side && isStanding(p) && isAdjacent(att, p)
-    );
-}
-
-// ── getPushSquares ────────────────────────────────────────────────
-// Returns the valid squares the defender can be pushed into.
-
-function getPushSquares(G, att, def) {
-    const dc = Math.sign(def.col - att.col);
-    const dr = Math.sign(def.row - att.row);
-
-    const candidates = [];
-    for (let sc = -1; sc <= 1; sc++) {
-        for (let sr = -1; sr <= 1; sr++) {
-            if (sc === 0 && sr === 0) continue;
-            if (dc !== 0 && sc === -dc) continue;
-            if (dr !== 0 && sr === -dr) continue;
-            if (dc === 0 && sc !== 0 && sr !== dr) continue;
-            if (dr === 0 && sr !== 0 && sc !== dc) continue;
-            candidates.push([def.col + sc, def.row + sr]);
-        }
-    }
-
-    const free = candidates.filter(([c, r]) =>
-        c >= 0 && c < COLS && r >= 0 && r < ROWS && !playerAt(G, c, r)
-    );
-    // When no free in-bounds squares exist, all candidates are valid, including
-    // out-of-bounds ones (crowd push).
-    return free.length > 0 ? free : candidates;
 }
 
 // ── knockDown ─────────────────────────────────────────────────────
@@ -1012,15 +933,6 @@ function doHandoff(G, receiverId) {
 
 // ── Kick mechanics ────────────────────────────────────────────────
 
-function _isInKickerHalf(kicker, row) {
-    return kicker === 'home' ? row >= 13 : row <= 6;
-}
-
-function isValidKickTarget(kicker, col, row) {
-    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-    return !_isInKickerHalf(kicker, row);
-}
-
 // Kicker picks an aim square; 2d6 (take min) scatter distance + d8 direction.
 // Touchback if the ball leaves the pitch or lands in the kicker's half.
 function declareKick(G, col, row) {
@@ -1087,36 +999,6 @@ function touchbackGiveBall(G, playerId) {
     G.phase  = 'play';
     G.active = G.receiver;
     return `${p.name} receives the touchback.`;
-}
-
-// ── canMoveTo ─────────────────────────────────────────────────────
-// Returns { allowed, needsrush, dodgerolltarget } for the given move.
-
-function canMoveTo(G, player, col, row) {
-    const dc    = Math.abs(player.col - col);
-    const dr    = Math.abs(player.row - row);
-    const minMA  = player.status === 'prone' ? 3 : 1;
-    const allowed = (
-        dc <= 1 && dr <= 1 && !(dc === 0 && dr === 0)
-        && player.maLeft + player.rushLeft >= minMA
-        && playerAt(G, col, row) === null
-    );
-
-    const needsrush = player.status === 'prone'
-        ? player.maLeft < 3
-        : player.maLeft === 0;
-
-    const needsDodge = G.players.some(enemy =>
-        enemy.side !== player.side && isStanding(enemy) && isAdjacent(player, enemy)
-    );
-
-    let dodgerolltarget = 0;
-    if (needsDodge) {
-        const destTZs = countTackleZones(G, player.side, col, row);
-        dodgerolltarget = Math.min(player.ag + destTZs, 6);
-    }
-
-    return { allowed, needsrush, dodgerolltarget };
 }
 
 // ── movePlayer ────────────────────────────────────────────────────
@@ -1272,7 +1154,6 @@ function activateMover(G, playerId) {
 
 if (typeof module !== 'undefined') {
     module.exports = {
-        countAssists, blockDiceCount, getBlockTargets, getPushSquares,
         knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
         activateBlitz, setBlitzTarget, blitzBlock,
         declareFoul, executeFoul, resolveArgueCall,
@@ -1280,7 +1161,7 @@ if (typeof module !== 'undefined') {
         doSecureRoll, secureBall,
         declarePass, throwBall, resolvePassReroll, getInterceptors, chooseInterceptor,
         declareHandoff, doHandoff,
-        isValidKickTarget, declareKick, touchbackGiveBall,
-        canMoveTo, movePlayer, activateMover,
+        declareKick, touchbackGiveBall,
+        movePlayer, activateMover,
     };
 }
