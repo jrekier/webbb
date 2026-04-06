@@ -599,18 +599,18 @@ function updateButtons() {
                        'btn-secure-ball','btn-handoff','btn-pass','btn-throw','btn-no-intercept',
                        'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
 
-    const a = getAvailableActions(G, G.sel, NET);
+    const gc = getGameContext(G, G.sel, NET);
 
-    if (a.inSetup) {
+    if (gc.inSetup) {
         ALL_BTNS.forEach(id => show(id, false));
-        show('btn-confirm-setup', a.canConfirmSetup);
+        show('btn-confirm-setup', gc.canConfirmSetup);
         document.getElementById('btn-confirm-setup').textContent =
             `Confirm ${(G.setupSide || '').toUpperCase()} Setup`;
         syncMobileHud();
         return;
     }
 
-    if (a.inSpecial) {
+    if (gc.inSpecial) {
         ALL_BTNS.forEach(id => show(id, false));
         syncMobileHud();
         return;
@@ -618,18 +618,18 @@ function updateButtons() {
 
     show('btn-confirm-setup', false);
 
-    show('btn-move',           a.canDeclare  && G.passing !== true);
-    show('btn-foul',           a.canFoul     && G.passing !== true);
-    show('btn-block',          a.hasTargets  && !a.selProne && G.passing !== true);
-    show('btn-blitz',          a.canBlitz    && G.passing !== true);
-    show('btn-secure-ball',    a.canSecure   && G.passing !== true);
-    show('btn-handoff',        a.canHandoff  && G.passing !== true);
-    show('btn-pass',           a.canPass     && G.passing !== true);
-    show('btn-throw',          a.canThrow);
-    show('btn-no-intercept',   a.canChooseNoIntercept);
-    show('btn-cancel',         a.canCancel);
-    show('btn-stop',           a.canStop);
-    show('btn-end-turn',       a.myTurn && !G.block);
+    show('btn-move',           gc.canDeclare  && G.passing !== true);
+    show('btn-foul',           gc.canFoul     && G.passing !== true);
+    show('btn-block',          gc.hasTargets  && !gc.selProne && G.passing !== true);
+    show('btn-blitz',          gc.canBlitz    && G.passing !== true);
+    show('btn-secure-ball',    gc.canSecure   && G.passing !== true);
+    show('btn-handoff',        gc.canHandoff  && G.passing !== true);
+    show('btn-pass',           gc.canPass     && G.passing !== true);
+    show('btn-throw',          gc.canThrow);
+    show('btn-no-intercept',   gc.canChooseNoIntercept);
+    show('btn-cancel',         gc.canCancel);
+    show('btn-stop',           gc.canStop);
+    show('btn-end-turn',       gc.myTurn && !G.block);
 
     const btnEnd = document.getElementById('btn-end-turn');
     if (btnEnd.style.display !== 'none')
