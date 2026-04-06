@@ -5,7 +5,21 @@ const fs   = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-const GL = require('./engine/index.js');
+const {
+    createInitialState, initFormations, FORMATION_HOME, FORMATION_AWAY,
+    initToss, chooseTossResult,
+    moveSetupPlayer, confirmSetup,
+    cancelActivation, endActivation, endTurn,
+} = require('./engine/core.js');
+const {
+    activateMover, movePlayer,
+    activateBlitz, setBlitzTarget, blitzBlock,
+    declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
+    declareFoul, executeFoul, resolveArgueCall,
+    declareHandoff, doHandoff,
+    declarePass, throwBall, resolvePassReroll, chooseInterceptor,
+    declareKick, touchbackGiveBall, secureBall,
+} = require('./engine/actions.js');
 const TM = require('./engine/teams.js');
 
 // ── Static file server ───────────────────────────────────────────
@@ -184,16 +198,16 @@ function startGame(room) {
     global.ROWS  = 20;
     global.TURNS = 6;
 
-    GL.initFormations();
+    initFormations();
 
-    room.G        = GL.createInitialState();
+    room.G        = createInitialState();
     room.homeTeam = DEFAULT_HOME;
     room.awayTeam = DEFAULT_AWAY;
 
-    const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   GL.FORMATION_HOME);
-    const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, GL.FORMATION_AWAY);
+    const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   FORMATION_HOME);
+    const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, FORMATION_AWAY);
     room.G.players = [...homePlayers, ...awayPlayers];
-    GL.initToss(room.G);  // sets phase='toss', picks tossWinner
+    initToss(room.G);  // sets phase='toss', picks tossWinner
 
     console.log(`Room ${room.id}: game started — ${room.G.players.length} players`);
 
@@ -286,35 +300,35 @@ function handleTossChoose(room, side, choice) {
     const G = room.G;
     if (G.phase !== 'toss') return;
     if (side !== G.tossWinner) return;  // only the winner chooses
-    const logMsg = GL.chooseTossResult(G, choice);
+    const logMsg = chooseTossResult(G, choice);
     broadcast(room, { type: 'UPDATE', G, logMsg });
 }
 
 function handleSetupMove(room, side, msg) {
     const G = room.G;
     if (G.phase !== 'setup' || side !== G.setupSide) return;
-    GL.moveSetupPlayer(G, msg.playerId, msg.col, msg.row);
+    moveSetupPlayer(G, msg.playerId, msg.col, msg.row);
     broadcast(room, { type: 'UPDATE', G, logMsg: null });
 }
 
 function handleKickAim(room, side, msg) {
     const G = room.G;
     if (G.phase !== 'kick' || side !== G.kicker) return;
-    const logMsg = GL.declareKick(G, msg.col, msg.row);
+    const logMsg = declareKick(G, msg.col, msg.row);
     if (logMsg) broadcast(room, { type: 'UPDATE', G, logMsg });
 }
 
 function handleTouchback(room, side, msg) {
     const G = room.G;
     if (G.phase !== 'touchback' || side !== G.receiver) return;
-    const logMsg = GL.touchbackGiveBall(G, msg.playerId);
+    const logMsg = touchbackGiveBall(G, msg.playerId);
     if (logMsg) broadcast(room, { type: 'UPDATE', G, logMsg });
 }
 
 function handleConfirmSetup(room, side) {
     const G = room.G;
     if (G.phase !== 'setup' || side !== G.setupSide) return;
-    const result = GL.confirmSetup(G, side);
+    const result = confirmSetup(G, side);
     if (!result) return;
     const logMsg    = result.errors ? result.errors[0] : result.msg;
     const setupError = !!result.errors;
@@ -326,33 +340,33 @@ function handleConfirmSetup(room, side) {
 function handleAction(room, msg) {
     const G = room.G;
     switch (msg.type) {
-        case 'ACTIVATE':      room.lastLogMsg = GL.activateMover(G, msg.playerId);      break;
-        case 'MOVE':          room.lastLogMsg = GL.movePlayer(G, msg.col, msg.row);     break;
-        case 'CANCEL':        room.lastLogMsg = GL.cancelActivation(G);                 break;
-        case 'STOP':          room.lastLogMsg = GL.endActivation(G);                    break;
-        case 'END_TURN':      room.lastLogMsg = GL.endTurn(G);                          break;
-        case 'SECURE_BALL':   room.lastLogMsg = GL.secureBall(G, msg.playerId);         break;
-        case 'FOUL_DECLARE':        room.lastLogMsg = GL.declareFoul(G, msg.playerId);           break;
-        case 'DO_FOUL':             room.lastLogMsg = GL.executeFoul(G, msg.targetId);           break;
-        case 'ARGUE_CALL':          room.lastLogMsg = GL.resolveArgueCall(G, msg.use);           break;
-        case 'HANDOFF_DECLARE':     room.lastLogMsg = GL.declareHandoff(G, msg.playerId);       break;
-        case 'DO_HANDOFF':          room.lastLogMsg = GL.doHandoff(G, msg.receiverId);          break;
-        case 'PASS_DECLARE':        room.lastLogMsg = GL.declarePass(G, msg.playerId);          break;
-        case 'THROW_BALL':          room.lastLogMsg = GL.throwBall(G, msg.col, msg.row);        break;
-        case 'PASS_REROLL':         room.lastLogMsg = GL.resolvePassReroll(G, msg.use);         break;
-        case 'CHOOSE_INTERCEPTOR':  room.lastLogMsg = GL.chooseInterceptor(G, msg.playerId);    break;
-        case 'BLITZ_DECLARE': room.lastLogMsg = GL.activateBlitz(G, msg.playerId);      break;
-        case 'BLITZ_TARGET':  room.lastLogMsg = GL.setBlitzTarget(G, msg.defId);        break;
+        case 'ACTIVATE':      room.lastLogMsg = activateMover(G, msg.playerId);      break;
+        case 'MOVE':          room.lastLogMsg = movePlayer(G, msg.col, msg.row);     break;
+        case 'CANCEL':        room.lastLogMsg = cancelActivation(G);                 break;
+        case 'STOP':          room.lastLogMsg = endActivation(G);                    break;
+        case 'END_TURN':      room.lastLogMsg = endTurn(G);                          break;
+        case 'SECURE_BALL':   room.lastLogMsg = secureBall(G, msg.playerId);         break;
+        case 'FOUL_DECLARE':        room.lastLogMsg = declareFoul(G, msg.playerId);           break;
+        case 'DO_FOUL':             room.lastLogMsg = executeFoul(G, msg.targetId);           break;
+        case 'ARGUE_CALL':          room.lastLogMsg = resolveArgueCall(G, msg.use);           break;
+        case 'HANDOFF_DECLARE':     room.lastLogMsg = declareHandoff(G, msg.playerId);       break;
+        case 'DO_HANDOFF':          room.lastLogMsg = doHandoff(G, msg.receiverId);          break;
+        case 'PASS_DECLARE':        room.lastLogMsg = declarePass(G, msg.playerId);          break;
+        case 'THROW_BALL':          room.lastLogMsg = throwBall(G, msg.col, msg.row);        break;
+        case 'PASS_REROLL':         room.lastLogMsg = resolvePassReroll(G, msg.use);         break;
+        case 'CHOOSE_INTERCEPTOR':  room.lastLogMsg = chooseInterceptor(G, msg.playerId);    break;
+        case 'BLITZ_DECLARE': room.lastLogMsg = activateBlitz(G, msg.playerId);      break;
+        case 'BLITZ_TARGET':  room.lastLogMsg = setBlitzTarget(G, msg.defId);        break;
         case 'BLITZ_START': {
             const att = G.players.find(p => p.id === msg.attId);
             const def = G.players.find(p => p.id === msg.defId);
-            if (att && def) room.lastLogMsg = GL.blitzBlock(G, att, def);
+            if (att && def) room.lastLogMsg = blitzBlock(G, att, def);
             break;
         }
         case 'BLOCK_START': {
             const att = G.players.find(p => p.id === msg.attId);
             const def = G.players.find(p => p.id === msg.defId);
-            if (att && def) room.lastLogMsg = GL.declareBlock(G, att, def);
+            if (att && def) room.lastLogMsg = declareBlock(G, att, def);
             break;
         }
         case 'BLOCK_FACE': {
@@ -360,17 +374,17 @@ function handleAction(room, msg) {
                 const idx = msg.faceIdx;
                 if (!Number.isInteger(idx) || idx < 0 || idx >= G.block.rolls.length) break;
                 const face = G.block.rolls[idx];
-                if (face) room.lastLogMsg = GL.pickBlockFace(G, face);
+                if (face) room.lastLogMsg = pickBlockFace(G, face);
             }
             break;
         }
         case 'BLOCK_PUSH': {
             if (G.block && G.block.phase === 'pick-push')
-                room.lastLogMsg = GL.pickPushSquare(G, msg.col, msg.row);
+                room.lastLogMsg = pickPushSquare(G, msg.col, msg.row);
             break;
         }
         case 'FOLLOW_UP': {
-            room.lastLogMsg = GL.resolveFollowUp(G, msg.choice);
+            room.lastLogMsg = resolveFollowUp(G, msg.choice);
             break;
         }
     }
