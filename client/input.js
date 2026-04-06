@@ -599,17 +599,18 @@ function updateButtons() {
                        'btn-secure-ball','btn-handoff','btn-pass','btn-throw','btn-no-intercept',
                        'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
 
-    if (G.phase === 'setup') {
+    const gc = getGameContext(G, G.sel, NET);
+
+    if (gc.inSetup) {
         ALL_BTNS.forEach(id => show(id, false));
-        const mySetup = !NET.online || NET.side === G.setupSide;
-        show('btn-confirm-setup', mySetup);
+        show('btn-confirm-setup', gc.canConfirmSetup);
         document.getElementById('btn-confirm-setup').textContent =
             `Confirm ${(G.setupSide || '').toUpperCase()} Setup`;
         syncMobileHud();
         return;
     }
 
-    if (G.phase === 'kick' || G.phase === 'touchback' || G.phase === 'gameover') {
+    if (gc.inSpecial) {
         ALL_BTNS.forEach(id => show(id, false));
         syncMobileHud();
         return;
@@ -617,54 +618,18 @@ function updateButtons() {
 
     show('btn-confirm-setup', false);
 
-    const myTurn     = !NET.online || NET.side === G.active;
-    const noAction   = !G.activated && !G.block;
-    const selProne   = G.sel && G.sel.status === 'prone';
-    const selStunned = G.sel && G.sel.status === 'stunned';
-    const canDeclare = myTurn && G.sel
-        && G.sel.side    === G.active
-        && !G.sel.usedAction
-        && noAction
-        && !selStunned
-        && (!selProne || G.sel.maLeft + G.sel.rushLeft >= 3);
-    const canBlitz = myTurn && G.sel
-        && G.sel.side    === G.active
-        && !G.sel.usedAction
-        && noAction
-        && !selStunned
-        && !G.hasBlitzed
-        && G.players.some(p => p.side !== G.active && isStanding(p));
-    const hasTargets  = canDeclare && G.sel
-        && getBlockTargets(G, G.sel).length > 0;
-    const canSecure   = canDeclare && !G.ball.carrier;
-    const canFoul     = myTurn && G.sel && G.sel.side === G.active
-        && !G.sel.usedAction && noAction && !G.hasFouled
-        && G.sel.status === 'active'
-        && G.players.some(p => p.side !== G.active
-            && (p.status === 'prone' || p.status === 'stunned') && p.col >= 0);
-    const canHandoff  = myTurn && G.sel && G.sel.side === G.active
-        && !G.sel.usedAction && noAction && !G.hasHandedOff
-        && G.sel.status !== 'stunned';
-    const canPass     = myTurn && G.sel && G.sel.side === G.active
-        && !G.sel.usedAction && noAction && !G.hasPassed
-        && G.sel.status !== 'stunned';
-    const canThrow    = myTurn && G.passing === true && G.activated && G.activated.hasBall;
-
-    show('btn-move',        canDeclare && G.passing !== true);
-    show('btn-foul',        canFoul    && G.passing !== true);
-    show('btn-block',       hasTargets && !selProne && G.passing !== true);
-    show('btn-blitz',       canBlitz   && G.passing !== true);
-    show('btn-secure-ball', canSecure  && G.passing !== true);
-    show('btn-handoff',     canHandoff && G.passing !== true);
-    show('btn-pass',        canPass    && G.passing !== true);
-    show('btn-throw',        canThrow);
-    const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
-    show('btn-no-intercept', canChooseNoIntercept);
-    show('btn-cancel',   myTurn && (G.passing === 'targeting'
-                            || G.block === 'targeting'
-                            || (G.activated && canStillCancel(G) && !G.block)));
-    show('btn-stop',     myTurn && G.activated && !canStillCancel(G) && !G.block && G.passing !== 'targeting');
-    show('btn-end-turn', myTurn && !G.block);
+    show('btn-move',           gc.canDeclare  && G.passing !== true);
+    show('btn-foul',           gc.canFoul     && G.passing !== true);
+    show('btn-block',          gc.hasTargets  && !gc.selProne && G.passing !== true);
+    show('btn-blitz',          gc.canBlitz    && G.passing !== true);
+    show('btn-secure-ball',    gc.canSecure   && G.passing !== true);
+    show('btn-handoff',        gc.canHandoff  && G.passing !== true);
+    show('btn-pass',           gc.canPass     && G.passing !== true);
+    show('btn-throw',          gc.canThrow);
+    show('btn-no-intercept',   gc.canChooseNoIntercept);
+    show('btn-cancel',         gc.canCancel);
+    show('btn-stop',           gc.canStop);
+    show('btn-end-turn',       gc.myTurn && !G.block);
 
     const btnEnd = document.getElementById('btn-end-turn');
     if (btnEnd.style.display !== 'none')

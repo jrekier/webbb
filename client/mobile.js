@@ -109,207 +109,6 @@ function drawInspectOverlay() {
     });
 }
 
-// ── drawPassTargetingOverlay ──────────────────────────────────────
-// Called at the end of render() when G.passing === 'targeting'.
-// Draws per-cell range bands and a hover highlight centered on the passer.
-
-function drawPassTargetingOverlay() {
-    if (!G.activated || !ctx) return;
-    const p = G.activated;
-    const inTargeting        = G.passing === 'targeting' && p.hasBall;
-    const inInterceptionChoice = !!G.interceptionChoice;
-    if (!inTargeting && !inInterceptionChoice) return;
-
-    // Drawn in world space (inside ctx.save/translate/restore in render()).
-    // No cameraY adjustment needed here.
-
-    ctx.save();
-
-    const BANDS = [
-        { max: 3,  fill: 'rgba(60,200,80,0.15)',  stroke: 'rgba(60,200,80,0.75)',  label: 'Quick' },
-        { max: 6,  fill: 'rgba(220,210,30,0.13)', stroke: 'rgba(220,210,30,0.75)', label: 'Short' },
-        { max: 9,  fill: 'rgba(240,130,20,0.13)', stroke: 'rgba(240,130,20,0.75)', label: 'Long'  },
-        { max: 99, fill: 'rgba(220,50,50,0.11)',  stroke: 'rgba(220,50,50,0.75)',  label: 'Bomb'  },
-    ];
-
-    const fs = Math.max(8, Math.floor(CELL * 0.22));
-
-    // Range bands — only shown while actively targeting, not during interception choice
-    if (inTargeting) {
-        // Build a dist map for every cell, then fill + draw inter-band borders cell-by-cell
-        const distAt = (c, r) => {
-            const dx = c - p.col, dy = r - p.row;
-            return Math.floor(Math.sqrt(dx * dx + dy * dy));
-        };
-        const bandOf = dist => BANDS.find(b => dist <= b.max) ?? null;
-
-        // Fill each cell with its band colour
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
-                const dist = distAt(c, r);
-                if (dist === 0) continue;
-                const band = bandOf(dist);
-                if (!band) continue;
-                ctx.fillStyle = band.fill;
-                ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
-            }
-        }
-
-        // Draw a border on each edge where the band changes
-        ctx.lineWidth = 1.5;
-        const DIRS = [[1, 0], [0, 1]]; // right edge, bottom edge
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
-                const bd = bandOf(distAt(c, r));
-                for (const [dc, dr] of DIRS) {
-                    const nc = c + dc, nr = r + dr;
-                    if (nc >= COLS || nr >= ROWS) continue;
-                    const nb = bandOf(distAt(nc, nr));
-                    if (bd === nb) continue;
-                    // Pick the colour of the outer (higher-dist) band for the border
-                    const colour = (nb && (!bd || nb.max > bd.max)) ? nb.stroke : (bd ? bd.stroke : null);
-                    if (!colour) continue;
-                    ctx.strokeStyle = colour;
-                    ctx.beginPath();
-                    if (dc === 1) { // vertical edge between c and c+1
-                        ctx.moveTo((c + 1) * CELL, r * CELL);
-                        ctx.lineTo((c + 1) * CELL, (r + 1) * CELL);
-                    } else {        // horizontal edge between r and r+1
-                        ctx.moveTo(c * CELL,       (r + 1) * CELL);
-                        ctx.lineTo((c + 1) * CELL, (r + 1) * CELL);
-                    }
-                    ctx.stroke();
-                }
-            }
-        }
-
-        // Band labels — placed just above the topmost cell of each band
-        ctx.font         = `bold ${fs}px 'IBM Plex Mono', monospace`;
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'bottom';
-        for (let i = 0; i < 3; i++) {
-            const maxDist = BANDS[i].max;
-            // Find the topmost row in this band directly above the passer's column
-            let labelRow = -1;
-            for (let r = 0; r < ROWS; r++) {
-                if (distAt(p.col, r) === maxDist) { labelRow = r; break; }
-            }
-            if (labelRow < 0) continue;
-            const ly = labelRow * CELL;
-            if (ly < 0 || ly > ROWS * CELL) continue;
-            ctx.fillStyle = BANDS[i].stroke;
-            ctx.fillText(BANDS[i].label, p.col * CELL + CELL / 2, ly);
-        }
-    }
-
-    // Determine trajectory endpoints
-    let idealTgt = null;  // declared/accurate destination (passer's intended square)
-    let actualTgt = null; // post-scatter actual destination (what opponents intercept)
-
-    if (inTargeting && passHover && !(passHover.col === p.col && passHover.row === p.row)) {
-        // Pre-throw: only the ideal trajectory is known
-        idealTgt  = passHover;
-        actualTgt = null; // not yet known
-    } else if (inInterceptionChoice) {
-        const ic = G.interceptionChoice;
-        idealTgt  = { col: ic.declaredCol, row: ic.declaredRow };
-        actualTgt = { col: ic.actualCol,   row: ic.actualRow   };
-    }
-
-    if (idealTgt || actualTgt) {
-        const px0 = p.col * CELL + CELL / 2;
-        const py0 = p.row * CELL + CELL / 2;
-
-        // Shared corridor drawing helper — modify color here to restyle both trajectories at once
-        const drawTrajectory = (col, row, color) => {
-            ctx.save();
-            ctx.strokeStyle = color;
-            ctx.lineWidth   = CELL * 2;
-            ctx.lineCap     = 'round';
-            ctx.beginPath();
-            ctx.moveTo(px0, py0);
-            ctx.lineTo(col * CELL + CELL / 2, row * CELL + CELL / 2);
-            ctx.stroke();
-            ctx.restore();
-        };
-
-        if (idealTgt) {
-            const { col: hc, row: hr } = idealTgt;
-
-            // Hover highlight + tooltip (targeting mode only)
-            if (inTargeting) {
-                const dist = Math.max(Math.abs(hc - p.col), Math.abs(hr - p.row));
-                const band = BANDS.find(b => dist <= b.max);
-                if (band) {
-                    ctx.fillStyle   = band.stroke.replace('0.75', '0.30');
-                    ctx.fillRect(hc * CELL, hr * CELL, CELL, CELL);
-                    ctx.strokeStyle = band.stroke;
-                    ctx.lineWidth   = 2;
-                    ctx.strokeRect(hc * CELL, hr * CELL, CELL, CELL);
-
-                    const label = `${band.label} (${dist}sq)`;
-                    ctx.font      = `bold ${fs}px 'IBM Plex Mono', monospace`;
-                    ctx.textAlign = 'center';
-                    const tw      = ctx.measureText(label).width + 8;
-                    const tx      = hc * CELL + CELL / 2;
-                    const ty      = hr * CELL - fs - 6;
-                    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-                    ctx.fillRect(tx - tw / 2, ty, tw, fs + 4);
-                    ctx.fillStyle    = '#fff';
-                    ctx.textBaseline = 'top';
-                    ctx.fillText(label, tx, ty + 2);
-                }
-            }
-
-            // Ideal trajectory — white in targeting mode, blue-white during interception choice
-            drawTrajectory(hc, hr,
-                inInterceptionChoice ? 'rgba(160,200,255,0.20)' : 'rgba(255,255,255,0.20)');
-        }
-
-        // Draw actual (post-scatter) trajectory — same corridor style, orange tint
-        if (actualTgt) {
-            const { col: ac, row: ar } = actualTgt;
-            const isDifferent = ac !== idealTgt?.col || ar !== idealTgt?.row;
-
-            drawTrajectory(ac, ar, 'rgba(255,180,80,0.22)');
-
-            // Mark actual landing square, with an X if different from declared target
-            if (isDifferent) {
-                ctx.fillStyle   = 'rgba(255,200,50,0.30)';
-                ctx.fillRect(ac * CELL, ar * CELL, CELL, CELL);
-                ctx.strokeStyle = 'rgba(255,200,50,0.90)';
-                ctx.lineWidth   = 2;
-                ctx.strokeRect(ac * CELL, ar * CELL, CELL, CELL);
-            }
-
-            // Interceptor highlights along the actual trajectory
-            const interceptorList = G.players.filter(pl =>
-                G.interceptionChoice.interceptorIds.includes(pl.id));
-            for (const ip of interceptorList) {
-                ctx.fillStyle   = 'rgba(255,140,0,0.35)';
-                ctx.fillRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
-                ctx.strokeStyle = 'rgba(255,140,0,0.90)';
-                ctx.lineWidth   = 2;
-                ctx.strokeRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
-            }
-        } else if (idealTgt && inTargeting) {
-            // Targeting mode: show interceptors on ideal trajectory
-            const { col: hc, row: hr } = idealTgt;
-            const interceptorList = typeof getInterceptors === 'function'
-                ? getInterceptors(G, p, hc, hr) : [];
-            for (const ip of interceptorList) {
-                ctx.fillStyle   = 'rgba(255,140,0,0.35)';
-                ctx.fillRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
-                ctx.strokeStyle = 'rgba(255,140,0,0.90)';
-                ctx.lineWidth   = 2;
-                ctx.strokeRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
-            }
-        }
-    }
-
-    ctx.restore();
-}
-
 // ── drawWheelOverlay ──────────────────────────────────────────────
 // Called at the end of render(). Draws inspect card first, then wheel.
 
@@ -374,8 +173,6 @@ function drawWheelOverlay() {
 // Called at the end of updateButtons() in input.js.
 
 function syncMobileHud() {
-    const myTurn = !NET.online || NET.side === G.active;
-
     const activeEl = document.getElementById('mobile-active-label');
     const turnEl   = document.getElementById('mobile-turn-label');
     if (activeEl) {
@@ -397,22 +194,13 @@ function syncMobileHud() {
     if (sh) sh.textContent = score.home;
     if (sa) sa.textContent = score.away;
 
-    const inSetup   = G.phase === 'setup';
-    const inSpecial = G.phase === 'kick' || G.phase === 'touchback';
-    const mySetup   = inSetup && (!NET.online || NET.side === G.setupSide);
-    mobileShow('mobile-btn-confirm-setup', mySetup);
-    mobileShow('mobile-btn-cancel',
-        !inSetup && !inSpecial && myTurn && (G.passing === 'targeting'
-            || G.block === 'targeting'
-            || (G.activated && canStillCancel(G) && !G.block)));
-    mobileShow('mobile-btn-throw',
-        !inSetup && !inSpecial && myTurn && G.passing === true && G.activated && G.activated.hasBall);
-    mobileShow('mobile-btn-no-intercept',
-        !inSetup && !inSpecial && !!G.interceptionChoice && (!NET.online || NET.side !== G.active));
-    mobileShow('mobile-btn-stop',
-        !inSetup && !inSpecial && myTurn && G.activated && !canStillCancel(G) && !G.block && G.passing !== 'targeting');
-    mobileShow('mobile-btn-end-turn',
-        !inSetup && !inSpecial && myTurn && !G.block);
+    const gc = getGameContext(G, G.sel, NET);
+    mobileShow('mobile-btn-confirm-setup', gc.canConfirmSetup);
+    mobileShow('mobile-btn-cancel',        !gc.inSetup && !gc.inSpecial && gc.canCancel);
+    mobileShow('mobile-btn-throw',         !gc.inSetup && !gc.inSpecial && gc.canThrow);
+    mobileShow('mobile-btn-no-intercept',  !gc.inSetup && !gc.inSpecial && gc.canChooseNoIntercept);
+    mobileShow('mobile-btn-stop',          !gc.inSetup && !gc.inSpecial && gc.canStop);
+    mobileShow('mobile-btn-end-turn',      !gc.inSetup && !gc.inSpecial && gc.myTurn && !G.block);
 }
 
 function mobileShow(id, visible) {
@@ -609,15 +397,14 @@ function _onLongPress(clientX, clientY) {
 // Returns true if the wheel was opened.
 
 function _openWheel(player, px, py) {
-    const myTurn   = !NET.online || NET.side === G.active;
-    const noAction = !G.activated && !G.block;
+    const gc = getGameContext(G, player, NET);
 
     // Non-active player may tap a highlighted interceptor during interception choice
     const canIntercept = G.interceptionChoice
         && G.interceptionChoice.interceptorIds.includes(player.id)
         && (!NET.online || NET.side !== G.active);
 
-    if (!myTurn && !canIntercept) return false;
+    if (!gc.myTurn && !canIntercept) return false;
 
     const actions = [];
 
@@ -633,19 +420,19 @@ function _openWheel(player, px, py) {
     }
 
     // Active-player actions (only for the team whose turn it is)
-    if (myTurn && G.activated && G.activated.id === player.id && !G.block) {
-        if (G.passing === true && G.activated.hasBall) {
+    if (gc.myTurn && G.activated && G.activated.id === player.id && !G.block) {
+        if (gc.canThrow) {
             actions.push({
                 label: 'Throw', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
                 fn: onClickThrow,
             });
         }
-        if (canStillCancel(G)) {
+        if (gc.canCancel) {
             actions.push({
                 label: 'Cancel', color: '#ffd080', bg: 'rgba(130,70,0,0.90)',
                 fn: onClickCancel,
             });
-        } else if (G.passing !== true) {
+        } else if (gc.canStop) {
             actions.push({
                 label: 'Stop', color: '#90f090', bg: 'rgba(20,110,20,0.90)',
                 fn: onClickStop,
@@ -653,24 +440,25 @@ function _openWheel(player, px, py) {
         }
     }
     // Unactivated player on active side — declare actions
-    else if (myTurn && noAction && player.side === G.active && !player.usedAction && player.status !== 'stunned') {
-        if (player.status === 'prone') {
-            if (player.maLeft + player.rushLeft >= 3)
-                actions.push({
-                    label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
-                    fn: onClickMove,
-                });
-            if (!G.hasBlitzed && G.players.some(p => p.side !== G.active && isStanding(p)))
+    else if (gc.canDeclare) {
+        if (gc.selProne) {
+            // gc.canDeclare already requires maLeft + rushLeft >= 3 for prone players,
+            // so Move is always safe to offer here.
+            actions.push({
+                label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
+                fn: onClickMove,
+            });
+            if (gc.canBlitz)
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
                     fn: onClickBlitz,
                 });
-            if (!G.hasHandedOff)
+            if (gc.canHandoff)
                 actions.push({
                     label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
                     fn: onClickHandoff,
                 });
-            if (!G.hasPassed)
+            if (gc.canPass)
                 actions.push({
                     label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
                     fn: onClickPass,
@@ -680,33 +468,32 @@ function _openWheel(player, px, py) {
                 label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
                 fn: onClickMove,
             });
-            if (getBlockTargets(G, player).length > 0)
+            if (gc.hasTargets)
                 actions.push({
                     label: 'Block', color: '#ff9090', bg: 'rgba(160,30,30,0.90)',
                     fn: onClickBlock,
                 });
-            if (!G.hasFouled && G.players.some(p =>
-                    p.side !== G.active && (p.status === 'prone' || p.status === 'stunned') && p.col >= 0))
+            if (gc.canFoul)
                 actions.push({
                     label: 'Foul', color: '#ff9090', bg: 'rgba(120,20,20,0.90)',
                     fn: onClickFoul,
                 });
-            if (!G.hasBlitzed && G.players.some(p => p.side !== G.active && isStanding(p)))
+            if (gc.canBlitz)
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
                     fn: onClickBlitz,
                 });
-            if (!G.ball.carrier)
+            if (gc.canSecure)
                 actions.push({
                     label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)',
                     fn: onClickSecureBall,
                 });
-            if (!G.hasHandedOff)
+            if (gc.canHandoff)
                 actions.push({
                     label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
                     fn: onClickHandoff,
                 });
-            if (!G.hasPassed)
+            if (gc.canPass)
                 actions.push({
                     label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
                     fn: onClickPass,
