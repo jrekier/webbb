@@ -3,6 +3,10 @@
 // Also: coin toss and pre-game formation setup.
 // No DOM, no canvas. Works identically in browser and Node.js.
 
+if (typeof module !== 'undefined') {
+    var { COLS, ROWS, TURNS } = require('./constants.js');
+}
+
 // ── createInitialState ────────────────────────────────────────────
 
 function createInitialState() {

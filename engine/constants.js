@@ -5,3 +5,7 @@
 const COLS  = 11;
 const ROWS  = 20;
 const TURNS = 6;
+
+if (typeof module !== 'undefined') {
+    module.exports = { COLS, ROWS, TURNS };
+}

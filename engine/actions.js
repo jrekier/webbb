@@ -4,6 +4,7 @@
 // No DOM, no canvas. Works identically in browser and Node.js.
 
 if (typeof module !== 'undefined') {
+    var { COLS, ROWS } = require('./constants.js');
     var { playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
           activatePlayer, endTurn, endActivation,
           resetAfterTouchdown } = require('./core.js');
