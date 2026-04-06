@@ -3,9 +3,9 @@
 // No G mutation, no dice rolls. Works identically in browser and Node.js.
 // Everything in this file is a building block used by core.js and actions.js.
 
-const COLS  = 11;
-const ROWS  = 20;
-const TURNS = 6;
+var COLS  = 11;
+var ROWS  = 20;
+var TURNS = 6;
 
 // ── playerAt ──────────────────────────────────────────────────────
 
