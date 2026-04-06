@@ -194,10 +194,6 @@ function destroyRoom(room) {
 // ── Game initialisation ───────────────────────────────────────────
 
 function startGame(room) {
-    global.COLS  = 11;
-    global.ROWS  = 20;
-    global.TURNS = 6;
-
     initFormations();
 
     room.G        = createInitialState();

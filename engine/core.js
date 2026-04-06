@@ -3,9 +3,9 @@
 // Also: coin toss and pre-game formation setup.
 // No DOM, no canvas. Works identically in browser and Node.js.
 
-if (typeof module !== 'undefined') {
-    var { COLS, ROWS, TURNS } = require('./constants.js');
-}
+const COLS  = 11;
+const ROWS  = 20;
+const TURNS = 6;
 
 // ── createInitialState ────────────────────────────────────────────
 
@@ -476,6 +476,7 @@ function confirmSetup(G, side) {
 
 if (typeof module !== 'undefined') {
     module.exports = {
+        COLS, ROWS, TURNS,
         createInitialState,
         playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
         hasMovedYet, canStillCancel,
