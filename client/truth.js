@@ -1,9 +1,9 @@
-// actions-available.js
+// truth.js
 // Single source of truth for what actions the selected player can take right now.
 // Called by updateButtons() (input.js), syncMobileHud() (mobile.js), and
 // _openWheel() (mobile.js) so that a new action only needs to be added here.
 
-function getAvailableActions(G, sel, NET) {
+function getGameContext(G, sel, NET) {
     const myTurn     = !NET.online || NET.side === G.active;
     const noAction   = !G.activated && !G.block;
     const selProne   = sel && sel.status === 'prone';

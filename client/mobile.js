@@ -194,13 +194,13 @@ function syncMobileHud() {
     if (sh) sh.textContent = score.home;
     if (sa) sa.textContent = score.away;
 
-    const a = getAvailableActions(G, G.sel, NET);
-    mobileShow('mobile-btn-confirm-setup', a.canConfirmSetup);
-    mobileShow('mobile-btn-cancel',        !a.inSetup && !a.inSpecial && a.canCancel);
-    mobileShow('mobile-btn-throw',         !a.inSetup && !a.inSpecial && a.canThrow);
-    mobileShow('mobile-btn-no-intercept',  !a.inSetup && !a.inSpecial && a.canChooseNoIntercept);
-    mobileShow('mobile-btn-stop',          !a.inSetup && !a.inSpecial && a.canStop);
-    mobileShow('mobile-btn-end-turn',      !a.inSetup && !a.inSpecial && a.myTurn && !G.block);
+    const gc = getGameContext(G, G.sel, NET);
+    mobileShow('mobile-btn-confirm-setup', gc.canConfirmSetup);
+    mobileShow('mobile-btn-cancel',        !gc.inSetup && !gc.inSpecial && gc.canCancel);
+    mobileShow('mobile-btn-throw',         !gc.inSetup && !gc.inSpecial && gc.canThrow);
+    mobileShow('mobile-btn-no-intercept',  !gc.inSetup && !gc.inSpecial && gc.canChooseNoIntercept);
+    mobileShow('mobile-btn-stop',          !gc.inSetup && !gc.inSpecial && gc.canStop);
+    mobileShow('mobile-btn-end-turn',      !gc.inSetup && !gc.inSpecial && gc.myTurn && !G.block);
 }
 
 function mobileShow(id, visible) {
@@ -397,14 +397,14 @@ function _onLongPress(clientX, clientY) {
 // Returns true if the wheel was opened.
 
 function _openWheel(player, px, py) {
-    const a = getAvailableActions(G, player, NET);
+    const gc = getGameContext(G, player, NET);
 
     // Non-active player may tap a highlighted interceptor during interception choice
     const canIntercept = G.interceptionChoice
         && G.interceptionChoice.interceptorIds.includes(player.id)
         && (!NET.online || NET.side !== G.active);
 
-    if (!a.myTurn && !canIntercept) return false;
+    if (!gc.myTurn && !canIntercept) return false;
 
     const actions = [];
 
@@ -420,19 +420,19 @@ function _openWheel(player, px, py) {
     }
 
     // Active-player actions (only for the team whose turn it is)
-    if (a.myTurn && G.activated && G.activated.id === player.id && !G.block) {
-        if (a.canThrow) {
+    if (gc.myTurn && G.activated && G.activated.id === player.id && !G.block) {
+        if (gc.canThrow) {
             actions.push({
                 label: 'Throw', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
                 fn: onClickThrow,
             });
         }
-        if (a.canCancel) {
+        if (gc.canCancel) {
             actions.push({
                 label: 'Cancel', color: '#ffd080', bg: 'rgba(130,70,0,0.90)',
                 fn: onClickCancel,
             });
-        } else if (a.canStop) {
+        } else if (gc.canStop) {
             actions.push({
                 label: 'Stop', color: '#90f090', bg: 'rgba(20,110,20,0.90)',
                 fn: onClickStop,
@@ -440,25 +440,25 @@ function _openWheel(player, px, py) {
         }
     }
     // Unactivated player on active side — declare actions
-    else if (a.canDeclare) {
-        if (a.selProne) {
-            // a.canDeclare already requires maLeft + rushLeft >= 3 for prone players,
+    else if (gc.canDeclare) {
+        if (gc.selProne) {
+            // gc.canDeclare already requires maLeft + rushLeft >= 3 for prone players,
             // so Move is always safe to offer here.
             actions.push({
                 label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
                 fn: onClickMove,
             });
-            if (a.canBlitz)
+            if (gc.canBlitz)
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
                     fn: onClickBlitz,
                 });
-            if (a.canHandoff)
+            if (gc.canHandoff)
                 actions.push({
                     label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
                     fn: onClickHandoff,
                 });
-            if (a.canPass)
+            if (gc.canPass)
                 actions.push({
                     label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
                     fn: onClickPass,
@@ -468,32 +468,32 @@ function _openWheel(player, px, py) {
                 label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
                 fn: onClickMove,
             });
-            if (a.hasTargets)
+            if (gc.hasTargets)
                 actions.push({
                     label: 'Block', color: '#ff9090', bg: 'rgba(160,30,30,0.90)',
                     fn: onClickBlock,
                 });
-            if (a.canFoul)
+            if (gc.canFoul)
                 actions.push({
                     label: 'Foul', color: '#ff9090', bg: 'rgba(120,20,20,0.90)',
                     fn: onClickFoul,
                 });
-            if (a.canBlitz)
+            if (gc.canBlitz)
                 actions.push({
                     label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
                     fn: onClickBlitz,
                 });
-            if (a.canSecure)
+            if (gc.canSecure)
                 actions.push({
                     label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)',
                     fn: onClickSecureBall,
                 });
-            if (a.canHandoff)
+            if (gc.canHandoff)
                 actions.push({
                     label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
                     fn: onClickHandoff,
                 });
-            if (a.canPass)
+            if (gc.canPass)
                 actions.push({
                     label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
                     fn: onClickPass,
