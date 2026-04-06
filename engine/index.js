@@ -1,8 +1,5 @@
 module.exports = {
-    ...require('./logic.js'),
+    ...require('./core.js'),
     ...require('./dice.js'),
-    ...require('./ball.js'),
-    ...require('./block.js'),
-    ...require('./move.js'),
-    ...require('./setup.js'),
+    ...require('./actions.js'),
 };
