@@ -442,6 +442,8 @@ function _openWheel(player, px, py) {
     // Unactivated player on active side — declare actions
     else if (a.canDeclare) {
         if (a.selProne) {
+            // a.canDeclare already requires maLeft + rushLeft >= 3 for prone players,
+            // so Move is always safe to offer here.
             actions.push({
                 label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
                 fn: onClickMove,
