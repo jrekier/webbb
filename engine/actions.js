@@ -88,11 +88,11 @@ function pickBlockFace(G, face) {
         case 'BOTH_DOWN': {
             const attHasBlock = att.skills?.includes('Block');
             const defHasBlock = def.skills?.includes('Block');
+            const attHadBall  = !attHasBlock && att.hasBall;
+            const defHadBall  = !defHasBlock && def.hasBall;
             const attInj      = attHasBlock ? null : knockDown(G, att);
             const defInj      = defHasBlock ? null : knockDown(G, def, { attacker: att });
-            const _ballAtAtt = !G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row;
-            const _ballAtDef = !G.ball.carrier && G.ball.col === def.col && G.ball.row === def.row;
-            const scatterMsg  = (_ballAtAtt || _ballAtDef) ? ' ' + scatterBall(G) : '';
+            const scatterMsg  = (attHadBall || defHadBall) ? ' ' + scatterBall(G) : '';
             G.block = null;
             G.blitz = null;
             att.usedAction = true;
@@ -169,20 +169,21 @@ function pickPushSquare(G, col, row) {
 
     let msg = `${def.name} pushed to (${col},${row}).`;
 
+    let ballDropped = false;
     if (
         (chosenFace.id === 'DEF_DOWN')
         || (chosenFace.id === 'DEF_STUMBLES' && !def.skills?.includes('Dodge'))
         || (chosenFace.id === 'DEF_STUMBLES' && def.skills?.includes('Dodge') && att.skills?.includes('Tackle'))
     ) {
+        ballDropped = def.hasBall;
         const injMsg = knockDown(G, def, { attacker: att });
         msg += ` ${def.name} is knocked down! ${injMsg}`;
-        if (!G.ball.carrier && G.ball.col === col && G.ball.row === row) msg += ' ' + scatterBall(G);
     }
 
     if (chainVictim) {
         // Preserve the original follow-up data so we can restore it after all
         // chain pushes resolve. For nested chains, pendingFollowUp already holds it.
-        const pendingFollowUp = G.block.pendingFollowUp || { att, vacCol, vacRow };
+        const pendingFollowUp = G.block.pendingFollowUp || { att, vacCol, vacRow, ballDropped };
         // The chain direction is away from def's old square.
         const fakeAtt = { col: vacCol, row: vacRow };
         const chainSquares = getPushSquares(G, fakeAtt, chainVictim);
@@ -202,8 +203,8 @@ function pickPushSquare(G, col, row) {
         return msg + ` Chain push — choose where ${chainVictim.name} goes.`;
     }
 
-    const followUp = G.block.pendingFollowUp || { att, vacCol, vacRow };
-    G.block = { phase: 'follow-up', att: followUp.att, vacCol: followUp.vacCol, vacRow: followUp.vacRow };
+    const followUp = G.block.pendingFollowUp || { att, vacCol, vacRow, ballDropped };
+    G.block = { phase: 'follow-up', att: followUp.att, vacCol: followUp.vacCol, vacRow: followUp.vacRow, ballDropped: followUp.ballDropped };
     return msg + ' Follow up?';
 }
 
@@ -212,7 +213,7 @@ function pickPushSquare(G, col, row) {
 
 function resolveFollowUp(G, followUp) {
     if (!G.block || G.block.phase !== 'follow-up') return null;
-    const { att, vacCol, vacRow } = G.block;
+    const { att, vacCol, vacRow, ballDropped } = G.block;
 
     if (followUp) {
         att.col = vacCol;
@@ -221,6 +222,8 @@ function resolveFollowUp(G, followUp) {
 
     G.block = null;
 
+    const scatterMsg = ballDropped ? ' ' + scatterBall(G) : '';
+
     if (G.blitz) {
         G.blitz = null;
         const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
@@ -228,12 +231,12 @@ function resolveFollowUp(G, followUp) {
             att.usedAction = true;
             G.activated    = null;
         }
-        return (followUp ? `${att.name} follows up` : `${att.name} stays`) + maMsg;
+        return (followUp ? `${att.name} follows up` : `${att.name} stays`) + maMsg + scatterMsg;
     }
 
     att.usedAction = true;
     G.activated    = null;
-    return followUp ? `${att.name} follows up` : `${att.name} stays`;
+    return (followUp ? `${att.name} follows up` : `${att.name} stays`) + scatterMsg;
 }
 
 // ── declareFoul / executeFoul / resolveArgueCall ──────────────────
