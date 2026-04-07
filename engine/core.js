@@ -1,7 +1,14 @@
 // core.js
-// Core game state: creation, player helpers, activation, turn management.
+// Core game state: creation, activation, turn management.
 // Also: coin toss and pre-game formation setup.
 // No DOM, no canvas. Works identically in browser and Node.js.
+
+if (typeof module !== 'undefined') {
+    var { COLS, ROWS, TURNS,
+          playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
+          hasMovedYet, canStillCancel,
+          isValidSetupSquare } = require('./helpers.js');
+}
 
 // ── createInitialState ────────────────────────────────────────────
 
@@ -40,48 +47,6 @@ function createInitialState() {
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
     };
-}
-
-// ── Player helpers ────────────────────────────────────────────────
-
-function playerAt(G, col, row) {
-    return G.players.find(p => p.col === col && p.row === row) || null;
-}
-
-// A player only exerts a tackle zone if they are upright and on the pitch.
-function isStanding(p) {
-    return p.col >= 0 && p.status === 'active';
-}
-
-function isAdjacent(a, b) {
-    return Math.abs(a.col - b.col) <= 1
-        && Math.abs(a.row - b.row) <= 1
-        && !(a.col === b.col && a.row === b.row);
-}
-
-function inTackleZoneOf(p, threat) {
-    return isStanding(threat) && isAdjacent(p, threat);
-}
-
-function countTackleZones(G, side, col, row) {
-    return G.players.filter(e =>
-        e.side !== side && isStanding(e)
-        && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
-        && !(e.col === col && e.row === row)
-    ).length;
-}
-
-// ── Move-state queries ────────────────────────────────────────────
-
-function hasMovedYet(G) {
-    if (!G.activated) return false;
-    return G.activated.maLeft < G.activated.ma;
-}
-
-// True when cancel is still legal: not yet moved, or blitz declared from prone.
-function canStillCancel(G) {
-    if (!G.activated) return false;
-    return !hasMovedYet(G) || G.blitzFromProne || G.stoodUpFromProne;
 }
 
 // ── Activation ────────────────────────────────────────────────────
@@ -380,17 +345,12 @@ function resetAfterTouchdown(G, scoringSide) {
     G.setupSide = G.kicker;
 }
 
-// ── setup.js ─────────────────────────────────────────────────────
+// ── setup ─────────────────────────────────────────────────────────
 // Coin toss and pre-game formation setup.
 // Sevens setup rules:
 //   Home sets up on rows 13–19, away on rows 0–6.
 //   ≥3 players on the LoS (row 13 / row 6).
 //   ≤2 players per wide zone (cols 0–1, cols 9–10).
-
-function isValidSetupSquare(side, col, row) {
-    if (side === 'home') return row >= 13 && row <= ROWS - 1;
-    return row >= 0 && row <= 6;
-}
 
 // ── initToss ──────────────────────────────────────────────────────
 // Picks a random toss winner. Returns the winning side.
@@ -473,13 +433,11 @@ function confirmSetup(G, side) {
 if (typeof module !== 'undefined') {
     module.exports = {
         createInitialState,
-        playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
-        hasMovedYet, canStillCancel,
         activatePlayer, cancelActivation, endActivation, endTurn,
         fixReferences,
         FORMATION_HOME, FORMATION_AWAY, initFormations,
         resetAfterTouchdown, startHalfTime, startGameOver,
-        isValidSetupSquare, initToss, chooseTossResult,
+        initToss, chooseTossResult,
         moveSetupPlayer, validateSetup, confirmSetup,
     };
 }

@@ -22,7 +22,7 @@ function startApp(homeTeam, awayTeam) {
     showScreen('welcome');
 
     // Attempt silent reconnect in background if a saved session exists
-    const saved = _loadReconnectToken();
+    const saved = loadReconnectToken();
     if (saved) connect().catch(() => {});
 }
 
