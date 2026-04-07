@@ -149,7 +149,7 @@ function getPushSquares(G, att, def) {
 
 // ── _isInKickerHalf ───────────────────────────────────────────────
 
-function _isInKickerHalf(kicker, row) {
+function isInKickerHalf(kicker, row) {
     return kicker === 'home' ? row >= 13 : row <= 6;
 }
 
@@ -157,7 +157,7 @@ function _isInKickerHalf(kicker, row) {
 
 function isValidKickTarget(kicker, col, row) {
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-    return !_isInKickerHalf(kicker, row);
+    return !isInKickerHalf(kicker, row);
 }
 
 // ── canMoveTo ─────────────────────────────────────────────────────

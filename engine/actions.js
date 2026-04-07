@@ -954,7 +954,7 @@ function declareKick(G, col, row) {
     let msg = `Kick aimed (${col},${row}): ${d6a}+${d6b} → ${dist} sq ${DIRS[dir]}.`;
 
     const outOfBounds  = nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS;
-    const inKickerHalf = !outOfBounds && _isInKickerHalf(G.kicker, nr);
+    const inKickerHalf = !outOfBounds && isInKickerHalf(G.kicker, nr);
 
     if (outOfBounds || inKickerHalf) {
         G.ball  = { col: -1, row: -1, carrier: null };

@@ -20,7 +20,7 @@ function connect() {
 
         NET.ws.onopen    = () => {
             resolve();
-            const saved = _loadReconnectToken();
+            const saved = loadReconnectToken();
             if (saved) sendAction({ type: 'RECONNECT', roomId: saved.roomId, side: saved.side, token: saved.token });
         };
         NET.ws.onmessage = (event) => netReceive(JSON.parse(event.data));
@@ -47,7 +47,7 @@ function joinRoom(roomId) {
 
 // ── reconnect token helpers ───────────────────────────────────────
 
-function _loadReconnectToken() {
+function loadReconnectToken() {
     try {
         const raw = localStorage.getItem('bbReconnect');
         return raw ? JSON.parse(raw) : null;
@@ -122,7 +122,7 @@ function netReceive(msg) {
             break;
 
         case 'RECONNECTED': {
-            const saved = _loadReconnectToken();
+            const saved = loadReconnectToken();
             NET.side   = saved.side;
             NET.roomId = saved.roomId;
             NET.online = true;
