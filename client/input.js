@@ -398,7 +398,7 @@ function onClickBlock() {
     if (G.sel.status !== 'active') return;   // prone/stunned players can't block
     G.activated = G.sel;
     G.block     = 'targeting';
-    log(`${G.sel.pos} declares block — click a target`);
+    log(`${G.sel.name} declares block — click a target`);
     render();
 }
 

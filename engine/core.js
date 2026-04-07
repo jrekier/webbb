@@ -97,7 +97,7 @@ function cancelActivation(G) {
 
 function endActivation(G) {
     if (!G.activated) return null;
-    const name = G.activated.pos;
+    const name = G.activated.name;
     G.activated.usedAction = true;
     G.activated    = null;
     G.blitz              = null;

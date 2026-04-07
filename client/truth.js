@@ -27,7 +27,11 @@ function getGameContext(G, sel, NET) {
     const hasTargets = canDeclare && sel
         && getBlockTargets(G, sel).length > 0;
 
-    const canSecure = canDeclare && !G.ball.carrier;
+    const canSecure = canDeclare && !G.ball.carrier
+        && !G.players.some(p =>
+            p.side !== G.active && isStanding(p)
+            && Math.abs(p.col - G.ball.col) <= 2 && Math.abs(p.row - G.ball.row) <= 2
+        );
 
     const canFoul = myTurn && sel && sel.side === G.active
         && !sel.usedAction && noAction && !G.hasFouled

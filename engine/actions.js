@@ -358,6 +358,7 @@ function activateBlitz(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
     if (p.status === 'stunned') return null;
+    if (G.hasBlitzed) return null;
     G.activated  = p;
     G.blitz      = 'targeting';
     G.hasBlitzed = true;
@@ -477,7 +478,7 @@ function scatterBall(G) {
     if (!lander) return `Ball scattered to (${nc},${nr}).`;
 
     if (!isStanding(lander)) {
-        return `Ball bounces off ${lander.pos}. ` + scatterBall(G);
+        return `Ball bounces off ${landername}. ` + scatterBall(G);
     }
 
     const tzs    = countTackleZones(G, lander.side, nc, nr);
@@ -486,9 +487,9 @@ function scatterBall(G) {
     if (roll >= target || roll === 6) {
         lander.hasBall = true;
         G.ball.carrier = lander;
-        return `Ball scattered to (${nc},${nr}) — ${lander.pos} catches it! (rolled ${roll}, needed ${target}+)`;
+        return `Ball scattered to (${nc},${nr}) — ${lander.name} catches it! (rolled ${roll}, needed ${target}+)`;
     }
-    return `${lander.pos} fails to catch (rolled ${roll}, needed ${target}+). ` + scatterBall(G);
+    return `${lander.name} fails to catch (rolled ${roll}, needed ${target}+). ` + scatterBall(G);
 }
 
 // ── tryPickup ─────────────────────────────────────────────────────
@@ -540,36 +541,32 @@ function checkTouchdown(G, p) {
 // ball's square. Ends activation on success; turnover on failure.
 
 function doSecureRoll(G, p) {
-    const tzs    = countTackleZones(G, p.side, G.ball.col, G.ball.row);
-    const target = Math.min(2 + tzs, 6);
     const roll   = Math.floor(Math.random() * 6) + 1;
     G.securingBall = false;
-    if (roll >= target || roll === 6) {
+    if (roll >= 2) {
         p.hasBall      = true;
         G.ball.carrier = p;
         endActivation(G);
-        return `${p.name} secures the ball (rolled ${roll}, needed ${target}+).`;
+        return `${p.name} secures the ball (rolled ${roll}).`;
     }
     const scatterMsg = scatterBall(G);
     endTurn(G);
-    return `${p.name} fails to secure (rolled ${roll}). ${scatterMsg} TURNOVER`;
+    return `${p.name} fails to secure (rolled ${roll}, needed 2+). ${scatterMsg} TURNOVER`;
 }
 
 // ── secureBall ────────────────────────────────────────────────────
 // Secure the Ball action (BB2025): activates player in securing mode.
-// If already on the ball, rolls immediately. Otherwise the player
-// moves normally and the 2+ fires when they step onto the ball square.
+// The player moves normally and the 2+ fires when they step onto the ball square.
 
 function secureBall(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
     if (p.status === 'stunned') return null;
     if (G.ball.carrier) return null;
-
-    // Standing player already on the ball — resolve immediately
-    if (p.status === 'active' && p.col === G.ball.col && p.row === G.ball.row) {
-        return doSecureRoll(G, p);
-    }
+    if (G.players.some(e =>
+        e.side !== p.side && isStanding(e)
+        && Math.abs(e.col - G.ball.col) <= 2 && Math.abs(e.row - G.ball.row) <= 2
+    )) return null;
 
     G.activated    = p;
     G.sel          = p;
