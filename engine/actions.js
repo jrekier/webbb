@@ -696,11 +696,17 @@ function _ptSegDist(px, py, ax, ay, bx, by) {
 function getInterceptors(G, passer, targetCol, targetRow) {
     const ax = passer.col + 0.5, ay = passer.row + 0.5;
     const bx = targetCol  + 0.5, by = targetRow  + 0.5;
+    const dx = bx - ax, dy = by - ay;
     return G.players.filter(p => {
         if (p.side === passer.side) return false;
         if (!isStanding(p)) return false;
         if (p.col === passer.col && p.row === passer.row) return false;
         if (p.col === targetCol  && p.row === targetRow)  return false;
+        // Exclude players whose centre lies outside the passer→target range.
+        const cx = p.col + 0.5, cy = p.row + 0.5;
+        const proj = (cx - ax) * dx + (cy - ay) * dy;
+        if (proj <= 0) return false;                          // behind passer
+        if (proj >= dx * dx + dy * dy) return false;          // beyond target
         // Corridor overlaps the player's square if the nearest point of that
         // square (corners + centre) is within 1 cell of the segment.
         const pts = [
