@@ -197,7 +197,7 @@ if (typeof module !== 'undefined') {
         hasMovedYet, canStillCancel,
         isValidSetupSquare,
         countAssists, blockDiceCount, getBlockTargets, getPushSquares,
-        _isInKickerHalf, isValidKickTarget,
+        isInKickerHalf, isValidKickTarget,
         canMoveTo,
     };
 }

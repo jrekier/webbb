@@ -7,7 +7,7 @@ if (typeof module !== 'undefined') {
     var { COLS, ROWS,
           playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
           countAssists, blockDiceCount, getBlockTargets, getPushSquares,
-          _isInKickerHalf, isValidKickTarget, canMoveTo } = require('./helpers.js');
+          isInKickerHalf, isValidKickTarget, canMoveTo } = require('./helpers.js');
     var { activatePlayer, endTurn, endActivation,
           resetAfterTouchdown } = require('./core.js');
     var { rush, dodge, BLOCK_FACES, rollBlockDice,
