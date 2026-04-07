@@ -1,6 +1,6 @@
 // helpers.js
-// Pure read-only queries and game constants.
-// No G mutation, no dice rolls. Works identically in browser and Node.js.
+// Read-only queries, game constants, and small player-state helpers.
+// No dice rolls. Works identically in browser and Node.js.
 // Everything in this file is a building block used by core.js and actions.js.
 
 var COLS  = 11;
@@ -190,6 +190,15 @@ function canMoveTo(G, player, col, row) {
     return { allowed, needsrush, dodgerolltarget };
 }
 
+// ── markStunned ───────────────────────────────────────────────────
+// Sets a player to stunned and marks the token so endTurn knows not
+// to flip them to prone until the *next* turn their team is active.
+
+function markStunned(p) {
+    p.status          = 'stunned';
+    p.stunnedThisTurn = true;
+}
+
 if (typeof module !== 'undefined') {
     module.exports = {
         COLS, ROWS, TURNS,
@@ -199,5 +208,6 @@ if (typeof module !== 'undefined') {
         countAssists, blockDiceCount, getBlockTargets, getPushSquares,
         isInKickerHalf, isValidKickTarget,
         canMoveTo,
+        markStunned,
     };
 }

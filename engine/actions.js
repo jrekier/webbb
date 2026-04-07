@@ -7,7 +7,8 @@ if (typeof module !== 'undefined') {
     var { COLS, ROWS,
           playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
           countAssists, blockDiceCount, getBlockTargets, getPushSquares,
-          isInKickerHalf, isValidKickTarget, canMoveTo } = require('./helpers.js');
+          isInKickerHalf, isValidKickTarget, canMoveTo,
+          markStunned } = require('./helpers.js');
     var { activatePlayer, endTurn, endActivation,
           resetAfterTouchdown } = require('./core.js');
     var { rush, dodge, BLOCK_FACES, rollBlockDice,
@@ -34,7 +35,7 @@ function knockDown(G, p, { attacker } = {}) {
         return `AV ${armorRoll}/${p.av} — armour holds.`;
     }
     if (outcome === 'stunned') {
-        p.status = 'stunned';
+        markStunned(p);
         return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: Stunned.`;
     }
     if (outcome === 'ko') {
@@ -143,7 +144,7 @@ function pickPushSquare(G, col, row) {
         const { injuryRoll, outcome } = rollCrowdInjury(def);
         let msg = `${def.name} pushed into the crowd! Inj ${injuryRoll}: `;
         if (outcome === 'stunned') {
-            def.status = 'stunned';
+            markStunned(def);
             msg += `Stunned — placed in reserves.`;
         } else if (outcome === 'ko') {
             def.status = 'ko';
@@ -284,7 +285,7 @@ function executeFoul(G, targetId) {
         if (di1 === di2) spotted = true;
         msg += `AV broken! Inj ${injuryRoll}: `;
         if (outcome === 'stunned') {
-            def.status = 'stunned';
+            markStunned(def);
             msg += 'Stunned.';
         } else if (outcome === 'ko') {
             def.status = 'ko'; def.col = -1; def.row = -1;

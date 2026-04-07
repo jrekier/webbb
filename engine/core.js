@@ -120,8 +120,9 @@ function endTurn(G) {
             p.usedAction = false;
             p.maLeft     = p.ma;
             p.rushLeft   = 2;
-            if (p.status === 'stunned') p.status = 'prone';
+            if (p.status === 'stunned' && !p.stunnedThisTurn) p.status = 'prone';
         }
+        p.stunnedThisTurn = false;
     }
 
     const justFinished = G.active;
