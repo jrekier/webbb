@@ -36,7 +36,7 @@ var BLOCK_FACES = [
 function rollBlockDice(n) {
     const results = [];
     for (let i = 0; i < n; i++) {
-        results.push(BLOCK_FACES[Math.floor(Math.random() * BLOCK_FACES.length)]);
+        results.push({ ...BLOCK_FACES[Math.floor(Math.random() * BLOCK_FACES.length)] });
     }
     return results;
 }

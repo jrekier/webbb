@@ -474,7 +474,7 @@ function scatterBall(G) {
     if (!lander) return `Ball scattered to (${nc},${nr}).`;
 
     if (!isStanding(lander)) {
-        return `Ball bounces off ${landername}. ` + scatterBall(G);
+        return `Ball bounces off ${lander.name}. ` + scatterBall(G);
     }
 
     const tzs    = countTackleZones(G, lander.side, nc, nr);

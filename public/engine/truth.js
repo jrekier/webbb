@@ -57,7 +57,7 @@ function getGameContext(G, sel, NET) {
         || G.block === 'targeting'
         || (G.activated && canStillCancel(G) && !G.block));
 
-    const canStop = myTurn && G.activated && !canStillCancel(G) && !G.block && G.passing !== 'targeting';
+    const canStop = myTurn && G.activated && (!canStillCancel(G) || G.stoodUpFromProne) && !G.block && G.passing !== 'targeting';
 
     const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
 
