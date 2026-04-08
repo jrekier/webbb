@@ -8,11 +8,55 @@
 </head>
 <body>
 
-<!-- ── Welcome screen ─────────────────────────────────────── -->
-<div id="screen-welcome" class="screen">
+<!-- ── Auth screen ──────────────────────────────────────────── -->
+<div id="screen-auth" class="screen hidden">
   <h1>Blood Bowl</h1>
+  <div id="auth-tabs">
+    <button id="auth-tab-login"    class="auth-tab auth-tab--active" onclick="showAuthTab('login')">Login</button>
+    <button id="auth-tab-register" class="auth-tab"                  onclick="showAuthTab('register')">Register</button>
+  </div>
+  <div id="auth-form-login">
+    <input id="login-username" type="text"     placeholder="Username" autocomplete="username">
+    <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+    <button onclick="onAuthLogin()">Login</button>
+  </div>
+  <div id="auth-form-register" class="hidden">
+    <input id="register-username" type="text"     placeholder="Username" autocomplete="username">
+    <input id="register-password" type="password" placeholder="Password" autocomplete="new-password">
+    <input id="register-confirm"  type="password" placeholder="Confirm password" autocomplete="new-password">
+    <button onclick="onAuthRegister()">Create Account</button>
+  </div>
+  <div id="auth-error" class="auth-error"></div>
+</div>
+
+<!-- ── Welcome screen ─────────────────────────────────────── -->
+<div id="screen-welcome" class="screen hidden">
+  <h1>Blood Bowl</h1>
+  <div id="welcome-user-bar">
+    <span id="welcome-username"></span>
+    <button class="welcome-logout-btn" onclick="onClickLogout()">Logout</button>
+  </div>
   <button onclick="onClickLocalGame();">Local Game</button>
   <button onclick="onClickOnline();">Play Online</button>
+  <button onclick="onClickMyTeams();">My Teams</button>
+</div>
+
+<!-- ── Teams screen ────────────────────────────────────────── -->
+<div id="screen-teams" class="screen hidden">
+  <div id="teams-inner">
+    <h2>My Teams</h2>
+    <div id="teams-list"></div>
+    <div id="new-team-form">
+      <input id="new-team-name" type="text" placeholder="Team name" maxlength="40">
+      <select id="new-team-race">
+        <option value="humans">Humans</option>
+        <option value="orcs">Orcs</option>
+      </select>
+      <button onclick="onCreateTeam()">+ Create</button>
+    </div>
+    <div id="teams-create-error" class="auth-error"></div>
+    <button class="teams-back-btn" onclick="showScreen('welcome')">← Back</button>
+  </div>
 </div>
 
 <!-- ── Lobby screen ────────────────────────────────────────── -->
@@ -172,6 +216,7 @@
 <script src="client/network.js"></script>
 <script src="client/game.js"></script>
 <script src="client/lobby.js"></script>
+<script src="client/auth.js"></script>
 <script src="client/welcome.js"></script>
 <script src="client/mobile.js"></script>
 

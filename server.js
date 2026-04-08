@@ -4,6 +4,7 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const DB = require('./db.js');
 
 const {
     createInitialState, initFormations, FORMATION_HOME, FORMATION_AWAY,
@@ -34,8 +35,88 @@ const MIME_TYPES = {
     '.png':  'image/png',
 };
 
-const httpServer = http.createServer((req, res) => {
-    const rawPath  = req.url.split('?')[0];
+// ── API helpers ───────────────────────────────────────────────────
+
+function readBody(req) {
+    return new Promise((resolve, reject) => {
+        let data = '';
+        req.on('data', chunk => { data += chunk; if (data.length > 1e5) req.destroy(); });
+        req.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({}); } });
+        req.on('error', reject);
+    });
+}
+
+function bearerToken(req) {
+    const auth = req.headers['authorization'] || '';
+    return auth.startsWith('Bearer ') ? auth.slice(7) : null;
+}
+
+function sendJSON(res, status, body) {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+}
+
+// ── HTTP server ───────────────────────────────────────────────────
+
+const httpServer = http.createServer(async (req, res) => {
+    const rawPath = req.url.split('?')[0];
+
+    // ── API routes ────────────────────────────────────────────────
+    if (rawPath.startsWith('/api/')) {
+        try {
+            if (req.method === 'POST' && rawPath === '/api/register') {
+                const body = await readBody(req);
+                const result = DB.register(body.username, body.password);
+                return sendJSON(res, result.error ? 400 : 200, result);
+            }
+
+            if (req.method === 'POST' && rawPath === '/api/login') {
+                const body = await readBody(req);
+                const result = DB.login(body.username, body.password);
+                return sendJSON(res, result.error ? 401 : 200, result);
+            }
+
+            if (req.method === 'POST' && rawPath === '/api/logout') {
+                DB.logout(bearerToken(req));
+                return sendJSON(res, 200, { ok: true });
+            }
+
+            if (req.method === 'GET' && rawPath === '/api/me') {
+                const user = DB.validateSession(bearerToken(req));
+                if (!user) return sendJSON(res, 401, { error: 'Unauthorized' });
+                return sendJSON(res, 200, { user });
+            }
+
+            if (req.method === 'GET' && rawPath === '/api/teams') {
+                const user = DB.validateSession(bearerToken(req));
+                if (!user) return sendJSON(res, 401, { error: 'Unauthorized' });
+                return sendJSON(res, 200, { teams: DB.getTeams(user.id) });
+            }
+
+            if (req.method === 'POST' && rawPath === '/api/teams') {
+                const user = DB.validateSession(bearerToken(req));
+                if (!user) return sendJSON(res, 401, { error: 'Unauthorized' });
+                const body = await readBody(req);
+                const result = DB.createTeam(user.id, body.name, body.race);
+                return sendJSON(res, result.error ? 400 : 201, result);
+            }
+
+            const teamMatch = rawPath.match(/^\/api\/teams\/(\d+)$/);
+            if (req.method === 'DELETE' && teamMatch) {
+                const user = DB.validateSession(bearerToken(req));
+                if (!user) return sendJSON(res, 401, { error: 'Unauthorized' });
+                const result = DB.deleteTeam(user.id, parseInt(teamMatch[1]));
+                return sendJSON(res, result.error ? 404 : 200, result);
+            }
+
+            return sendJSON(res, 404, { error: 'Not found' });
+        } catch (err) {
+            console.error('API error:', err);
+            return sendJSON(res, 500, { error: 'Internal server error' });
+        }
+    }
+
+    // ── Static files ──────────────────────────────────────────────
     const filePath = rawPath === '/' ? '/index.html' : rawPath;
     const fullPath = path.join(__dirname, 'public', path.normalize(filePath));
     if (!fullPath.startsWith(path.join(__dirname, 'public') + path.sep)) {

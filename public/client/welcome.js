@@ -14,16 +14,22 @@ function showScreen(name) {
 
 // ── App entry point ───────────────────────────────────────────────
 
-function startApp(homeTeam, awayTeam) {
+async function startApp(homeTeam, awayTeam) {
     // Stash default teams for local play
     window._defaultHomeTeam = homeTeam;
     window._defaultAwayTeam = awayTeam;
 
-    showScreen('welcome');
-
-    // Attempt silent reconnect in background if a saved session exists
-    const saved = loadReconnectToken();
-    if (saved) connect().catch(() => {});
+    // Check for existing auth session first
+    const user = await checkAuth();
+    if (user) {
+        document.getElementById('welcome-username').textContent = user.username;
+        showScreen('welcome');
+        // Attempt silent reconnect in background if a saved game session exists
+        const saved = loadReconnectToken();
+        if (saved) connect().catch(() => {});
+    } else {
+        showScreen('auth');
+    }
 }
 
 // ── Local game ────────────────────────────────────────────────────

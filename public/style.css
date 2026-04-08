@@ -694,3 +694,222 @@ canvas {
 @media (min-width: 1400px) {
     :root { --sidebar-w: 220px; }
 }
+
+/* ── Auth screen ──────────────────────────────────────────────── */
+#screen-auth {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+#screen-auth h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px;
+    letter-spacing: 6px;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+
+#auth-tabs {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+}
+
+.auth-tab {
+    padding: 8px 24px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.auth-tab + .auth-tab {
+    border-left: 1px solid var(--border);
+}
+
+.auth-tab--active,
+.auth-tab:hover {
+    color: var(--text);
+    background: rgba(0,0,0,0.04);
+}
+
+#auth-form-login,
+#auth-form-register {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 260px;
+}
+
+#auth-form-login input,
+#auth-form-register input {
+    padding: 9px 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    outline: none;
+}
+
+#auth-form-login input:focus,
+#auth-form-register input:focus {
+    border-color: var(--text);
+}
+
+.auth-error {
+    font-size: 10px;
+    color: var(--home);
+    letter-spacing: 0.5px;
+    min-height: 14px;
+    text-align: center;
+}
+
+/* ── Welcome screen (logged-in state) ─────────────────────────── */
+#welcome-user-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+}
+
+#welcome-username {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text);
+}
+
+.welcome-logout-btn {
+    padding: 4px 10px !important;
+    font-size: 9px !important;
+}
+
+/* ── Teams screen ─────────────────────────────────────────────── */
+#screen-teams {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    overflow-y: auto;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+#teams-inner {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+#teams-inner h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    letter-spacing: 5px;
+    color: var(--text);
+}
+
+#teams-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 40px;
+}
+
+.team-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    font-size: 11px;
+}
+
+.team-row-name {
+    flex: 1;
+    color: var(--text);
+    letter-spacing: 1px;
+}
+
+.team-row-race {
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 2px;
+}
+
+.team-row-delete {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.1s;
+}
+
+.team-row-delete:hover { color: var(--home); }
+
+.teams-empty {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    padding: 12px 0;
+}
+
+#new-team-form {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+#new-team-name {
+    flex: 1;
+    padding: 9px 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    outline: none;
+}
+
+#new-team-name:focus { border-color: var(--text); }
+
+#new-team-race {
+    padding: 9px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    outline: none;
+}
+
+.teams-back-btn {
+    align-self: flex-start;
+    margin-top: 8px;
+    padding: 8px 0 !important;
+    border: none !important;
+    font-size: 10px;
+    color: var(--text-dim) !important;
+    background: transparent;
+    cursor: pointer;
+    letter-spacing: 1px;
+}
+
+.teams-back-btn:hover { color: var(--text) !important; }

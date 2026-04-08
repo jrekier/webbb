@@ -4,6 +4,8 @@
   "description": "Blood Bowl browser game",
   "main": "server.js",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.8.0",
     "ws": "^8.0.0"
   }
 }
