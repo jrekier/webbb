@@ -249,9 +249,7 @@ function resolveFollowUp(G, followUp) {
 
 function declareFoul(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
-    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
-    if (p.status !== 'active') return null;
-    if (G.hasFouled) return null;
+    if (!p) return null;
     G.activated = p;
     G.sel       = p;
     G.fouling   = true;
@@ -356,9 +354,7 @@ function resolveArgueCall(G, use) {
 
 function activateBlitz(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
-    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
-    if (p.status === 'stunned') return null;
-    if (G.hasBlitzed) return null;
+    if (!p) return null;
     G.activated  = p;
     G.blitz      = 'targeting';
     G.hasBlitzed = true;
@@ -560,13 +556,7 @@ function doSecureRoll(G, p) {
 
 function secureBall(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
-    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
-    if (p.status === 'stunned') return null;
-    if (G.ball.carrier) return null;
-    if (G.players.some(e =>
-        e.side !== p.side && isStanding(e)
-        && Math.abs(e.col - G.ball.col) <= 2 && Math.abs(e.row - G.ball.row) <= 2
-    )) return null;
+    if (!p) return null;
 
     G.activated    = p;
     G.sel          = p;
@@ -612,23 +602,24 @@ function _catchAtSquare(G, col, row, bouncePenalty) {
 
     const tzs    = countTackleZones(G, lander.side, col, row);
     const target = Math.min(lander.ag + (bouncePenalty ? 1 : 0) + tzs, 6);
-    let roll     = Math.floor(Math.random() * 6) + 1;
+    const roll   = Math.floor(Math.random() * 6) + 1;
     let extra    = '';
+    let result   = roll;
 
     if (roll !== 6 && roll < target && lander.skills?.includes('Catch')) {
         const reroll = Math.floor(Math.random() * 6) + 1;
-        extra = ` Uses Catch skill, rerolls: ${reroll}.`;
-        roll  = reroll;
+        extra  = ` Uses Catch skill: ${roll} → ${reroll}.`;
+        result = reroll;
     }
 
-    if (roll >= target || roll === 6) {
+    if (result >= target || result === 6) {
         lander.hasBall = true;
         G.ball.carrier = lander;
         const tdMsg    = checkTouchdown(G, lander);
-        const catchMsg = `${lander.name} catches it! (${roll} vs ${target}+)${extra}`;
+        const catchMsg = `${lander.name} catches it! (${result} vs ${target}+)${extra}`;
         return tdMsg ? ` ${catchMsg} ${tdMsg}` : ` ${catchMsg}`;
     }
-    return ` ${lander.name} fails to catch (${roll} vs ${target}+).${extra} ` + scatterBall(G);
+    return ` ${lander.name} fails to catch (${result} vs ${target}+).${extra} ` + scatterBall(G);
 }
 
 // ── _checkPassTurnover ────────────────────────────────────────────
@@ -666,9 +657,7 @@ function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
 
 function declarePass(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
-    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
-    if (p.status === 'stunned') return null;
-    if (G.hasPassed) return null;
+    if (!p) return null;
 
     G.activated     = p;
     G.sel           = p;
@@ -902,9 +891,7 @@ function chooseInterceptor(G, interceptorId) {
 
 function declareHandoff(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
-    if (!p || p.side !== G.active || p.usedAction || G.activated) return null;
-    if (p.status === 'stunned') return null;
-    if (G.hasHandedOff) return null;
+    if (!p) return null;
 
     G.activated  = p;
     G.sel        = p;
@@ -1124,7 +1111,7 @@ function movePlayer(G, col, row) {
 
 function activateMover(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
-    if (!p || p.side !== G.active || p.usedAction || G.activated || p.status === 'stunned') return null;
+    if (!p) return null;
 
     if (p.status !== 'prone') {
         return activatePlayer(G, playerId);

@@ -10,7 +10,7 @@ const {
     initToss, chooseTossResult,
     moveSetupPlayer, confirmSetup,
     cancelActivation, endActivation, endTurn,
-} = require('./engine/core.js');
+} = require('./public/engine/core.js');
 const {
     activateMover, movePlayer,
     activateBlitz, setBlitzTarget, blitzBlock,
@@ -19,8 +19,9 @@ const {
     declareHandoff, doHandoff,
     declarePass, throwBall, resolvePassReroll, chooseInterceptor,
     declareKick, touchbackGiveBall, secureBall,
-} = require('./engine/actions.js');
-const TM = require('./engine/teams.js');
+} = require('./public/engine/actions.js');
+const TM = require('./public/engine/teams.js');
+const { getGameContext } = require('./public/engine/truth.js');
 
 // ── Static file server ───────────────────────────────────────────
 
@@ -36,8 +37,8 @@ const MIME_TYPES = {
 const httpServer = http.createServer((req, res) => {
     const rawPath  = req.url.split('?')[0];
     const filePath = rawPath === '/' ? '/index.html' : rawPath;
-    const fullPath = path.join(__dirname, path.normalize(filePath));
-    if (!fullPath.startsWith(__dirname + path.sep)) {
+    const fullPath = path.join(__dirname, 'public', path.normalize(filePath));
+    if (!fullPath.startsWith(path.join(__dirname, 'public') + path.sep)) {
         res.writeHead(403); res.end('Forbidden'); return;
     }
     const ext      = path.extname(fullPath);
@@ -53,7 +54,7 @@ const httpServer = http.createServer((req, res) => {
 // ── Default teams ─────────────────────────────────────────────────
 
 function loadTeamDef(filename) {
-    const raw = fs.readFileSync(path.join(__dirname, filename), 'utf8');
+    const raw = fs.readFileSync(path.join(__dirname, 'public', filename), 'utf8');
     return JSON.parse(raw);
 }
 
@@ -334,24 +335,26 @@ function handleConfirmSetup(room, side) {
 // ── Action handler ────────────────────────────────────────────────
 
 function handleAction(room, msg) {
-    const G = room.G;
+    const G  = room.G;
+    const sel = G.players.find(p => p.id === msg.playerId) ?? null;
+    const gc  = getGameContext(G, sel, { online: false });
     switch (msg.type) {
-        case 'ACTIVATE':      room.lastLogMsg = activateMover(G, msg.playerId);      break;
+        case 'ACTIVATE':      if (!gc.canDeclare) return; room.lastLogMsg = activateMover(G, msg.playerId);      break;
         case 'MOVE':          room.lastLogMsg = movePlayer(G, msg.col, msg.row);     break;
         case 'CANCEL':        room.lastLogMsg = cancelActivation(G);                 break;
         case 'STOP':          room.lastLogMsg = endActivation(G);                    break;
         case 'END_TURN':      room.lastLogMsg = endTurn(G);                          break;
-        case 'SECURE_BALL':   room.lastLogMsg = secureBall(G, msg.playerId);         break;
-        case 'FOUL_DECLARE':        room.lastLogMsg = declareFoul(G, msg.playerId);           break;
+        case 'SECURE_BALL':   if (!gc.canSecure)  return; room.lastLogMsg = secureBall(G, msg.playerId);         break;
+        case 'FOUL_DECLARE':        if (!gc.canFoul)    return; room.lastLogMsg = declareFoul(G, msg.playerId);           break;
         case 'DO_FOUL':             room.lastLogMsg = executeFoul(G, msg.targetId);           break;
         case 'ARGUE_CALL':          room.lastLogMsg = resolveArgueCall(G, msg.use);           break;
-        case 'HANDOFF_DECLARE':     room.lastLogMsg = declareHandoff(G, msg.playerId);       break;
+        case 'HANDOFF_DECLARE':     if (!gc.canHandoff) return; room.lastLogMsg = declareHandoff(G, msg.playerId);       break;
         case 'DO_HANDOFF':          room.lastLogMsg = doHandoff(G, msg.receiverId);          break;
-        case 'PASS_DECLARE':        room.lastLogMsg = declarePass(G, msg.playerId);          break;
+        case 'PASS_DECLARE':        if (!gc.canPass)    return; room.lastLogMsg = declarePass(G, msg.playerId);          break;
         case 'THROW_BALL':          room.lastLogMsg = throwBall(G, msg.col, msg.row);        break;
         case 'PASS_REROLL':         room.lastLogMsg = resolvePassReroll(G, msg.use);         break;
         case 'CHOOSE_INTERCEPTOR':  room.lastLogMsg = chooseInterceptor(G, msg.playerId);    break;
-        case 'BLITZ_DECLARE': room.lastLogMsg = activateBlitz(G, msg.playerId);      break;
+        case 'BLITZ_DECLARE': if (!gc.canBlitz)   return; room.lastLogMsg = activateBlitz(G, msg.playerId);      break;
         case 'BLITZ_TARGET':  room.lastLogMsg = setBlitzTarget(G, msg.defId);        break;
         case 'BLITZ_START': {
             const att = G.players.find(p => p.id === msg.attId);

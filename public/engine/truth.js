@@ -3,6 +3,10 @@
 // Called by updateButtons() (input.js), syncMobileHud() (mobile.js), and
 // _openWheel() (mobile.js) so that a new action only needs to be added here.
 
+if (typeof module !== 'undefined') {
+    var { isStanding, canStillCancel, getBlockTargets } = require('./helpers.js');
+}
+
 function getGameContext(G, sel, NET) {
     const myTurn     = !NET.online || NET.side === G.active;
     const noAction   = !G.activated && !G.block;
@@ -82,4 +86,8 @@ function getGameContext(G, sel, NET) {
         canChooseNoIntercept,
         canConfirmSetup,
     };
+}
+
+if (typeof module !== 'undefined') {
+    module.exports = { getGameContext };
 }
