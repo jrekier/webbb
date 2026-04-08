@@ -340,6 +340,16 @@ function handleAction(room, msg) {
     const gc  = getGameContext(G, sel, { online: false });
     switch (msg.type) {
         case 'ACTIVATE':      if (!gc.canDeclare) return; room.lastLogMsg = activateMover(G, msg.playerId);      break;
+        case 'ACTIVATE_AND_MOVE': {
+            if (!gc.canDeclare) return;
+            const aMsg = activateMover(G, msg.playerId);
+            if (aMsg) room.lastLogMsg = aMsg;
+            if (G.activated) {
+                const mMsg = movePlayer(G, msg.col, msg.row);
+                if (mMsg) room.lastLogMsg = (room.lastLogMsg ? room.lastLogMsg + ' ' : '') + mMsg;
+            }
+            break;
+        }
         case 'MOVE':          room.lastLogMsg = movePlayer(G, msg.col, msg.row);     break;
         case 'CANCEL':        room.lastLogMsg = cancelActivation(G);                 break;
         case 'STOP':          room.lastLogMsg = endActivation(G);                    break;

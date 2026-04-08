@@ -331,10 +331,15 @@ function drawPitch() {
 // ── Highlights ────────────────────────────────────────────────────
 function drawHighlights() {
     // Movement highlights — green fill + inset border – orange if rush needed
-    if (G.activated && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && !G.interceptionChoice) {
+    // Show for the activated player, or as a preview for a selected-but-not-yet-activated player.
+    const mover = G.activated ?? (
+        G.sel && !G.sel.usedAction && G.sel.side === G.active
+        && G.sel.status !== 'stunned' && !G.block ? G.sel : null
+    );
+    if (mover && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && !G.interceptionChoice) {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, G.activated, c, r);
+                const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, mover, c, r);
                 if (allowed) {
                     if (needsrush) {
                         hlCell(c, r, 'rgba(220,130,30,0.22)', 'rgba(255,160,40,0.6)', false);

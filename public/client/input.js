@@ -356,15 +356,35 @@ function clickCell(col, row) {
     }
 
     // Movement
-    if (!G.activated) return;
     if (G.blitz === 'targeting') return;
-    const { allowed } = canMoveTo(G, G.activated, col, row);
-    if (!allowed) return;
-    if (NET.online) {
-        sendAction({ type: 'MOVE', col, row });
-    } else {
-        const msg = movePlayer(G, col, row);
-        if (msg) log(msg);
+
+    // Already activated — just move
+    if (G.activated) {
+        const { allowed } = canMoveTo(G, G.activated, col, row);
+        if (!allowed) return;
+        if (NET.online) {
+            sendAction({ type: 'MOVE', col, row });
+        } else {
+            const msg = movePlayer(G, col, row);
+            if (msg) log(msg);
+        }
+        return;
+    }
+
+    // Selected but not activated — activate-and-move on click of a highlighted cell
+    if (G.sel && G.sel.side === G.active && !G.sel.usedAction && !G.block) {
+        const { allowed } = canMoveTo(G, G.sel, col, row);
+        if (!allowed) return;
+        if (NET.online) {
+            sendAction({ type: 'ACTIVATE_AND_MOVE', playerId: G.sel.id, col, row });
+        } else {
+            const activateMsg = activateMover(G, G.sel.id);
+            if (activateMsg) log(activateMsg);
+            if (G.activated) {
+                const moveMsg = movePlayer(G, col, row);
+                if (moveMsg) log(moveMsg);
+            }
+        }
     }
 }
 
@@ -380,9 +400,10 @@ function onClickSecureBall() {
     }
 }
 
-function onClickMove() {
+function onClickStandUp() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (G.sel.usedAction || G.activated) return;
+    if (G.sel.status !== 'prone') return;
     if (NET.online) {
         sendAction({ type: 'ACTIVATE', playerId: G.sel.id });
     } else {
@@ -595,7 +616,7 @@ function updateButtons() {
         };
     }
 
-    const ALL_BTNS = ['btn-move','btn-block','btn-blitz','btn-foul',
+    const ALL_BTNS = ['btn-stand-up','btn-block','btn-blitz','btn-foul',
                        'btn-secure-ball','btn-handoff','btn-pass','btn-throw','btn-no-intercept',
                        'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
 
@@ -618,7 +639,7 @@ function updateButtons() {
 
     show('btn-confirm-setup', false);
 
-    show('btn-move',           gc.canDeclare  && G.passing !== true);
+    show('btn-stand-up',       gc.canDeclare && gc.selProne && G.passing !== true);
     show('btn-foul',           gc.canFoul     && G.passing !== true);
     show('btn-block',          gc.hasTargets  && !gc.selProne && G.passing !== true);
     show('btn-blitz',          gc.canBlitz    && G.passing !== true);

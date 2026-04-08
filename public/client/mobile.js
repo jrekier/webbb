@@ -442,11 +442,11 @@ function _openWheel(player, px, py) {
     // Unactivated player on active side — declare actions
     else if (gc.canDeclare) {
         if (gc.selProne) {
-            // gc.canDeclare already requires maLeft + rushLeft >= 3 for prone players,
-            // so Move is always safe to offer here.
+            // Prone players: offer Stand Up (activates in place) so they can optionally move after.
+            // Tapping a highlighted square directly also works (activate-and-move).
             actions.push({
-                label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
-                fn: onClickMove,
+                label: 'Stand\nUp', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
+                fn: onClickStandUp,
             });
             if (gc.canBlitz)
                 actions.push({
@@ -464,10 +464,7 @@ function _openWheel(player, px, py) {
                     fn: onClickPass,
                 });
         } else {
-            actions.push({
-                label: 'Move', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
-                fn: onClickMove,
-            });
+            // Standing players move by tapping a highlighted square directly — no Move button needed.
             if (gc.hasTargets)
                 actions.push({
                     label: 'Block', color: '#ff9090', bg: 'rgba(160,30,30,0.90)',
