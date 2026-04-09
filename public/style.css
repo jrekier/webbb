@@ -1,10 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:ital,wght@0,400;0,700;1,400&display=swap');
-
-/* ── Reset ────────────────────────────────────────────────────── */
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-/* ── Utility ──────────────────────────────────────────────────── */
-.hidden { display: none !important; }
+/* ── Game-specific variables ──────────────────────────────────── */
+:root {
+    --sidebar-w: 200px;
+}
 
 /* ── Screens ──────────────────────────────────────────────────── */
 .screen {
@@ -199,23 +196,8 @@
     .lobby-card { padding: 16px 14px; }  /* larger touch target */
 }
 
-/* ── Palette ──────────────────────────────────────────────────── */
-:root {
-    --bg:        #f0ead8;
-    --border:    #ccc0a0;
-    --text:      #2a1f0e;
-    --text-dim:  #8a7a60;
-    --home:      #b02020;
-    --away:      #1a3a99;
-    --gold:      #8a6a20;
-    --sidebar-w: 200px;
-}
-
 /* ── Base ─────────────────────────────────────────────────────── */
 body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
     height: 100vh;
     height: 100dvh;
@@ -479,8 +461,7 @@ canvas {
 
 #btn-connect:hover { border-color: var(--text-dim); color: var(--text); }
 
-/* ── Reconnect overlay ────────────────────────────────────────── */
-/* ── Toss overlay ──────────────────────────────────────────────── */
+/* ── Toss overlay ─────────────────────────────────────────────── */
 #toss-overlay {
     position: fixed;
     inset: 0;
@@ -526,6 +507,7 @@ canvas {
 }
 .toss-btn:hover { background: rgba(255,255,255,0.08); }
 
+/* ── Reconnect overlay ────────────────────────────────────────── */
 #reconnect-overlay {
     position: fixed;
     inset: 0;

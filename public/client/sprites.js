@@ -13,27 +13,36 @@
 // Sprites are cached by sheet + base coords + colour.
 
 // ── Sheet cache ───────────────────────────────────────────────────
-// Loaded Image objects, keyed by URL.
+// Loaded Image objects, keyed by absolute URL.
 var sheetCache  = {};
 
 // ── Sprite cache ──────────────────────────────────────────────────
-// Built OffscreenCanvas objects, keyed by 'sheet|y|r,g,b'.
+// Built OffscreenCanvas objects, keyed by 'sheet|x,y|r,g,b'.
 var spriteCache = {};
+
+// Resolve a sheet path (e.g. 'assets/sprites/human.gif') to an absolute URL
+// using window.STATIC_BASE set by the server when STATIC_URL is configured.
+function resolveSheet(url) {
+    const base = (typeof window !== 'undefined' && window.STATIC_BASE) || '';
+    return base ? `${base}/${url}` : url;
+}
 
 // ── loadSheet ─────────────────────────────────────────────────────
 // Loads a sprite sheet image if not already loaded.
 // Calls onLoad() when ready.
 
 function loadSheet(url, onLoad) {
-    if (sheetCache[url]) {
-        if (sheetCache[url].complete) onLoad(sheetCache[url]);
-        else sheetCache[url].addEventListener('load', () => onLoad(sheetCache[url]));
+    const absUrl = resolveSheet(url);
+    if (sheetCache[absUrl]) {
+        if (sheetCache[absUrl].complete) onLoad(sheetCache[absUrl]);
+        else sheetCache[absUrl].addEventListener('load', () => onLoad(sheetCache[absUrl]));
         return;
     }
     const img = new Image();
+    img.crossOrigin = 'anonymous';  // required when bbstatic is a different origin
     img.onload = () => { onLoad(img); render(); };
-    img.src    = url;
-    sheetCache[url] = img;
+    img.src    = absUrl;
+    sheetCache[absUrl] = img;
 }
 
 // ── HSL helpers ───────────────────────────────────────────────────
@@ -74,7 +83,7 @@ function getSprite(p) {
 
     const { sheet, base, armour } = p.sprite;
     const [r, g, b] = p.colour;
-    const key = `${sheet}|${base.x},${base.y}|${r},${g},${b}`;
+    const key = `${resolveSheet(sheet)}|${base.x},${base.y}|${r},${g},${b}`;
 
     if (spriteCache[key]) return spriteCache[key];
 

@@ -1,8 +1,12 @@
 'use strict';
 
+require('dotenv').config();
+
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
+
+const STATIC_URL = process.env.STATIC_URL || '';
 const { WebSocketServer } = require('ws');
 
 const {
@@ -34,18 +38,33 @@ const MIME_TYPES = {
     '.png':  'image/png',
 };
 
+const PUB_DIR = path.join(__dirname, 'public');
+
 const httpServer = http.createServer((req, res) => {
-    const rawPath  = req.url.split('?')[0];
-    const filePath = rawPath === '/' ? '/index.html' : rawPath;
-    const fullPath = path.join(__dirname, 'public', path.normalize(filePath));
-    if (!fullPath.startsWith(path.join(__dirname, 'public') + path.sep)) {
+    let pathname;
+    try { pathname = new URL(req.url, 'http://localhost').pathname; }
+    catch { res.writeHead(400); res.end('Bad request'); return; }
+
+    const filePath = pathname === '/' ? '/index.html' : pathname;
+    const fullPath = path.resolve(PUB_DIR, '.' + filePath);
+    if (!fullPath.startsWith(PUB_DIR + path.sep)) {
         res.writeHead(403); res.end('Forbidden'); return;
     }
+
     const ext      = path.extname(fullPath);
     const mimeType = MIME_TYPES[ext] || 'text/plain';
 
     fs.readFile(fullPath, (err, data) => {
         if (err) { res.writeHead(404); res.end('Not found'); return; }
+
+        if (filePath === '/index.html' && STATIC_URL) {
+            const injection = [
+                `<link rel="stylesheet" href="${STATIC_URL}/style.css">`,
+                `  <script>window.STATIC_BASE = ${JSON.stringify(STATIC_URL)};</script>`,
+            ].join('\n  ');
+            data = Buffer.from(data.toString().replace('<!-- STATIC_INJECT -->', injection));
+        }
+
         res.writeHead(200, { 'Content-Type': mimeType });
         res.end(data);
     });
