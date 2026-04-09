@@ -19,6 +19,10 @@ function connect() {
         NET.ws = new WebSocket(`${protocol}://${location.host}`);
 
         NET.ws.onopen    = () => {
+            // Authenticate so the server can associate this socket with the logged-in user
+            const authToken = getAuthToken();
+            if (authToken) NET.ws.send(JSON.stringify({ type: 'AUTHENTICATE', token: authToken }));
+
             resolve();
             const saved = loadReconnectToken();
             if (saved) sendAction({ type: 'RECONNECT', roomId: saved.roomId, side: saved.side, token: saved.token });
@@ -38,11 +42,13 @@ function connect() {
 // ── createRoom / joinRoom ─────────────────────────────────────────
 
 function createRoom() {
-    sendAction({ type: 'CREATE_ROOM' });
+    const teamId = getActiveTeamId();
+    sendAction({ type: 'CREATE_ROOM', teamId });
 }
 
 function joinRoom(roomId) {
-    sendAction({ type: 'JOIN_ROOM', roomId });
+    const teamId = getActiveTeamId();
+    sendAction({ type: 'JOIN_ROOM', roomId, teamId });
 }
 
 // ── reconnect token helpers ───────────────────────────────────────

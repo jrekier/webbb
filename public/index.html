@@ -39,6 +39,9 @@
   <button onclick="onClickLocalGame();">Local Game</button>
   <button onclick="onClickOnline();">Play Online</button>
   <button onclick="onClickMyTeams();">My Teams</button>
+  <div id="welcome-team-bar">
+    Active team: <span id="welcome-active-team">Default roster</span>
+  </div>
 </div>
 
 <!-- ── Teams screen ────────────────────────────────────────── -->
@@ -46,16 +49,47 @@
   <div id="teams-inner">
     <h2>My Teams</h2>
     <div id="teams-list"></div>
-    <div id="new-team-form">
-      <input id="new-team-name" type="text" placeholder="Team name" maxlength="40">
-      <select id="new-team-race">
+    <button class="teams-new-btn" onclick="openTeamBuilder(null)">+ New Team</button>
+    <button class="teams-back-btn" onclick="showScreen('welcome')">← Back</button>
+  </div>
+</div>
+
+<!-- ── Team builder screen ─────────────────────────────────── -->
+<div id="screen-team-builder" class="screen hidden">
+  <div id="builder-inner">
+
+    <div id="builder-header">
+      <input id="builder-team-name" type="text" placeholder="Team name" maxlength="40">
+      <select id="builder-race" onchange="onBuilderRaceChange()">
         <option value="humans">Humans</option>
         <option value="orcs">Orcs</option>
       </select>
-      <button onclick="onCreateTeam()">+ Create</button>
     </div>
-    <div id="teams-create-error" class="auth-error"></div>
-    <button class="teams-back-btn" onclick="showScreen('welcome')">← Back</button>
+
+    <div id="builder-budget">
+      <span id="builder-budget-spent">0k</span>
+      <span class="builder-budget-sep">/</span>
+      <span>1000k</span>
+      <span class="builder-budget-label">gp &nbsp;·&nbsp; remaining: <span id="builder-budget-remaining">1000k</span></span>
+      <div id="builder-budget-bar"><div id="builder-budget-fill"></div></div>
+    </div>
+
+    <div class="builder-section">
+      <div class="builder-section-title">Roster &nbsp;<span id="builder-player-count">0 / 7–11</span></div>
+      <div id="builder-roster-list"></div>
+    </div>
+
+    <div class="builder-section">
+      <div class="builder-section-title">Add players</div>
+      <div id="builder-positions-grid"></div>
+    </div>
+
+    <div id="builder-footer">
+      <button id="builder-save-btn" onclick="onSaveTeam()">Save Team</button>
+      <button class="builder-cancel-btn" onclick="showScreen('teams'); _loadTeamsList()">Cancel</button>
+    </div>
+    <div id="builder-error" class="auth-error"></div>
+
   </div>
 </div>
 
@@ -216,6 +250,7 @@
 <script src="client/network.js"></script>
 <script src="client/game.js"></script>
 <script src="client/lobby.js"></script>
+<script src="roster-defs.js"></script>
 <script src="client/auth.js"></script>
 <script src="client/welcome.js"></script>
 <script src="client/mobile.js"></script>

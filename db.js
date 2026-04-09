@@ -35,9 +35,13 @@ db.exec(`
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name       TEXT NOT NULL,
     race       TEXT NOT NULL,
+    roster     TEXT NOT NULL DEFAULT '[]',
     created_at INTEGER DEFAULT (unixepoch())
   );
 `);
+
+// Migrate existing databases that predate the roster column
+try { db.exec('ALTER TABLE teams ADD COLUMN roster TEXT NOT NULL DEFAULT \'[]\''); } catch {}
 
 // ── Prepared statements ───────────────────────────────────────────
 
@@ -49,8 +53,10 @@ const q = {
     sessionByToken: db.prepare('SELECT * FROM sessions WHERE token = ? AND expires_at > unixepoch()'),
     deleteSession:  db.prepare('DELETE FROM sessions WHERE token = ?'),
     pruneExpired:   db.prepare('DELETE FROM sessions WHERE expires_at <= unixepoch()'),
-    teamsByUser:    db.prepare('SELECT id, name, race, created_at FROM teams WHERE user_id = ? ORDER BY created_at DESC'),
-    insertTeam:     db.prepare('INSERT INTO teams (user_id, name, race) VALUES (?, ?, ?)'),
+    teamsByUser:    db.prepare('SELECT id, name, race, roster, created_at FROM teams WHERE user_id = ? ORDER BY created_at DESC'),
+    teamById:       db.prepare('SELECT id, name, race, roster FROM teams WHERE id = ? AND user_id = ?'),
+    insertTeam:     db.prepare('INSERT INTO teams (user_id, name, race, roster) VALUES (?, ?, ?, ?)'),
+    updateTeam:     db.prepare('UPDATE teams SET name = ?, roster = ? WHERE id = ? AND user_id = ?'),
     deleteTeam:     db.prepare('DELETE FROM teams WHERE id = ? AND user_id = ?'),
 };
 
@@ -93,15 +99,30 @@ function validateSession(token) {
 // ── Teams ─────────────────────────────────────────────────────────
 
 function getTeams(userId) {
-    return q.teamsByUser.all(userId);
+    return q.teamsByUser.all(userId).map(_parseRoster);
 }
 
-function createTeam(userId, name, race) {
+function getTeam(userId, teamId) {
+    const row = q.teamById.get(teamId, userId);
+    return row ? _parseRoster(row) : null;
+}
+
+function createTeam(userId, name, race, roster = []) {
+    name = (name || '').trim();
+    if (!name || name.length > 40)  return { error: 'Team name must be 1–40 characters' };
+    if (!VALID_RACES.has(race))     return { error: 'Invalid race' };
+    if (!Array.isArray(roster))     return { error: 'Invalid roster' };
+    const rosterJson = JSON.stringify(roster);
+    const { lastInsertRowid: id } = q.insertTeam.run(userId, name, race, rosterJson);
+    return { team: { id, name, race, roster } };
+}
+
+function updateTeam(userId, teamId, name, roster) {
     name = (name || '').trim();
     if (!name || name.length > 40) return { error: 'Team name must be 1–40 characters' };
-    if (!VALID_RACES.has(race))    return { error: 'Invalid race' };
-    const { lastInsertRowid: id } = q.insertTeam.run(userId, name, race);
-    return { team: { id, name, race } };
+    if (!Array.isArray(roster))    return { error: 'Invalid roster' };
+    const { changes } = q.updateTeam.run(name, JSON.stringify(roster), teamId, userId);
+    return changes ? { ok: true } : { error: 'Team not found' };
 }
 
 function deleteTeam(userId, teamId) {
@@ -119,4 +140,9 @@ function _newSession(userId) {
     return token;
 }
 
-module.exports = { register, login, logout, validateSession, getTeams, createTeam, deleteTeam };
+function _parseRoster(row) {
+    try { return { ...row, roster: JSON.parse(row.roster || '[]') }; }
+    catch { return { ...row, roster: [] }; }
+}
+
+module.exports = { register, login, logout, validateSession, getTeams, getTeam, createTeam, updateTeam, deleteTeam };

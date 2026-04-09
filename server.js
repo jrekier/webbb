@@ -23,6 +23,7 @@ const {
 } = require('./public/engine/actions.js');
 const TM = require('./public/engine/teams.js');
 const { getGameContext } = require('./public/engine/truth.js');
+const { expandTeam } = require('./public/roster-defs.js');
 
 // ── Static file server ───────────────────────────────────────────
 
@@ -97,11 +98,19 @@ const httpServer = http.createServer(async (req, res) => {
                 const user = DB.validateSession(bearerToken(req));
                 if (!user) return sendJSON(res, 401, { error: 'Unauthorized' });
                 const body = await readBody(req);
-                const result = DB.createTeam(user.id, body.name, body.race);
+                const result = DB.createTeam(user.id, body.name, body.race, body.roster || []);
                 return sendJSON(res, result.error ? 400 : 201, result);
             }
 
             const teamMatch = rawPath.match(/^\/api\/teams\/(\d+)$/);
+            if (req.method === 'PUT' && teamMatch) {
+                const user = DB.validateSession(bearerToken(req));
+                if (!user) return sendJSON(res, 401, { error: 'Unauthorized' });
+                const body = await readBody(req);
+                const result = DB.updateTeam(user.id, parseInt(teamMatch[1]), body.name, body.roster || []);
+                return sendJSON(res, result.error ? 400 : 200, result);
+            }
+
             if (req.method === 'DELETE' && teamMatch) {
                 const user = DB.validateSession(bearerToken(req));
                 if (!user) return sendJSON(res, 401, { error: 'Unauthorized' });
@@ -198,11 +207,12 @@ function _releaseFromRoom(ws) {
     if (side) old[side] = null;
 }
 
-function createRoom(ws) {
+function createRoom(ws, teamId) {
     _releaseFromRoom(ws);  // drop any stale room association (e.g. from auto-reconnect)
     const id        = generateRoomId();
     const homeToken = generateToken();
     const room      = { id, home: ws, away: null, G: null, lastLogMsg: null, tokens: { home: homeToken, away: null } };
+    room.homeTeamDef = _resolveTeam(ws, teamId, DEFAULT_HOME);
     rooms.set(id, room);
     leaveLobby(ws);
     ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id, token: homeToken }));
@@ -211,7 +221,7 @@ function createRoom(ws) {
     return room;
 }
 
-function joinRoom(ws, roomId) {
+function joinRoom(ws, roomId, teamId) {
     _releaseFromRoom(ws);  // drop any stale room association
     const room = rooms.get(roomId);
     if (!room)       return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
@@ -219,12 +229,24 @@ function joinRoom(ws, roomId) {
     const awayToken   = generateToken();
     room.away         = ws;
     room.tokens.away  = awayToken;
+    room.awayTeamDef  = _resolveTeam(ws, teamId, DEFAULT_AWAY);
     leaveLobby(ws);
     // Tell away player their side before START arrives so NET.side is set in time
     ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId, token: awayToken }));
     console.log(`Room ${roomId}: away joined — starting game`);
     startGame(room);
     broadcastLobbyUpdate();
+}
+
+function _resolveTeam(ws, teamId, fallback) {
+    if (ws.userId && teamId) {
+        const dbTeam = DB.getTeam(ws.userId, teamId);
+        if (dbTeam && dbTeam.roster.length > 0) {
+            const expanded = expandTeam(dbTeam);
+            if (expanded) return expanded;
+        }
+    }
+    return fallback;
 }
 
 function roomOf(ws) {
@@ -278,12 +300,15 @@ function destroyRoom(room) {
 function startGame(room) {
     initFormations();
 
-    room.G        = createInitialState();
-    room.homeTeam = DEFAULT_HOME;
-    room.awayTeam = DEFAULT_AWAY;
+    const homeDef = room.homeTeamDef || DEFAULT_HOME;
+    const awayDef = room.awayTeamDef || DEFAULT_AWAY;
 
-    const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   FORMATION_HOME);
-    const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, FORMATION_AWAY);
+    room.G        = createInitialState();
+    room.homeTeam = homeDef;
+    room.awayTeam = awayDef;
+
+    const homePlayers = TM.buildRosterFromTeam(homeDef, 'home', 0,   FORMATION_HOME);
+    const awayPlayers = TM.buildRosterFromTeam(awayDef, 'away', 100, FORMATION_AWAY);
     room.G.players = [...homePlayers, ...awayPlayers];
     initToss(room.G);  // sets phase='toss', picks tossWinner
 
@@ -292,8 +317,8 @@ function startGame(room) {
     broadcast(room, {
         type:     'START',
         G:        room.G,
-        homeTeam: DEFAULT_HOME,
-        awayTeam: DEFAULT_AWAY,
+        homeTeam: homeDef,
+        awayTeam: awayDef,
     });
 }
 
@@ -308,9 +333,14 @@ wss.on('connection', (ws) => {
         let msg;
         try { msg = JSON.parse(raw); } catch { return; }
 
-        if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);              return; }
-        if (msg.type === 'CREATE_ROOM') { createRoom(ws);              return; }
-        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId);    return; }
+        if (msg.type === 'AUTHENTICATE') {
+            const user = DB.validateSession(msg.token);
+            ws.userId = user ? user.id : null;
+            return;
+        }
+        if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);                                       return; }
+        if (msg.type === 'CREATE_ROOM') { createRoom(ws, msg.teamId || null);                   return; }
+        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId, msg.teamId || null);         return; }
         if (msg.type === 'RECONNECT') {
             if (msg.side !== 'home' && msg.side !== 'away') return;
             reconnectToRoom(ws, msg.roomId, msg.side, msg.token);

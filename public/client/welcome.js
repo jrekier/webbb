@@ -23,6 +23,18 @@ async function startApp(homeTeam, awayTeam) {
     const user = await checkAuth();
     if (user) {
         document.getElementById('welcome-username').textContent = user.username;
+        // Populate active team label if a team is selected
+        const activeId = getActiveTeamId();
+        if (activeId) {
+            fetch('/api/teams', { headers: { 'Authorization': 'Bearer ' + getAuthToken() } })
+                .then(r => r.json())
+                .then(data => {
+                    const team = data.teams && data.teams.find(t => t.id === activeId);
+                    document.getElementById('welcome-active-team').textContent =
+                        team ? team.name + ' (' + team.race + ')' : 'Default roster';
+                })
+                .catch(() => {});
+        }
         showScreen('welcome');
         // Attempt silent reconnect in background if a saved game session exists
         const saved = loadReconnectToken();
@@ -45,5 +57,5 @@ function onClickOnline() {
 }
 
 function onClickCreateRoom() {
-    sendAction({ type: 'CREATE_ROOM' });
+    createRoom();  // defined in network.js — attaches active teamId automatically
 }
