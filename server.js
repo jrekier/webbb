@@ -9,6 +9,8 @@ const path = require('path');
 const STATIC_URL = process.env.STATIC_URL || '';
 const { WebSocketServer } = require('ws');
 
+const crypto = require('node:crypto');
+
 const {
     createInitialState, initFormations, FORMATION_HOME, FORMATION_AWAY,
     initToss, chooseTossResult,
@@ -61,6 +63,7 @@ const httpServer = http.createServer((req, res) => {
             const injection = [
                 `<link rel="stylesheet" href="${STATIC_URL}/style.css">`,
                 `  <script>window.STATIC_BASE = ${JSON.stringify(STATIC_URL)};</script>`,
+                `  <script src="${STATIC_URL}/banner.js" defer></script>`,
             ].join('\n  ');
             data = Buffer.from(data.toString().replace('<!-- STATIC_INJECT -->', injection));
         }
@@ -69,6 +72,21 @@ const httpServer = http.createServer((req, res) => {
         res.end(data);
     });
 });
+
+// ── Auth token verification ───────────────────────────────────────
+// Verifies a token issued by bbauth and returns the teamDef, or null.
+
+function verifyAuthToken(raw) {
+    if (!raw || !process.env.SHARED_SECRET) return null;
+    try {
+        const [payload, sig] = raw.split('.');
+        const expected = crypto.createHmac('sha256', process.env.SHARED_SECRET).update(payload).digest('hex');
+        if (sig !== expected) return null;
+        const data = JSON.parse(Buffer.from(payload, 'base64').toString('utf8'));
+        if (data.exp < Math.floor(Date.now() / 1000)) return null;
+        return data.teamDef || null;
+    } catch { return null; }
+}
 
 // ── Default teams ─────────────────────────────────────────────────
 
@@ -136,11 +154,14 @@ function _releaseFromRoom(ws) {
     if (side) old[side] = null;
 }
 
-function createRoom(ws) {
+function createRoom(ws, authToken, preassignedRoomId) {
     _releaseFromRoom(ws);  // drop any stale room association (e.g. from auto-reconnect)
-    const id        = generateRoomId();
+    const id = (preassignedRoomId && !rooms.has(preassignedRoomId))
+        ? preassignedRoomId
+        : generateRoomId();
     const homeToken = generateToken();
-    const room      = { id, home: ws, away: null, G: null, lastLogMsg: null, tokens: { home: homeToken, away: null } };
+    const room      = { id, home: ws, away: null, G: null, lastLogMsg: null, tokens: { home: homeToken, away: null },
+                        homeTeamDef: verifyAuthToken(authToken) || null, awayTeamDef: null };
     rooms.set(id, room);
     leaveLobby(ws);
     ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id, token: homeToken }));
@@ -149,7 +170,7 @@ function createRoom(ws) {
     return room;
 }
 
-function joinRoom(ws, roomId) {
+function joinRoom(ws, roomId, authToken) {
     _releaseFromRoom(ws);  // drop any stale room association
     const room = rooms.get(roomId);
     if (!room)       return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
@@ -157,6 +178,7 @@ function joinRoom(ws, roomId) {
     const awayToken   = generateToken();
     room.away         = ws;
     room.tokens.away  = awayToken;
+    room.awayTeamDef  = verifyAuthToken(authToken) || null;
     leaveLobby(ws);
     // Tell away player their side before START arrives so NET.side is set in time
     ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId, token: awayToken }));
@@ -217,11 +239,11 @@ function startGame(room) {
     initFormations();
 
     room.G        = createInitialState();
-    room.homeTeam = DEFAULT_HOME;
-    room.awayTeam = DEFAULT_AWAY;
+    room.homeTeam = room.homeTeamDef || DEFAULT_HOME;
+    room.awayTeam = room.awayTeamDef || DEFAULT_AWAY;
 
-    const homePlayers = TM.buildRosterFromTeam(DEFAULT_HOME, 'home', 0,   FORMATION_HOME);
-    const awayPlayers = TM.buildRosterFromTeam(DEFAULT_AWAY, 'away', 100, FORMATION_AWAY);
+    const homePlayers = TM.buildRosterFromTeam(room.homeTeam, 'home', 0,   FORMATION_HOME);
+    const awayPlayers = TM.buildRosterFromTeam(room.awayTeam, 'away', 100, FORMATION_AWAY);
     room.G.players = [...homePlayers, ...awayPlayers];
     initToss(room.G);  // sets phase='toss', picks tossWinner
 
@@ -246,9 +268,9 @@ wss.on('connection', (ws) => {
         let msg;
         try { msg = JSON.parse(raw); } catch { return; }
 
-        if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);              return; }
-        if (msg.type === 'CREATE_ROOM') { createRoom(ws);              return; }
-        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId);    return; }
+        if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);                                    return; }
+        if (msg.type === 'CREATE_ROOM') { createRoom(ws, msg.authToken, msg.roomId);         return; }
+        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId, msg.authToken);          return; }
         if (msg.type === 'RECONNECT') {
             if (msg.side !== 'home' && msg.side !== 'away') return;
             reconnectToRoom(ws, msg.roomId, msg.side, msg.token);

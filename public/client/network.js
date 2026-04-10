@@ -38,11 +38,11 @@ function connect() {
 // ── createRoom / joinRoom ─────────────────────────────────────────
 
 function createRoom() {
-    sendAction({ type: 'CREATE_ROOM' });
+    sendAction({ type: 'CREATE_ROOM', authToken: window._authToken || null });
 }
 
 function joinRoom(roomId) {
-    sendAction({ type: 'JOIN_ROOM', roomId });
+    sendAction({ type: 'JOIN_ROOM', roomId, authToken: window._authToken || null });
 }
 
 // ── reconnect token helpers ───────────────────────────────────────

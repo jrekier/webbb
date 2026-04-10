@@ -513,7 +513,12 @@ function drawBall() {
 
 // ── Players ───────────────────────────────────────────────────────
 function drawPlayers() {
-    G.players.forEach(p => {
+    // Draw back-to-front by row so lower rows appear on top.
+    // Activated (greyed) players get a z-order penalty so their semi-transparent
+    // overflow is always covered by active players, even on the same row.
+    const zRow = p => p.row + (p.usedAction ? 0.5 : 0);
+    const sorted = G.players.slice().sort((a, b) => zRow(a) - zRow(b));
+    sorted.forEach(p => {
         if (p.col < 0) return;
         if (setupDrag && setupDrag.player.id === p.id) return; // drawn as ghost
         drawPlayer(p);
@@ -530,7 +535,7 @@ function drawPlayer(p) {
         ? getSprite(p) : null;
 
     if (sprite) {
-        drawPlayerSprite(p, sprite, cx, cy, r);
+        drawPlayerSprite(p, sprite, cx, cy);
     } else {
         drawPlayerCircle(p, cx, cy, r);
     }
@@ -586,8 +591,12 @@ function drawPlayer(p) {
 }
 
 // ── drawPlayerSprite ─────────────────────────────────────────────
+// Scale is anchored to a reference height so sprites with different natural
+// sizes (e.g. Black Orc taller than Lineman) render proportionally.
+const SPRITE_REF_HEIGHT = 27;  // px — matches a standard human lineman frame
+
 function drawPlayerSprite(p, sprite, cx, cy) {
-    const scale = (CELL * 1.1) / sprite.height;
+    const scale = (CELL * 1.1) / SPRITE_REF_HEIGHT;
     const sw    = Math.round(sprite.width  * scale);
     const sh    = Math.round(sprite.height * scale);
     const sx    = cx - sw / 2;
