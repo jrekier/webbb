@@ -7,7 +7,8 @@
 
 function loadTeamFromJSON(json) {
     if (!json.name)    throw 'Team must have a name';
-    if (!json.colour)  throw 'Team must have a colour [r,g,b]';
+    if (!json.colour && !json.homeColour && !json.awayColour)
+        throw 'Team must have a colour [r,g,b]';
     if (!json.players) throw 'Team must have a players array';
     json.players.forEach(p => {
         if (!p.name) throw `Player missing name`;

@@ -235,12 +235,29 @@ function destroyRoom(room) {
 
 // ── Game initialisation ───────────────────────────────────────────
 
+function colourEq(a, b) {
+    return a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+}
+
 function startGame(room) {
     initFormations();
 
-    room.G        = createInitialState();
-    room.homeTeam = room.homeTeamDef || DEFAULT_HOME;
-    room.awayTeam = room.awayTeamDef || DEFAULT_AWAY;
+    room.G = createInitialState();
+
+    const rawHome = room.homeTeamDef || DEFAULT_HOME;
+    const rawAway = room.awayTeamDef || DEFAULT_AWAY;
+
+    // Home team always plays in their home colour.
+    const homeColour = rawHome.homeColour || rawHome.colour || [180, 40, 40];
+
+    // Away team prefers their home colour too — falls back to away colour only
+    // if it would clash with the home team's chosen colour.
+    const awayPreferred = rawAway.homeColour || rawAway.colour || [40, 40, 180];
+    const awayFallback  = rawAway.awayColour || awayPreferred;
+    const awayColour    = colourEq(awayPreferred, homeColour) ? awayFallback : awayPreferred;
+
+    room.homeTeam = { ...rawHome, colour: homeColour };
+    room.awayTeam = { ...rawAway, colour: awayColour };
 
     const homePlayers = TM.buildRosterFromTeam(room.homeTeam, 'home', 0,   FORMATION_HOME);
     const awayPlayers = TM.buildRosterFromTeam(room.awayTeam, 'away', 100, FORMATION_AWAY);
@@ -252,8 +269,8 @@ function startGame(room) {
     broadcast(room, {
         type:     'START',
         G:        room.G,
-        homeTeam: DEFAULT_HOME,
-        awayTeam: DEFAULT_AWAY,
+        homeTeam: room.homeTeam,
+        awayTeam: room.awayTeam,
     });
 }
 

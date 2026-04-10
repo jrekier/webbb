@@ -34,6 +34,17 @@ function startGame(homeTeam, awayTeam) {
 
     document.getElementById('lbl-home-team').textContent = homeTeamDef.name.toUpperCase();
     document.getElementById('lbl-away-team').textContent = awayTeamDef.name.toUpperCase();
+
+    // Propagate resolved team colours to the CSS variables used throughout the UI.
+    const root = document.documentElement;
+    if (homeTeamDef.colour) {
+        const [r, g, b] = homeTeamDef.colour;
+        root.style.setProperty('--home', `rgb(${r},${g},${b})`);
+    }
+    if (awayTeamDef.colour) {
+        const [r, g, b] = awayTeamDef.colour;
+        root.style.setProperty('--away', `rgb(${r},${g},${b})`);
+    }
 }
 
 // ── Toss overlay ─────────────────────────────────────────────────
