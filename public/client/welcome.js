@@ -47,8 +47,10 @@ function startApp(homeTeam, awayTeam) {
         window.addEventListener('resize', () => drawBanner(canvas, { title: 'Blood Bowl' }));
     }
 
-    // If redirected from bbauth with an action, skip the welcome screen and go straight in
+    // If redirected from bbauth with an action, skip the welcome screen and go straight in.
+    // Clear any stale reconnect token first — it must not race with the new CREATE/JOIN.
     if (window._authAction === 'create' || window._authAction === 'join') {
+        _clearReconnectToken();
         connect()
             .then(() => {
                 if (window._authAction === 'create') {

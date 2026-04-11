@@ -134,6 +134,11 @@ function broadcastLobbyUpdate() {
 
 const rooms = new Map();
 
+// Joins that arrived before the room was created (race condition:
+// away player connects faster than home player).
+// roomId → { ws, authToken, timer }
+const pendingJoins = new Map();
+
 function generateRoomId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let id;
@@ -167,24 +172,47 @@ function createRoom(ws, authToken, preassignedRoomId) {
     ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id, token: homeToken }));
     console.log(`Room ${id} created`);
     broadcastLobbyUpdate();
+
+    // If the away player connected first (race condition), complete their join now.
+    const pending = pendingJoins.get(id);
+    if (pending) {
+        pendingJoins.delete(id);
+        clearTimeout(pending.timer);
+        _doJoinRoom(pending.ws, room, pending.authToken);
+    }
+
     return room;
+}
+
+function _doJoinRoom(ws, room, authToken) {
+    if (room.away) return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room is full' }));
+    const awayToken  = generateToken();
+    room.away        = ws;
+    room.tokens.away = awayToken;
+    room.awayTeamDef = verifyAuthToken(authToken) || null;
+    leaveLobby(ws);
+    // Tell away player their side before START arrives so NET.side is set in time
+    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId: room.id, token: awayToken }));
+    console.log(`Room ${room.id}: away joined — starting game`);
+    startGame(room);
+    broadcastLobbyUpdate();
 }
 
 function joinRoom(ws, roomId, authToken) {
     _releaseFromRoom(ws);  // drop any stale room association
     const room = rooms.get(roomId);
-    if (!room)       return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
-    if (room.away)   return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room is full' }));
-    const awayToken   = generateToken();
-    room.away         = ws;
-    room.tokens.away  = awayToken;
-    room.awayTeamDef  = verifyAuthToken(authToken) || null;
-    leaveLobby(ws);
-    // Tell away player their side before START arrives so NET.side is set in time
-    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId, token: awayToken }));
-    console.log(`Room ${roomId}: away joined — starting game`);
-    startGame(room);
-    broadcastLobbyUpdate();
+    if (room) return _doJoinRoom(ws, room, authToken);
+
+    // Room doesn't exist yet — home player may still be loading.
+    // Queue the join for up to 8 seconds before giving up.
+    const existing = pendingJoins.get(roomId);
+    if (existing) clearTimeout(existing.timer);
+    const timer = setTimeout(() => {
+        pendingJoins.delete(roomId);
+        ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
+    }, 8000);
+    pendingJoins.set(roomId, { ws, authToken, timer });
+    console.log(`Room ${roomId}: JOIN queued (room not yet created)`);
 }
 
 function roomOf(ws) {
