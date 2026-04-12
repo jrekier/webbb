@@ -19,13 +19,44 @@ var passHover     = null;  // { col, row }
 // Validation errors from the last failed confirmSetup — drawn on canvas by render.js
 var setupErrors   = null;  // string[] | null
 
+// Timer for the hover-inspect card on desktop
+var _hoverTimer   = null;
+
 function setupInput() {
-    canvas.addEventListener('click',      handleClick);
-    canvas.addEventListener('mousedown',  _onMouseDown);
-    canvas.addEventListener('mousemove',  _onMouseMove);
-    canvas.addEventListener('mouseup',    _onMouseUp);
-    canvas.addEventListener('mouseleave', () => { kickHover = null; passHover = null; render(); });
+    canvas.addEventListener('click',       handleClick);
+    canvas.addEventListener('mousedown',   _onMouseDown);
+    canvas.addEventListener('mousemove',   _onMouseMove);
+    canvas.addEventListener('mouseup',     _onMouseUp);
+    canvas.addEventListener('mouseleave',  _onMouseLeave);
+    canvas.addEventListener('contextmenu', _onContextMenu);
     setupTouch();
+}
+
+function _onMouseLeave() {
+    kickHover    = null;
+    passHover    = null;
+    inspectState = null;
+    clearTimeout(_hoverTimer);
+    render();
+}
+
+function _onContextMenu(e) {
+    e.preventDefault();
+    if (G.phase === 'toss' || G.phase === 'gameover' || G.phase === 'setup') return;
+    const rect = canvas.getBoundingClientRect();
+    const px   = e.clientX - rect.left;
+    const py   = e.clientY - rect.top;
+    const col  = Math.floor(px / CELL);
+    const row  = Math.floor((py + cameraY) / CELL);
+    const p    = playerAt(G, col, row);
+    if (!p) return;
+    G.sel = p;
+    inspectState = null;
+    clearTimeout(_hoverTimer);
+    // Centre the wheel on the player's cell, not the cursor.
+    const cpx = (p.col + 0.5) * CELL;
+    const cpy = (p.row + 0.5) * CELL - cameraY;
+    if (_openWheel(p, cpx, cpy)) render();
 }
 
 function _onMouseDown(e) {
@@ -48,29 +79,44 @@ function _onMouseDown(e) {
 }
 
 function _onMouseMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx   = e.clientX - rect.left;
+    const my   = e.clientY - rect.top;
+
     if (setupDrag) {
-        const rect   = canvas.getBoundingClientRect();
-        setupDrag.pixelX = e.clientX - rect.left;
-        setupDrag.pixelY = e.clientY - rect.top;
+        setupDrag.pixelX = mx;
+        setupDrag.pixelY = my;
         _dragMoved = true;
         render();
         return;
     }
     if (G.phase === 'kick') {
-        const rect = canvas.getBoundingClientRect();
-        kickHover  = {
-            col: Math.floor((e.clientX - rect.left) / CELL),
-            row: Math.floor((e.clientY - rect.top + cameraY) / CELL),
+        kickHover = {
+            col: Math.floor(mx / CELL),
+            row: Math.floor((my + cameraY) / CELL),
         };
         render();
     }
     if (G.passing === 'targeting' && !G.confirm) {
-        const rect = canvas.getBoundingClientRect();
-        passHover  = {
-            col: Math.floor((e.clientX - rect.left) / CELL),
-            row: Math.floor((e.clientY - rect.top + cameraY) / CELL),
+        passHover = {
+            col: Math.floor(mx / CELL),
+            row: Math.floor((my + cameraY) / CELL),
         };
         render();
+    }
+
+    // Hover inspect card — show player stats after a short pause
+    if (!wheelState && !G.confirm) {
+        clearTimeout(_hoverTimer);
+        const col = Math.floor(mx / CELL);
+        const row = Math.floor((my + cameraY) / CELL);
+        const hp  = playerAt(G, col, row);
+        if (hp) {
+            _hoverTimer = setTimeout(() => { if (!wheelState) { inspectState = hp; render(); } }, 260);
+        } else if (inspectState) {
+            inspectState = null;
+            render();
+        }
     }
 }
 
@@ -109,6 +155,15 @@ function _onMouseUp(e) {
 
 // ── handleClick ──────────────────────────────────────────────────
 function handleClick(event) {
+    // Wheel overlay: route click into wheel tap handler
+    if (wheelState) {
+        const rect = canvas.getBoundingClientRect();
+        _handleWheelTap(event.clientX - rect.left, event.clientY - rect.top);
+        return;
+    }
+
+    inspectState = null;
+
     if (G.phase === 'toss' || G.phase === 'gameover') return;
 
     // Setup phase handled entirely in _onMouseUp / _onTouchEnd.
@@ -644,9 +699,8 @@ function updateButtons() {
         };
     }
 
-    const ALL_BTNS = ['btn-stand-up','btn-block','btn-blitz','btn-foul',
-                       'btn-secure-ball','btn-handoff','btn-pass','btn-throw','btn-no-intercept',
-                       'btn-cancel','btn-stop','btn-end-turn','btn-confirm-setup'];
+    const ALL_BTNS = ['btn-throw','btn-no-intercept','btn-cancel','btn-stop',
+                       'btn-end-turn','btn-confirm-setup'];
 
     const gc = getGameContext(G, G.sel, NET);
 
@@ -667,18 +721,11 @@ function updateButtons() {
 
     show('btn-confirm-setup', false);
 
-    show('btn-stand-up',       gc.canDeclare && gc.selProne && G.passing !== true);
-    show('btn-foul',           gc.canFoul     && G.passing !== true);
-    show('btn-block',          gc.hasTargets  && !gc.selProne && G.passing !== true);
-    show('btn-blitz',          gc.canBlitz    && G.passing !== true);
-    show('btn-secure-ball',    gc.canSecure   && G.passing !== true);
-    show('btn-handoff',        gc.canHandoff  && G.passing !== true);
-    show('btn-pass',           gc.canPass     && G.passing !== true);
-    show('btn-throw',          gc.canThrow);
-    show('btn-no-intercept',   gc.canChooseNoIntercept);
-    show('btn-cancel',         gc.canCancel);
-    show('btn-stop',           gc.canStop);
-    show('btn-end-turn',       gc.myTurn && !G.block);
+    show('btn-throw',        gc.canThrow);
+    show('btn-no-intercept', gc.canChooseNoIntercept);
+    show('btn-cancel',       gc.canCancel);
+    show('btn-stop',         gc.canStop);
+    show('btn-end-turn',     gc.myTurn && !G.block);
 
     const btnEnd = document.getElementById('btn-end-turn');
     if (btnEnd.style.display !== 'none')
