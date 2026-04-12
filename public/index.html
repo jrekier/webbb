@@ -45,19 +45,6 @@
 <div id="screen-game" class="screen hidden">
 <div id="layout">
 
-  <!-- Left: rosters -->
-  <div class="sidebar" id="sidebar-left">
-    <div class="section">
-      <div class="section-title" id="lbl-away-team">Away</div>
-      <div id="roster-away"></div>
-    </div>
-    <div id="section-spacer"></div>
-    <div class="section">
-      <div class="section-title" id="lbl-home-team">Home</div>
-      <div id="roster-home"></div>
-    </div>
-  </div>
-
   <!-- Canvas -->
   <div id="pitch-wrap">
     <canvas id="pitch"></canvas>
@@ -76,6 +63,18 @@
         <span id="score-sep">–</span>
         <span id="score-away" class="team-away">0</span>
       </div>
+      <div id="score-teams">
+        <span id="lbl-home-team" class="team-home">Home</span>
+        <span class="score-teams-sep"> – </span>
+        <span id="lbl-away-team" class="team-away">Away</span>
+      </div>
+    </div>
+
+    <div class="section" id="section-dugout" hidden>
+      <div class="section-title">Dugout</div>
+      <div id="dugout-reserves"></div>
+      <div id="dugout-ko"></div>
+      <div id="dugout-cas"></div>
     </div>
 
     <div class="section">
@@ -112,6 +111,7 @@
       <span id="mobile-active-label">HOME</span>
       <span id="mobile-score-label"><span id="mobile-score-home" class="team-home">0</span><span style="color:var(--text-dim)"> – </span><span id="mobile-score-away" class="team-away">0</span></span>
       <span id="mobile-turn-label">T1</span>
+      <button id="mobile-dugout-btn" onclick="toggleMobileDugout()" style="display:none"></button>
       <button id="mobile-log-btn" onclick="toggleMobileLog()">☰</button>
     </div>
     <div id="mobile-bottom-bar">
@@ -153,7 +153,23 @@
     <div id="mobile-log-copy"></div>
   </div>
 
+  <!-- Mobile dugout panel -->
+  <div id="mobile-dugout-panel" class="hidden">
+    <div id="mobile-dugout-header">
+      <span>Dugout</span>
+      <button onclick="toggleMobileDugout()">✕</button>
+    </div>
+    <div id="mobile-dugout-body">
+      <div id="mobile-dugout-reserves"></div>
+      <div id="mobile-dugout-ko"></div>
+      <div id="mobile-dugout-cas"></div>
+    </div>
+  </div>
+
 </div><!-- /screen-game -->
+
+<!-- Floating chip info tooltip — shared, repositioned per chip -->
+<div id="chip-tooltip" class="chip-tooltip" hidden></div>
 
 <!-- Hidden file inputs for custom team loading -->
 <input type="file" id="file-home" accept=".json" style="display:none">

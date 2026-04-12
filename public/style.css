@@ -1,6 +1,6 @@
 /* ── Game-specific variables ──────────────────────────────────── */
 :root {
-    --sidebar-w: 200px;
+    --sidebar-w: 240px;
 }
 
 /* ── Screens ──────────────────────────────────────────────────── */
@@ -261,39 +261,65 @@ canvas {
     margin-bottom: 8px;
 }
 
-/* ── Roster ───────────────────────────────────────────────────── */
-#section-spacer {
-    flex: 1;
-    border-bottom: 1px solid var(--border);
+/* ── Score teams ──────────────────────────────────────────────── */
+#score-teams {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-align: center;
+    margin-top: 4px;
 }
+.score-teams-sep { color: var(--text-dim); }
 
-.player-row {
+/* ── Dugout ───────────────────────────────────────────────────── */
+.dugout-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 7px;
-    padding: 3px 6px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: background 0.1s;
-    user-select: none;
+    gap: 4px;
+    margin-bottom: 5px;
 }
-
-.player-row:hover    { background: rgba(0,0,0,0.05); }
-.player-row.selected { background: rgba(0,0,0,0.07); }
-.player-row.done     { opacity: 0.4; }
-
-.player-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
+.dugout-side {
+    font-size: 9px;
+    letter-spacing: 1px;
+    min-width: 34px;
     flex-shrink: 0;
 }
+.dugout-chip {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.dugout-reserve { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid var(--border); }
+.dugout-ko      { background: rgba(200,130,0,0.15);  color: #c8820a; border: 1px solid rgba(200,130,0,0.3);  }
+.dugout-cas     { background: rgba(180,30,30,0.15);  color: #b44040; border: 1px solid rgba(180,30,30,0.3);  }
 
-.dot-home { background: var(--home); }
-.dot-away { background: var(--away); }
+.dugout-clickable { cursor: pointer; }
+.dugout-clickable:hover { filter: brightness(1.3); }
+.dugout-pending { outline: 2px solid var(--text); outline-offset: 1px; }
 
-.player-name { flex: 1; font-size: 10px; color: var(--text); }
-.player-ma   { font-size: 9px; color: var(--text-dim); }
+/* ── Chip tooltip ─────────────────────────────────────────────── */
+.chip-tooltip {
+    position: fixed;
+    z-index: 1000;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 10px;
+    pointer-events: none;
+    min-width: 110px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.ct-name   { font-family: 'Bebas Neue', sans-serif; font-size: 15px; letter-spacing: 1px; color: var(--text); }
+.ct-pos    { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-top: -1px; margin-bottom: 5px; }
+.ct-stats  { font-size: 10px; color: var(--text-dim); }
+.ct-stats b{ color: var(--text); font-weight: 700; }
+.ct-skills { font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+.ct-status { font-size: 9px; margin-top: 5px; text-transform: uppercase; letter-spacing: 1px; }
+.ct-ko       { color: #c8820a; }
+.ct-casualty { color: #b44040; }
+.ct-active   { color: var(--text-dim); }
 
 /* ── Turn banner ──────────────────────────────────────────────── */
 #turn-banner {
@@ -470,6 +496,12 @@ canvas {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Offset centering rightward to account for the right sidebar so the
+       card appears centred over the pitch rather than the full viewport. */
+    padding-right: var(--sidebar-w);
+}
+@media (max-width: 500px) {
+    #toss-overlay { padding-right: 0; }
 }
 #toss-card {
     background: var(--panel);
@@ -648,6 +680,61 @@ canvas {
     padding: 8px 14px;
 }
 
+#mobile-dugout-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 58%;
+    z-index: 20;
+    background: rgba(240,234,216,0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+}
+
+#mobile-dugout-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 3px;
+    flex-shrink: 0;
+}
+
+#mobile-dugout-header button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0;
+}
+
+#mobile-dugout-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+}
+
+#mobile-dugout-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 3px;
+    padding: 2px 6px;
+    cursor: pointer;
+}
+
 #mobile-bottom-bar .action-btn {
     flex: 1;
     padding: 10px 6px;
@@ -656,12 +743,7 @@ canvas {
 
 /* ── Responsive ───────────────────────────────────────────────── */
 
-/* Medium: left sidebar hidden — pitch + right sidebar only */
-@media (max-width: 700px) {
-    #sidebar-left { display: none; }
-}
-
-/* Mobile: both sidebars hidden, full-canvas pitch, HUD overlay */
+/* Mobile: right sidebar hidden, full-canvas pitch, HUD overlay */
 @media (max-width: 500px) {
     .sidebar { display: none !important; }
     #mobile-hud { display: flex; }
@@ -674,5 +756,5 @@ canvas {
 
 /* Wide: cap the pitch size so it doesn't sprawl on very wide screens */
 @media (min-width: 1400px) {
-    :root { --sidebar-w: 220px; }
+    :root { --sidebar-w: 260px; }
 }

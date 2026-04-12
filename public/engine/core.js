@@ -187,8 +187,8 @@ function startHalfTime(G) {
 
     // Reset available players and place them in default formation so they appear on pitch.
     // Compact indices: skip KO/casualty so there are no formation gaps.
-    _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME, [5, 15]);
-    _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY, [5, 4]);
+    _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME);
+    _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY);
 
     G.activated          = null;
     G.sel                = null;
@@ -280,21 +280,26 @@ function initFormations() {
 // compacting indices so missing players don't leave gaps.
 // KO/casualty players are moved off-pitch.
 
-function _placeInFormation(players, formation, fallback) {
+function _placeInFormation(players, formation) {
     let fi = 0;
     for (const p of players) {
         if (p.status === 'ko' || p.status === 'casualty') {
             p.col = -1; p.row = -1;
             continue;
         }
-        const [col, row] = formation[fi++] || fallback;
-        p.col        = col;
-        p.row        = row;
         p.status     = 'active';
         p.hasBall    = false;
         p.maLeft     = p.ma;
         p.rushLeft   = 2;
         p.usedAction = false;
+        if (fi < formation.length) {
+            const [col, row] = formation[fi++];
+            p.col = col;
+            p.row = row;
+        } else {
+            // More available players than formation slots: goes to reserve
+            p.col = -1; p.row = -1;
+        }
     }
 }
 
@@ -319,8 +324,8 @@ function resetAfterTouchdown(G, scoringSide) {
     }
     if (koMsgs.length) G._koRollMsg = koMsgs.join(', ');
 
-    _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME, [5, 15]);
-    _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY, [5, 4]);
+    _placeInFormation(G.players.filter(p => p.side === 'home'), FORMATION_HOME);
+    _placeInFormation(G.players.filter(p => p.side === 'away'), FORMATION_AWAY);
 
     G.activated          = null;
     G.sel                = null;
@@ -396,15 +401,20 @@ function moveSetupPlayer(G, playerId, col, row) {
 // Returns an array of rule violation strings. Empty = valid.
 
 function validateSetup(G, side) {
-    const players = G.players.filter(p => p.side === side);
-    const errors  = [];
-    const losRow  = side === 'home' ? 13 : 6;
+    const players   = G.players.filter(p => p.side === side);
+    const errors    = [];
+    const losRow    = side === 'home' ? 13 : 6;
+    const available = players.filter(p => p.status !== 'ko' && p.status !== 'casualty');
+    const onPitch   = available.filter(p => p.col >= 0);
+    const mustField = Math.min(available.length, 7);
 
-    if (players.filter(p => p.row === losRow).length < 3)
+    if (onPitch.length < mustField)
+        errors.push(`You must field all ${mustField} available players.`);
+    if (onPitch.filter(p => p.row === losRow).length < 3)
         errors.push('At least 3 players must be on the line of scrimmage.');
-    if (players.filter(p => p.col <= 1).length > 2)
+    if (onPitch.filter(p => p.col <= 1).length > 2)
         errors.push('Max 2 players in the left wide zone (cols 0–1).');
-    if (players.filter(p => p.col >= 9).length > 2)
+    if (onPitch.filter(p => p.col >= 9).length > 2)
         errors.push('Max 2 players in the right wide zone (cols 9–10).');
 
     return errors;
@@ -431,6 +441,26 @@ function confirmSetup(G, side) {
     return { ok: true, msg: `${G.kicker.toUpperCase()} kicks off — click where to aim.` };
 }
 
+// ── swapReservePlayer ─────────────────────────────────────────────
+// During setup phase, exchanges a reserve player (col=-1) with an
+// on-pitch player of the same side. Used to choose who sits out when
+// a team has more than 7 available players.
+
+function swapReservePlayer(G, reserveId, pitchId) {
+    if (G.phase !== 'setup') return null;
+    const reserve = G.players.find(p => p.id === reserveId);
+    const pitcher = G.players.find(p => p.id === pitchId);
+    if (!reserve || !pitcher) return null;
+    if (reserve.side !== G.setupSide || pitcher.side !== G.setupSide) return null;
+    if (reserve.col >= 0) return null;  // not actually in reserve
+    if (pitcher.col < 0)  return null;  // not actually on pitch
+    const col = pitcher.col;
+    const row = pitcher.row;
+    pitcher.col = -1; pitcher.row = -1;
+    reserve.col = col; reserve.row = row;
+    return 'ok';
+}
+
 if (typeof module !== 'undefined') {
     module.exports = {
         createInitialState,
@@ -439,6 +469,6 @@ if (typeof module !== 'undefined') {
         FORMATION_HOME, FORMATION_AWAY, initFormations,
         resetAfterTouchdown, startHalfTime, startGameOver,
         initToss, chooseTossResult,
-        moveSetupPlayer, validateSetup, confirmSetup,
+        moveSetupPlayer, swapReservePlayer, validateSetup, confirmSetup,
     };
 }

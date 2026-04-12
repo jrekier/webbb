@@ -187,50 +187,128 @@ function updateSidebar() {
     document.getElementById('score-home').textContent = score.home;
     document.getElementById('score-away').textContent = score.away;
 
-    updateRoster('roster-home', 'home');
-    updateRoster('roster-away', 'away');
+    updateDugout();
     updateDetail();
 }
 
-function updateRoster(id, side) {
-    const el = document.getElementById(id);
-    el.innerHTML = '';
-    G.players.filter(p => p.side === side).forEach(p => {
-        const row  = document.createElement('div');
-        row.className = 'player-row'
-            + (G.sel && G.sel.id === p.id ? ' selected' : '')
-            + (p.usedAction ? ' done' : '');
+// ── chip tooltip ─────────────────────────────────────────────────
+// A single shared floating card, positioned via fixed coordinates so
+// it's never clipped by sidebar overflow.  Shown on hover (desktop)
+// and on touchstart (tablet/mobile), auto-dismissed on touchend.
 
-        const dot  = document.createElement('div');
-        dot.className = `player-dot dot-${side}`;
+var _chipTooltipTimer = null;
 
-        const name = document.createElement('span');
-        name.className   = 'player-name';
-        name.textContent = p.pos;
-
-        const ma = document.createElement('span');
-        ma.className   = 'player-ma';
-        ma.textContent = `${p.maLeft}/${p.ma}`;
-
-        row.append(dot, name, ma);
-        row.addEventListener('click', () => { G.sel = p; render(); });
-        el.appendChild(row);
+function showChipTooltip(anchor, p) {
+    clearTimeout(_chipTooltipTimer);
+    const tt  = document.getElementById('chip-tooltip');
+    const sts = p.status === 'ko'       ? 'KO'
+              : p.status === 'casualty' ? 'Casualty'
+              :                           'Reserve';
+    const skills = p.skills && p.skills.length
+        ? `<div class="ct-skills">${p.skills.join(', ')}</div>` : '';
+    tt.innerHTML = `
+        <div class="ct-name">${p.name}</div>
+        <div class="ct-pos">${p.pos}</div>
+        <div class="ct-stats">MA <b>${p.ma}</b> &ensp; ST <b>${p.st}</b> &ensp; AG <b>${p.ag}</b> &ensp; PA <b>${p.pa}</b> &ensp; AV <b>${p.av}</b></div>
+        ${skills}
+        <div class="ct-status ct-${p.status}">${sts}</div>`;
+    tt.hidden = false;
+    const r = anchor.getBoundingClientRect();
+    tt.style.left = r.left + 'px';
+    tt.style.top  = (r.bottom + 6) + 'px';
+    // prevent right-edge overflow
+    requestAnimationFrame(() => {
+        const tr = tt.getBoundingClientRect();
+        if (tr.right > window.innerWidth - 8)
+            tt.style.left = Math.max(4, window.innerWidth - 8 - tr.width) + 'px';
     });
+}
 
-    // Load team button in the section title
-    const titleId = side === 'home' ? 'lbl-home-team' : 'lbl-away-team';
-    const title   = document.getElementById(titleId);
-    if (title && !title.querySelector('.load-btn')) {
-        const btn = document.createElement('span');
-        btn.className   = 'load-btn';
-        btn.textContent = ' ✎';
-        btn.title       = 'Load team from JSON';
-        btn.style.cssText = 'cursor:pointer;color:var(--text-dim);font-size:9px;';
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            onLoadTeam(side);
+function hideChipTooltip(delay) {
+    clearTimeout(_chipTooltipTimer);
+    if (delay) _chipTooltipTimer = setTimeout(() => hideChipTooltip(0), delay);
+    else document.getElementById('chip-tooltip').hidden = true;
+}
+
+function updateDugout() {
+    hideChipTooltip(0);  // stale tooltip from chips destroyed by previous render()
+    const reserves = G.players.filter(p => p.status !== 'ko' && p.status !== 'casualty' && p.col < 0);
+    const ko       = G.players.filter(p => p.status === 'ko');
+    const cas      = G.players.filter(p => p.status === 'casualty');
+
+    const section = document.getElementById('section-dugout');
+    section.hidden = reserves.length === 0 && ko.length === 0 && cas.length === 0;
+    if (section.hidden) return;
+
+    const isSetup = G.phase === 'setup';
+
+    function fillGroup(elId, players, chipClass, swappable) {
+        const el = document.getElementById(elId);
+        el.innerHTML = '';
+        if (!players.length) return;
+        ['home', 'away'].forEach(side => {
+            const group = players.filter(p => p.side === side);
+            if (!group.length) return;
+            const row = document.createElement('div');
+            row.className = 'dugout-row';
+            const lbl = document.createElement('span');
+            lbl.className   = 'dugout-side team-' + side;
+            lbl.textContent = side.toUpperCase();
+            row.appendChild(lbl);
+            group.forEach(p => {
+                const isPending = pendingSwap && pendingSwap.id === p.id;
+                const canSwap   = swappable && isSetup && G.setupSide === side
+                               && (!NET.online || NET.side === side);
+                const chip = document.createElement('span');
+                chip.className = 'dugout-chip ' + chipClass
+                    + (isPending ? ' dugout-pending'   : '')
+                    + (canSwap   ? ' dugout-clickable' : '');
+                chip.textContent = p.name;
+
+                // Floating tooltip — own players only; hover on desktop, touchstart on mobile
+                const isOwn = !NET.online || NET.side === p.side;
+                if (isOwn) {
+                    chip.addEventListener('mouseenter', () => showChipTooltip(chip, p));
+                    chip.addEventListener('mouseleave', () => hideChipTooltip(0));
+                    chip.addEventListener('touchstart', () => showChipTooltip(chip, p), { passive: true });
+                    chip.addEventListener('touchend',   () => hideChipTooltip(1500));
+                }
+
+                // Click: always select into detail panel; also toggle swap if eligible
+                chip.addEventListener('click', e => {
+                    e.stopPropagation();
+                    hideChipTooltip(0);
+                    G.sel = p;
+                    if (canSwap) {
+                    pendingSwap = (pendingSwap && pendingSwap.id === p.id) ? null : p;
+                    // Close the mobile panel so the pitch is accessible for the swap tap
+                    if (pendingSwap) {
+                        const mp = document.getElementById('mobile-dugout-panel');
+                        if (mp) mp.classList.add('hidden');
+                    }
+                }
+                    render();
+                });
+
+                row.appendChild(chip);
+            });
+            el.appendChild(row);
         });
-        title.appendChild(btn);
+    }
+
+    fillGroup('dugout-reserves',        reserves, 'dugout-reserve', true);
+    fillGroup('dugout-ko',              ko,       'dugout-ko',      false);
+    fillGroup('dugout-cas',             cas,      'dugout-cas',     false);
+    fillGroup('mobile-dugout-reserves', reserves, 'dugout-reserve', true);
+    fillGroup('mobile-dugout-ko',       ko,       'dugout-ko',      false);
+    fillGroup('mobile-dugout-cas',      cas,      'dugout-cas',     false);
+
+    // Mobile dugout button — show with a count badge when anyone is off-pitch
+    const mBtn = document.getElementById('mobile-dugout-btn');
+    if (mBtn) {
+        const total = reserves.length + ko.length + cas.length;
+        mBtn.style.display  = total ? '' : 'none';
+        mBtn.textContent    = `↓${total}`;
     }
 }
 
@@ -264,8 +342,8 @@ function updateDetail() {
 
     el.innerHTML = `
         <div class="name" style="color:${color}">${p.name}</div>
-        <div class="stat-row" style="color:var(--text-dim);font-size:10px;margin-top:-2px;margin-bottom:3px">${p.name}</div>
-        <div class="stat-row">MA <b>${p.ma}</b> &nbsp; ST <b>${p.st}</b> &nbsp; AG <b>${p.ag}</b> &nbsp; AV <b>${p.av}</b></div>
+        <div class="stat-row" style="color:var(--text-dim);font-size:10px;margin-top:-2px;margin-bottom:3px">${p.pos}</div>
+        <div class="stat-row">MA <b>${p.ma}</b> &nbsp; ST <b>${p.st}</b> &nbsp; AG <b>${p.ag}</b> &nbsp; PA <b>${p.pa}</b> &nbsp; AV <b>${p.av}</b></div>
         ${skillsHtml}
         <span class="status ${statusClass}">${statusText}</span>
         ${p.hasBall ? '<span class="status" style="background:rgba(255,200,0,0.15);color:#cc9900;margin-left:4px">Ball</span>' : ''}

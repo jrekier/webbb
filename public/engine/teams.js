@@ -24,7 +24,7 @@ function loadTeamFromJSON(json) {
 
 function buildRosterFromTeam(teamDef, side, startId, formation) {
     return teamDef.players.map((p, i) => {
-        const [col, row] = formation[i] || [7, side === 'home' ? 20 : 5];
+        const [col, row] = formation[i] || [-1, -1];  // beyond 7: start in reserve
         return {
             id:         startId + i,
             side,

@@ -6,6 +6,10 @@
 var setupDrag     = null;  // { player, pixelX, pixelY }
 var _dragMoved    = false;
 
+// Pending reserve swap — set when a reserve chip is clicked in the dugout;
+// the next canvas click on a friendly on-pitch player completes the swap.
+var pendingSwap   = null;  // player object | null
+
 // Hover cell during kick phase — read by render.js for aim indicator
 var kickHover     = null;  // { col, row }
 
@@ -26,12 +30,16 @@ function setupInput() {
 
 function _onMouseDown(e) {
     if (G.phase !== 'setup') return;
+    // While a reserve swap is pending, suppress drag so the click event
+    // can reach handleClick and complete (or cancel) the swap.
+    if (pendingSwap) return;
     const rect = canvas.getBoundingClientRect();
     const px   = e.clientX - rect.left;
     const py   = e.clientY - rect.top + cameraY;
     const col  = Math.floor(px / CELL);
     const row  = Math.floor(py / CELL);
     const p    = playerAt(G, col, row);
+    if (p) { G.sel = p; render(); }
     if (p && p.side === G.setupSide && (!NET.online || NET.side === G.setupSide)) {
         setupDrag  = { player: p, pixelX: e.clientX - rect.left, pixelY: e.clientY - rect.top };
         _dragMoved = false;
@@ -67,6 +75,22 @@ function _onMouseMove(e) {
 }
 
 function _onMouseUp(e) {
+    // Complete a pending reserve swap when clicking a pitch player (no drag involved).
+    if (G.phase === 'setup' && pendingSwap && !setupDrag) {
+        const rect   = canvas.getBoundingClientRect();
+        const col    = Math.floor((e.clientX - rect.left) / CELL);
+        const row    = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+        const target = playerAt(G, col, row);
+        if (target && target.side === G.setupSide && target.col >= 0
+                && (!NET.online || NET.side === G.setupSide)) {
+            swapReservePlayer(G, pendingSwap.id, target.id);
+            if (NET.online) sendAction({ type: 'SETUP_RESERVE_SWAP', reserveId: pendingSwap.id, pitchId: target.id });
+            setupErrors = null;
+        }
+        pendingSwap = null;
+        render();
+        return;
+    }
     if (!setupDrag) return;
     const drag = setupDrag;
     setupDrag  = null;
@@ -85,7 +109,10 @@ function _onMouseUp(e) {
 
 // ── handleClick ──────────────────────────────────────────────────
 function handleClick(event) {
-    if (G.phase === 'toss' || G.phase === 'setup' || G.phase === 'gameover') return;
+    if (G.phase === 'toss' || G.phase === 'gameover') return;
+
+    // Setup phase handled entirely in _onMouseUp / _onTouchEnd.
+    if (G.phase === 'setup') return;
     const rect = canvas.getBoundingClientRect();
     const px   = event.clientX - rect.left;
     const py   = event.clientY - rect.top;
@@ -548,6 +575,7 @@ function onClickStop() {
 }
 
 function onClickConfirmSetup() {
+    pendingSwap = null;
     if (NET.online) {
         sendAction({ type: 'CONFIRM_SETUP' });
         return;

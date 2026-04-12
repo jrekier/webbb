@@ -14,7 +14,7 @@ const crypto = require('node:crypto');
 const {
     createInitialState, initFormations, FORMATION_HOME, FORMATION_AWAY,
     initToss, chooseTossResult,
-    moveSetupPlayer, confirmSetup,
+    moveSetupPlayer, swapReservePlayer, confirmSetup,
     cancelActivation, endActivation, endTurn,
 } = require('./public/engine/core.js');
 const {
@@ -334,7 +334,8 @@ wss.on('connection', (ws) => {
 
         // ── Toss / setup / kick messages (no turn guard needed) ──
         if (msg.type === 'TOSS_CHOOSE')   { handleTossChoose(room, side, msg.choice); return; }
-        if (msg.type === 'SETUP_MOVE')    { handleSetupMove(room, side, msg);         return; }
+        if (msg.type === 'SETUP_MOVE')         { handleSetupMove(room, side, msg);         return; }
+        if (msg.type === 'SETUP_RESERVE_SWAP') { handleSetupReserveSwap(room, side, msg);  return; }
         if (msg.type === 'CONFIRM_SETUP') { handleConfirmSetup(room, side);           return; }
         if (msg.type === 'KICK_AIM')      { handleKickAim(room, side, msg);           return; }
         if (msg.type === 'TOUCHBACK')     { handleTouchback(room, side, msg);         return; }
@@ -391,6 +392,13 @@ function handleSetupMove(room, side, msg) {
     const G = room.G;
     if (G.phase !== 'setup' || side !== G.setupSide) return;
     moveSetupPlayer(G, msg.playerId, msg.col, msg.row);
+    broadcast(room, { type: 'UPDATE', G, logMsg: null });
+}
+
+function handleSetupReserveSwap(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'setup' || side !== G.setupSide) return;
+    swapReservePlayer(G, msg.reserveId, msg.pitchId);
     broadcast(room, { type: 'UPDATE', G, logMsg: null });
 }
 

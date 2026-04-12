@@ -71,7 +71,7 @@ function drawInspectOverlay() {
     const lines = [
         { text: p.name,                                          font: bold,   color: `rgb(${teamRgb})` },
         { text: p.pos,                                           font: small,  color: `rgba(${teamRgb},0.6)` },
-        { text: `ST ${p.st}  AG ${p.ag}  AV ${p.av}`, font: normal, color: 'rgba(255,255,255,0.7)' },
+        { text: `ST ${p.st}  AG ${p.ag}  PA ${p.pa}  AV ${p.av}`, font: normal, color: 'rgba(255,255,255,0.7)' },
     ];
     if (p.skills && p.skills.length > 0)
         lines.push({ text: p.skills.join(', '), font: small, color: 'rgba(255,255,255,0.5)' });
@@ -223,6 +223,16 @@ function toggleMobileLog() {
     }
 }
 
+function toggleMobileDugout() {
+    const panel = document.getElementById('mobile-dugout-panel');
+    if (panel.classList.contains('hidden')) {
+        render();  // ensures mobile-dugout-* containers are freshly populated
+        panel.classList.remove('hidden');
+    } else {
+        panel.classList.add('hidden');
+    }
+}
+
 // ── setupTouch ────────────────────────────────────────────────────
 // Called from setupInput() in input.js.
 // On touch devices, replaces click handling with touch handling.
@@ -251,14 +261,16 @@ function _onTouchStart(e) {
     _pressOrigin = { x: t.clientX, y: t.clientY };
     _dragging    = false;
 
-    // Setup phase: immediately pick up a player for drag
-    if (G.phase === 'setup') {
+    // Setup phase: immediately pick up a player for drag.
+    // Skip if a reserve swap is pending — the tap should complete the swap instead.
+    if (G.phase === 'setup' && !pendingSwap) {
         const rect = canvas.getBoundingClientRect();
         const px   = t.clientX - rect.left;
         const py   = t.clientY - rect.top;
         const col  = Math.floor(px / CELL);
         const row  = Math.floor((py + cameraY) / CELL);
         const p    = playerAt(G, col, row);
+        if (p) { G.sel = p; render(); }
         if (p && p.side === G.setupSide && (!NET.online || NET.side === G.setupSide)) {
             setupDrag = { player: p, pixelX: px, pixelY: py };
             return;
@@ -311,6 +323,21 @@ function _onTouchEnd(e) {
         const t    = e.changedTouches[0];
         const col  = Math.floor((t.clientX - rect.left) / CELL);
         const row  = Math.floor((t.clientY - rect.top + cameraY) / CELL);
+
+        // Double-tap on the same cell: toggle inspect overlay, skip the move.
+        const now = Date.now();
+        const isDoubleTap = now - _lastTapTime < 300 && col === _lastTapCol && row === _lastTapRow;
+        _lastTapTime = now;
+        _lastTapCol  = col;
+        _lastTapRow  = row;
+        if (isDoubleTap && col === drag.player.col && row === drag.player.row) {
+            inspectState = inspectState?.id !== drag.player.id ? drag.player : null;
+            render();
+            _pressOrigin = null;
+            return;
+        }
+
+        inspectState = null;
         moveSetupPlayer(G, drag.player.id, col, row);  // optimistic update
         if (NET.online) {
             sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
@@ -325,7 +352,32 @@ function _onTouchEnd(e) {
     if (_pressTimer) {
         clearTimeout(_pressTimer);
         _pressTimer = null;
+
+        // Complete a pending reserve swap when tapping a pitch player.
+        if (G.phase === 'setup' && pendingSwap) {
+            inspectState = null;
+            const rect   = canvas.getBoundingClientRect();
+            const t      = e.changedTouches[0];
+            const col    = Math.floor((t.clientX - rect.left) / CELL);
+            const row    = Math.floor((t.clientY - rect.top + cameraY) / CELL);
+            const target = playerAt(G, col, row);
+            if (target && target.side === G.setupSide && target.col >= 0
+                    && (!NET.online || NET.side === G.setupSide)) {
+                swapReservePlayer(G, pendingSwap.id, target.id);
+                if (NET.online) sendAction({ type: 'SETUP_RESERVE_SWAP', reserveId: pendingSwap.id, pitchId: target.id });
+                setupErrors = null;
+            }
+            pendingSwap = null;
+            render();
+            _pressOrigin = null;
+            return;
+        }
+
         _onTap(_pressOrigin.x, _pressOrigin.y);
+    } else {
+        // Scroll ended — dismiss any open inspect card.
+        inspectState = null;
+        render();
     }
     _pressOrigin = null;
 }
