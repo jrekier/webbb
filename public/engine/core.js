@@ -410,6 +410,8 @@ function validateSetup(G, side) {
 
     if (onPitch.length < mustField)
         errors.push(`You must field all ${mustField} available players.`);
+    if (onPitch.length > 7)
+        errors.push('You cannot have more than 7 players on the pitch.');
     if (onPitch.filter(p => p.row === losRow).length < 3)
         errors.push('At least 3 players must be on the line of scrimmage.');
     if (onPitch.filter(p => p.col <= 1).length > 2)
@@ -441,6 +443,36 @@ function confirmSetup(G, side) {
     return { ok: true, msg: `${G.kicker.toUpperCase()} kicks off — click where to aim.` };
 }
 
+// ── demoteToReserve ───────────────────────────────────────────────
+// Moves an on-pitch player back to reserve (col=-1) during setup.
+
+function demoteToReserve(G, playerId) {
+    if (G.phase !== 'setup') return null;
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.setupSide) return null;
+    if (p.status === 'ko' || p.status === 'casualty') return null;
+    if (p.col < 0) return null;  // already in reserve
+    p.col = -1;
+    p.row = -1;
+    return 'ok';
+}
+
+// ── swapSetupPlayers ──────────────────────────────────────────────
+// During setup, swaps positions of any two same-side players.
+// Works for reserve↔pitch, pitch↔pitch, and reserve↔reserve.
+
+function swapSetupPlayers(G, id1, id2) {
+    if (G.phase !== 'setup') return null;
+    const p1 = G.players.find(p => p.id === id1);
+    const p2 = G.players.find(p => p.id === id2);
+    if (!p1 || !p2) return null;
+    if (p1.side !== G.setupSide || p2.side !== G.setupSide) return null;
+    const c1 = p1.col, r1 = p1.row;
+    p1.col = p2.col; p1.row = p2.row;
+    p2.col = c1;     p2.row = r1;
+    return 'ok';
+}
+
 // ── swapReservePlayer ─────────────────────────────────────────────
 // During setup phase, exchanges a reserve player (col=-1) with an
 // on-pitch player of the same side. Used to choose who sits out when
@@ -469,6 +501,6 @@ if (typeof module !== 'undefined') {
         FORMATION_HOME, FORMATION_AWAY, initFormations,
         resetAfterTouchdown, startHalfTime, startGameOver,
         initToss, chooseTossResult,
-        moveSetupPlayer, swapReservePlayer, validateSetup, confirmSetup,
+        moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, validateSetup, confirmSetup,
     };
 }

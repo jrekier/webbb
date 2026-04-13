@@ -70,11 +70,9 @@
       </div>
     </div>
 
-    <div class="section" id="section-dugout" hidden>
-      <div class="section-title">Dugout</div>
-      <div id="dugout-reserves"></div>
-      <div id="dugout-ko"></div>
-      <div id="dugout-cas"></div>
+    <div class="section" id="section-teams" hidden>
+      <div class="section-title">Teams</div>
+      <div id="teams-list"></div>
     </div>
 
     <div class="section">
@@ -101,10 +99,10 @@
   <!-- Mobile HUD — visible only on narrow screens (CSS) -->
   <div id="mobile-hud">
     <div id="mobile-top-bar">
+      <button id="mobile-dugout-btn" onclick="toggleMobileDugout()" style="display:none"></button>
       <span id="mobile-active-label">HOME</span>
       <span id="mobile-score-label"><span id="mobile-score-home" class="team-home">0</span><span style="color:var(--text-dim)"> – </span><span id="mobile-score-away" class="team-away">0</span></span>
       <span id="mobile-turn-label">T1</span>
-      <button id="mobile-dugout-btn" onclick="toggleMobileDugout()" style="display:none"></button>
       <button id="mobile-log-btn" onclick="toggleMobileLog()">☰</button>
     </div>
     <div id="mobile-bottom-bar">
@@ -149,13 +147,11 @@
   <!-- Mobile dugout panel -->
   <div id="mobile-dugout-panel" class="hidden">
     <div id="mobile-dugout-header">
-      <span>Dugout</span>
+      <span>Teams</span>
       <button onclick="toggleMobileDugout()">✕</button>
     </div>
     <div id="mobile-dugout-body">
-      <div id="mobile-dugout-reserves"></div>
-      <div id="mobile-dugout-ko"></div>
-      <div id="mobile-dugout-cas"></div>
+      <div id="mobile-teams-list"></div>
     </div>
   </div>
 

@@ -105,14 +105,27 @@ function drawSetupZones() {
     ctx.fillStyle = 'rgba(255,210,0,0.10)';
     ctx.fillRect(0, losRow * CELL, COLS * CELL, CELL);
 
+    // Drop-target highlight when dragging from the sidebar
+    if (dragHover) {
+        const { col, row } = dragHover;
+        const occupied = G.players.some(p => p.col === col && p.row === row);
+        ctx.fillStyle   = occupied ? 'rgba(80,180,255,0.18)' : 'rgba(80,220,80,0.15)';
+        ctx.fillRect(col * CELL, row * CELL, CELL, CELL);
+        ctx.strokeStyle = occupied ? 'rgba(80,180,255,0.9)'  : 'rgba(80,220,80,0.9)';
+        ctx.lineWidth   = 2;
+        ctx.strokeRect(col * CELL + 1, row * CELL + 1, CELL - 2, CELL - 2);
+    }
+
     // Highlight target cell during drag
     if (setupDrag) {
-        const col = Math.floor(setupDrag.pixelX / CELL);
-        const row = Math.floor((setupDrag.pixelY + cameraY) / CELL);
-        const occupied = G.players.some(o =>
-            o.id !== setupDrag.player.id && o.col === col && o.row === row);
-        const valid = isValidSetupSquare(G.setupSide, col, row) && !occupied;
-        ctx.strokeStyle = valid ? 'rgba(80,220,80,0.9)' : 'rgba(220,60,60,0.9)';
+        const col      = Math.floor(setupDrag.pixelX / CELL);
+        const row      = Math.floor((setupDrag.pixelY + cameraY) / CELL);
+        const occupant = G.players.find(o => o.id !== setupDrag.player.id && o.col === col && o.row === row);
+        const inZone   = isValidSetupSquare(G.setupSide, col, row);
+        const willSwap = occupant && occupant.side === setupDrag.player.side;
+        ctx.strokeStyle = !inZone || (occupant && !willSwap) ? 'rgba(220,60,60,0.9)'
+                        : willSwap                           ? 'rgba(80,180,255,0.9)'
+                        :                                      'rgba(80,220,80,0.9)';
         ctx.lineWidth   = 2;
         ctx.strokeRect(col * CELL + 1, row * CELL + 1, CELL - 2, CELL - 2);
     }
@@ -155,6 +168,7 @@ function drawSetupErrorBanner() {
     ctx.fillText(txt, canvas.width / 2, canvas.height - bh / 2);
 }
 
+
 // ── Sidebar ───────────────────────────────────────────────────────
 function updateSidebar() {
     // Turn banner
@@ -187,7 +201,7 @@ function updateSidebar() {
     document.getElementById('score-home').textContent = score.home;
     document.getElementById('score-away').textContent = score.away;
 
-    updateDugout();
+    updateTeams();
     updateDetail();
 }
 
@@ -203,15 +217,20 @@ function showChipTooltip(anchor, p) {
     const tt  = document.getElementById('chip-tooltip');
     const sts = p.status === 'ko'       ? 'KO'
               : p.status === 'casualty' ? 'Casualty'
-              :                           'Reserve';
+              : p.status === 'stunned'  ? 'Stunned'
+              : p.status === 'prone'    ? 'Prone'
+              : p.col < 0              ? 'Reserve'
+              : p.usedAction           ? 'Done'
+              :                          null;
     const skills = p.skills && p.skills.length
         ? `<div class="ct-skills">${p.skills.join(', ')}</div>` : '';
+    const statusLine = sts ? `<div class="ct-status ct-${p.status}">${sts}</div>` : '';
     tt.innerHTML = `
         <div class="ct-name">${p.name}</div>
         <div class="ct-pos">${p.pos}</div>
         <div class="ct-stats">MA <b>${p.ma}</b> &ensp; ST <b>${p.st}</b> &ensp; AG <b>${p.ag}</b> &ensp; PA <b>${p.pa}</b> &ensp; AV <b>${p.av}</b></div>
         ${skills}
-        <div class="ct-status ct-${p.status}">${sts}</div>`;
+        ${statusLine}`;
     tt.hidden = false;
     const r = anchor.getBoundingClientRect();
     tt.style.left = r.left + 'px';
@@ -230,85 +249,176 @@ function hideChipTooltip(delay) {
     else document.getElementById('chip-tooltip').hidden = true;
 }
 
-function updateDugout() {
-    hideChipTooltip(0);  // stale tooltip from chips destroyed by previous render()
-    const reserves = G.players.filter(p => p.status !== 'ko' && p.status !== 'casualty' && p.col < 0);
-    const ko       = G.players.filter(p => p.status === 'ko');
-    const cas      = G.players.filter(p => p.status === 'casualty');
+// ── Mini sprite canvas ────────────────────────────────────────────
+// Fixed box size for the sprite canvas in the teams list.
+const MINI_H = 24;
+const MINI_W = 18;
 
-    const section = document.getElementById('section-dugout');
-    section.hidden = reserves.length === 0 && ko.length === 0 && cas.length === 0;
-    if (section.hidden) return;
+function _drawMiniSprite(p) {
+    const isLying = p.status === 'ko' || p.status === 'prone'
+                 || p.status === 'stunned' || p.status === 'casualty';
 
-    const isSetup = G.phase === 'setup';
+    const canvas  = document.createElement('canvas');
+    canvas.classList.add('player-mini-canvas');
 
-    function fillGroup(elId, players, chipClass, swappable) {
+    // Lying players use a wider, shorter box (dimensions swapped)
+    canvas.width  = isLying ? MINI_H : MINI_W;
+    canvas.height = isLying ? MINI_W : MINI_H;
+
+    // CSS status styling
+    if (p.status === 'casualty') {
+        canvas.style.filter  = 'grayscale(1)';
+        canvas.style.opacity = '0.35';
+    } else if (p.status === 'ko') {
+        canvas.style.opacity = '0.5';
+    } else if (p.col < 0) {           // reserve
+        canvas.style.opacity = '0.55';
+    }
+
+    _paintMiniSprite(canvas, p, isLying);
+    return canvas;
+}
+
+function _paintMiniSprite(canvas, p, isLying) {
+    const sprite = (typeof getSprite !== 'undefined') ? getSprite(p) : null;
+    const ctx2   = canvas.getContext('2d');
+    ctx2.clearRect(0, 0, canvas.width, canvas.height);
+    ctx2.imageSmoothingEnabled = false;
+
+    if (sprite) {
+        const scale = MINI_H / SPRITE_REF_HEIGHT;
+        const sw    = Math.round(sprite.width  * scale);
+        const sh    = Math.round(sprite.height * scale);
+
+        if (isLying) {
+            ctx2.save();
+            ctx2.translate(canvas.width / 2, canvas.height / 2);
+            ctx2.rotate(Math.PI / 2);
+            if (p.status === 'stunned') ctx2.globalAlpha = 0.5;
+            ctx2.drawImage(sprite, -sw / 2, -sh / 2, sw, sh);
+            ctx2.restore();
+        } else {
+            ctx2.globalAlpha = (p.usedAction && p.status === 'active') ? 0.65 : 1;
+            // Top-aligned so tall sprites never clip the head
+            ctx2.drawImage(sprite, (canvas.width - sw) / 2, 0, sw, sh);
+        }
+    } else {
+        // Fallback circle/ellipse while sprite sheet is loading
+        const [r, g, b] = p.colour || (p.side === 'home' ? [176, 32, 32] : [26, 58, 153]);
+        ctx2.fillStyle  = `rgb(${r},${g},${b})`;
+        ctx2.globalAlpha = 0.7;
+        ctx2.beginPath();
+        if (isLying) ctx2.ellipse(canvas.width / 2, canvas.height / 2, 9, 5, 0, 0, Math.PI * 2);
+        else         ctx2.ellipse(canvas.width / 2, canvas.height / 2, 5, 9, 0, 0, Math.PI * 2);
+        ctx2.fill();
+    }
+}
+
+// ── updateTeams ───────────────────────────────────────────────────
+
+function updateTeams() {
+    hideChipTooltip(0);
+
+    const section = document.getElementById('section-teams');
+    if (!G.players || !G.players.length) { section.hidden = true; return; }
+    section.hidden = false;
+
+    function buildList(elId) {
         const el = document.getElementById(elId);
+        if (!el) return;
         el.innerHTML = '';
-        if (!players.length) return;
+
+        const isSetup = G.phase === 'setup';
+
         ['home', 'away'].forEach(side => {
-            const group = players.filter(p => p.side === side);
+            const group = G.players.filter(p => p.side === side);
             if (!group.length) return;
-            const row = document.createElement('div');
-            row.className = 'dugout-row';
-            const lbl = document.createElement('span');
-            lbl.className   = 'dugout-side team-' + side;
-            lbl.textContent = side.toUpperCase();
-            row.appendChild(lbl);
-            group.forEach(p => {
-                const isPending = pendingSwap && pendingSwap.id === p.id;
-                const canSwap   = swappable && isSetup && G.setupSide === side
-                               && (!NET.online || NET.side === side);
-                const chip = document.createElement('span');
-                chip.className = 'dugout-chip ' + chipClass
-                    + (isPending ? ' dugout-pending'   : '')
-                    + (canSwap   ? ' dugout-clickable' : '');
-                chip.textContent = p.name;
 
-                // Floating tooltip — own players only; hover on desktop, touchstart on mobile
-                const isOwn = !NET.online || NET.side === p.side;
-                if (isOwn) {
-                    chip.addEventListener('mouseenter', () => showChipTooltip(chip, p));
-                    chip.addEventListener('mouseleave', () => hideChipTooltip(0));
-                    chip.addEventListener('touchstart', () => showChipTooltip(chip, p), { passive: true });
-                    chip.addEventListener('touchend',   () => hideChipTooltip(1500));
-                }
+            // Sort: on-pitch first, then reserve, KO, casualty
+            const statusRank = p => {
+                if (p.status === 'casualty') return 3;
+                if (p.status === 'ko')       return 2;
+                if (p.col < 0)               return 1;
+                return 0;
+            };
+            const sorted = [...group].sort((a, b) => statusRank(a) - statusRank(b));
 
-                // Click: always select into detail panel; also toggle swap if eligible
-                chip.addEventListener('click', e => {
-                    e.stopPropagation();
-                    hideChipTooltip(0);
-                    G.sel = p;
-                    if (canSwap) {
-                    pendingSwap = (pendingSwap && pendingSwap.id === p.id) ? null : p;
-                    // Close the mobile panel so the pitch is accessible for the swap tap
-                    if (pendingSwap) {
-                        const mp = document.getElementById('mobile-dugout-panel');
-                        if (mp) mp.classList.add('hidden');
+            const header = document.createElement('div');
+            header.className = 'teams-side-header team-' + side;
+            header.textContent = side.toUpperCase();
+            el.appendChild(header);
+
+            sorted.forEach(p => {
+                const isAvail    = p.status !== 'ko' && p.status !== 'casualty';
+                const canSwap    = isAvail && isSetup && G.setupSide === side
+                                && (!NET.online || NET.side === side);
+                const isSelected = G.sel && G.sel.id === p.id;
+
+                const row = document.createElement('div');
+                const isDone    = p.usedAction && p.status === 'active' && p.col >= 0;
+                const isReserve = p.col < 0 && p.status === 'active';
+                row.className = 'player-list-row'
+                    + (isSelected ? ' pl-selected'  : '')
+                    + (canSwap    ? ' pl-swappable'  : '')
+                    + (isDone     ? ' pl-done'       : '')
+                    + (isReserve  ? ' pl-reserve'    : '')
+;
+
+                // Draggable onto the pitch during setup
+                if (isSetup && G.setupSide === side && (!NET.online || NET.side === side)) {
+                    row.draggable = true;
+                    row.addEventListener('dragstart', e => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', p.id);
+                        const mc = row.querySelector('.player-mini-canvas');
+                        if (mc) e.dataTransfer.setDragImage(mc, Math.floor(mc.width / 2), Math.floor(mc.height / 2));
+                    });
+                    // Mobile panel: drag onto pitch fires as soon as movement is detected.
+                    // Desktop sidebar uses the HTML5 dragstart/drop path instead.
+                    if (isAvail && elId === 'mobile-teams-list') {
+                        row.addEventListener('pointerdown', e => startPanelPress(p, e), { passive: true });
                     }
                 }
+
+                row.appendChild(_drawMiniSprite(p));
+
+                const name = document.createElement('span');
+                name.className   = 'player-list-name';
+                name.textContent = p.name;
+                row.appendChild(name);
+
+                // Tooltip — own players only
+                const isOwn = !NET.online || NET.side === p.side;
+                if (isOwn) {
+                    row.addEventListener('mouseenter', () => showChipTooltip(row, p));
+                    row.addEventListener('mouseleave', () => hideChipTooltip(0));
+                    row.addEventListener('touchstart', () => showChipTooltip(row, p), { passive: true });
+                    row.addEventListener('touchend',   () => hideChipTooltip(1500));
+                }
+
+                row.addEventListener('click', e => {
+                    // Suppress the synthetic click that follows a long-press drag
+                    if (_suppressRowClick) { _suppressRowClick = false; return; }
+                    e.stopPropagation();
+                    G.sel = p;
+                    showChipTooltip(row, p);
                     render();
                 });
 
-                row.appendChild(chip);
+                el.appendChild(row);
             });
-            el.appendChild(row);
         });
     }
 
-    fillGroup('dugout-reserves',        reserves, 'dugout-reserve', true);
-    fillGroup('dugout-ko',              ko,       'dugout-ko',      false);
-    fillGroup('dugout-cas',             cas,      'dugout-cas',     false);
-    fillGroup('mobile-dugout-reserves', reserves, 'dugout-reserve', true);
-    fillGroup('mobile-dugout-ko',       ko,       'dugout-ko',      false);
-    fillGroup('mobile-dugout-cas',      cas,      'dugout-cas',     false);
+    buildList('teams-list');
+    buildList('mobile-teams-list');
 
-    // Mobile dugout button — show with a count badge when anyone is off-pitch
+    // Mobile button — show when anyone is off-pitch or injured
     const mBtn = document.getElementById('mobile-dugout-btn');
     if (mBtn) {
-        const total = reserves.length + ko.length + cas.length;
-        mBtn.style.display  = total ? '' : 'none';
-        mBtn.textContent    = `↓${total}`;
+        const offPitch = G.players.filter(p => p.col < 0 || p.status === 'ko' || p.status === 'casualty').length;
+        mBtn.style.display = offPitch ? '' : 'none';
+        mBtn.textContent   = `↓${offPitch}`;
     }
 }
 

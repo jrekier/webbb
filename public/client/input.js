@@ -8,7 +8,6 @@ var _dragMoved    = false;
 
 // Pending reserve swap — set when a reserve chip is clicked in the dugout;
 // the next canvas click on a friendly on-pitch player completes the swap.
-var pendingSwap   = null;  // player object | null
 
 // Hover cell during kick phase — read by render.js for aim indicator
 var kickHover     = null;  // { col, row }
@@ -22,6 +21,9 @@ var setupErrors   = null;  // string[] | null
 // Timer for the hover-inspect card on desktop
 var _hoverTimer   = null;
 
+// Drop-target cell when dragging a player from the sidebar onto the canvas
+var dragHover     = null;  // { col, row } | null
+
 function setupInput() {
     canvas.addEventListener('click',       handleClick);
     canvas.addEventListener('mousedown',   _onMouseDown);
@@ -29,6 +31,12 @@ function setupInput() {
     canvas.addEventListener('mouseup',     _onMouseUp);
     canvas.addEventListener('mouseleave',  _onMouseLeave);
     canvas.addEventListener('contextmenu', _onContextMenu);
+    canvas.removeEventListener('mousemove', _onMouseMove);   // replaced by window-level
+    window.addEventListener('mousemove',   _onMouseMove);
+    canvas.addEventListener('dragover',    _onCanvasDragOver);
+    canvas.addEventListener('dragleave',   _onCanvasDragLeave);
+    canvas.addEventListener('drop',        _onCanvasDrop);
+    window.addEventListener('mouseup',     _onWindowMouseUp);
     setupTouch();
 }
 
@@ -61,9 +69,6 @@ function _onContextMenu(e) {
 
 function _onMouseDown(e) {
     if (G.phase !== 'setup') return;
-    // While a reserve swap is pending, suppress drag so the click event
-    // can reach handleClick and complete (or cancel) the swap.
-    if (pendingSwap) return;
     const rect = canvas.getBoundingClientRect();
     const px   = e.clientX - rect.left;
     const py   = e.clientY - rect.top + cameraY;
@@ -90,6 +95,11 @@ function _onMouseMove(e) {
         render();
         return;
     }
+
+    // Only process hover / aim logic when the cursor is actually over the canvas.
+    const overCanvas = mx >= 0 && mx <= rect.width && my >= 0 && my <= rect.height;
+    if (!overCanvas) return;
+
     if (G.phase === 'kick') {
         kickHover = {
             col: Math.floor(mx / CELL),
@@ -121,35 +131,90 @@ function _onMouseMove(e) {
 }
 
 function _onMouseUp(e) {
-    // Complete a pending reserve swap when clicking a pitch player (no drag involved).
-    if (G.phase === 'setup' && pendingSwap && !setupDrag) {
-        const rect   = canvas.getBoundingClientRect();
-        const col    = Math.floor((e.clientX - rect.left) / CELL);
-        const row    = Math.floor((e.clientY - rect.top + cameraY) / CELL);
-        const target = playerAt(G, col, row);
-        if (target && target.side === G.setupSide && target.col >= 0
-                && (!NET.online || NET.side === G.setupSide)) {
-            swapReservePlayer(G, pendingSwap.id, target.id);
-            if (NET.online) sendAction({ type: 'SETUP_RESERVE_SWAP', reserveId: pendingSwap.id, pitchId: target.id });
-            setupErrors = null;
-        }
-        pendingSwap = null;
-        render();
-        return;
-    }
     if (!setupDrag) return;
     const drag = setupDrag;
     setupDrag  = null;
     if (_dragMoved) {
-        const rect = canvas.getBoundingClientRect();
-        const col  = Math.floor((e.clientX - rect.left) / CELL);
-        const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
-        moveSetupPlayer(G, drag.player.id, col, row);  // optimistic update
-        if (NET.online) {
-            sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
+        const rect     = canvas.getBoundingClientRect();
+        const col      = Math.floor((e.clientX - rect.left) / CELL);
+        const row      = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+        const occupant = playerAt(G, col, row);
+        if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
+            swapSetupPlayers(G, drag.player.id, occupant.id);
+            if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
+        } else {
+            moveSetupPlayer(G, drag.player.id, col, row);
+            if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
         }
         setupErrors = null;
     }
+    render();
+}
+
+// ── Pitch drag off-canvas (demote to reserve) ─────────────────────
+// Fires for any mouseup anywhere. If a canvas drag ends over the Teams
+// list the player is sent to reserve. The canvas's own mouseup handles
+// all drops that land on the pitch itself.
+
+function _onWindowMouseUp(e) {
+    if (!setupDrag || e.target === canvas) return;
+    const drag = setupDrag;
+    setupDrag  = null;
+    // Any off-canvas drop demotes the player to reserve.
+    if (G.phase === 'setup'
+            && drag.player.col >= 0
+            && (!NET.online || NET.side === G.setupSide)) {
+        demoteToReserve(G, drag.player.id);
+        if (NET.online) sendAction({ type: 'SETUP_DEMOTE', playerId: drag.player.id });
+        setupErrors = null;
+        const dp = document.getElementById('mobile-dugout-panel');
+        if (dp) dp.classList.add('hidden');
+    }
+    render();
+}
+
+// ── Sidebar drag-to-pitch ─────────────────────────────────────────
+
+function _onCanvasDragOver(e) {
+    if (G.phase !== 'setup') return;
+    const rect = canvas.getBoundingClientRect();
+    const col  = Math.floor((e.clientX - rect.left) / CELL);
+    const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+    if (isValidSetupSquare(G.setupSide, col, row)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        dragHover = { col, row };
+    } else {
+        dragHover = null;
+    }
+    render();
+}
+
+function _onCanvasDragLeave() {
+    dragHover = null;
+    render();
+}
+
+function _onCanvasDrop(e) {
+    e.preventDefault();
+    dragHover = null;
+    if (G.phase !== 'setup') { render(); return; }
+    const playerId = Number(e.dataTransfer.getData('text/plain'));
+    const p = G.players.find(pl => pl.id === playerId);
+    if (!p || p.side !== G.setupSide) { render(); return; }
+    if (NET.online && NET.side !== G.setupSide) { render(); return; }
+    const rect     = canvas.getBoundingClientRect();
+    const col      = Math.floor((e.clientX - rect.left) / CELL);
+    const row      = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+    const occupant = playerAt(G, col, row);
+    if (occupant && occupant.id !== p.id) {
+        swapSetupPlayers(G, p.id, occupant.id);
+        if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: p.id, id2: occupant.id });
+    } else if (!occupant) {
+        moveSetupPlayer(G, p.id, col, row);
+        if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: p.id, col, row });
+    }
+    setupErrors = null;
     render();
 }
 
@@ -630,7 +695,6 @@ function onClickStop() {
 }
 
 function onClickConfirmSetup() {
-    pendingSwap = null;
     if (NET.online) {
         sendAction({ type: 'CONFIRM_SETUP' });
         return;

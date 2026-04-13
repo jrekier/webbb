@@ -233,6 +233,117 @@ function toggleMobileDugout() {
     }
 }
 
+// ── Panel press-drag (mobile promote) ────────────────────────────
+// Pressing a reserve row and moving immediately starts a drag — no
+// timer needed. As soon as the pointer drifts more than ~8 px we know
+// it's not a tap, so we fire the drag right then.
+// Tracking uses Pointer Events throughout so it works in Firefox
+// DevTools touch simulation and is not affected by touchcancel.
+
+var _panelPressOrigin = null;   // { player, clientX, clientY } while finger is down
+var _panelPressAC     = null;   // AbortController for press-phase window listeners
+var _suppressRowClick = false;  // block synthetic click that follows a drag release
+var _panelPointerAC   = null;   // AbortController for drag-phase window listeners
+
+// Called from pointerdown on a reserve row.
+function startPanelPress(player, e) {
+    _abortPanelPress();
+    _panelPressOrigin = { player, clientX: e.clientX, clientY: e.clientY };
+    const sig = (_panelPressAC = new AbortController()).signal;
+    window.addEventListener('pointermove', _onPanelPressMove, { signal: sig });
+    window.addEventListener('pointerup',   _onPanelPressUp,   { signal: sig });
+}
+
+function _abortPanelPress() {
+    if (_panelPressAC) { _panelPressAC.abort(); _panelPressAC = null; }
+    _panelPressOrigin = null;
+}
+
+function _onPanelPressMove(e) {
+    if (!_panelPressOrigin) return;
+    const dx = e.clientX - _panelPressOrigin.clientX;
+    const dy = e.clientY - _panelPressOrigin.clientY;
+    if (dx * dx + dy * dy > 64) {   // >8 px — not a tap, fire drag now
+        const player = _panelPressOrigin.player;
+        _abortPanelPress();
+        _firePanelDrag(player, e.clientX, e.clientY);
+    }
+}
+
+function _onPanelPressUp() {
+    _abortPanelPress();  // short tap — let the click handler take it
+}
+
+function _firePanelDrag(player, cx, cy) {
+    _suppressRowClick = true;
+    const rect = canvas.getBoundingClientRect();
+    setupDrag  = { player, pixelX: cx - rect.left, pixelY: cy - rect.top, fromPanel: true };
+    _dragMoved = false;
+    render();
+
+    _panelPointerAC = new AbortController();
+    const sig = _panelPointerAC.signal;
+    window.addEventListener('pointermove',   _onPanelPointerMove,   { signal: sig });
+    window.addEventListener('pointerup',     _onPanelPointerUp,     { signal: sig });
+    window.addEventListener('pointercancel', _onPanelPointerCancel, { signal: sig });
+    window.addEventListener('contextmenu',   e => e.preventDefault(), { signal: sig });
+}
+
+function _onPanelPointerMove(e) {
+    if (!setupDrag || !setupDrag.fromPanel) return;
+    const rect = canvas.getBoundingClientRect();
+    setupDrag.pixelX = e.clientX - rect.left;
+    setupDrag.pixelY = e.clientY - rect.top;
+    _dragMoved = true;
+    // Collapse panel on first confirmed movement.
+    if (!setupDrag._panelCollapsed) {
+        setupDrag._panelCollapsed = true;
+        const panel = document.getElementById('mobile-dugout-panel');
+        if (panel) panel.classList.add('drag-collapsing');
+    }
+    render();
+}
+
+function _onPanelPointerUp(e) {
+    _abortPanelPointers();
+    if (!setupDrag || !setupDrag.fromPanel) return;
+    const drag = setupDrag;
+    _cleanupPanelDrag();
+
+    const rect = canvas.getBoundingClientRect();
+    const col  = Math.floor((e.clientX - rect.left) / CELL);
+    const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+    if (G.phase === 'setup' && (!NET.online || NET.side === G.setupSide)) {
+        const occupant = playerAt(G, col, row);
+        if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
+            swapSetupPlayers(G, drag.player.id, occupant.id);
+            if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
+        } else if (isValidSetupSquare(G.setupSide, col, row)) {
+            moveSetupPlayer(G, drag.player.id, col, row);
+            if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
+        }
+        setupErrors = null;
+    }
+    render();
+}
+
+function _onPanelPointerCancel() {
+    _cleanupPanelDrag();
+    render();
+}
+
+function _abortPanelPointers() {
+    if (_panelPointerAC) { _panelPointerAC.abort(); _panelPointerAC = null; }
+}
+
+function _cleanupPanelDrag() {
+    _abortPanelPointers();
+    setupDrag = null;
+    _suppressRowClick = false;
+    const panel = document.getElementById('mobile-dugout-panel');
+    if (panel) { panel.classList.remove('drag-collapsing'); panel.classList.add('hidden'); }
+}
+
 // ── setupTouch ────────────────────────────────────────────────────
 // Called from setupInput() in input.js.
 // On touch devices, replaces click handling with touch handling.
@@ -244,6 +355,8 @@ function setupTouch() {
     canvas.addEventListener('touchstart', _onTouchStart, { passive: false });
     canvas.addEventListener('touchend',   _onTouchEnd,   { passive: false });
     canvas.addEventListener('touchmove',  _onTouchMove,  { passive: false });
+    // Panel-initiated drag tracking uses pointer events registered dynamically
+    // in startPanelLongPress — no document-level touch listeners needed.
 }
 
 var _pressTimer   = null;
@@ -262,8 +375,7 @@ function _onTouchStart(e) {
     _dragging    = false;
 
     // Setup phase: immediately pick up a player for drag.
-    // Skip if a reserve swap is pending — the tap should complete the swap instead.
-    if (G.phase === 'setup' && !pendingSwap) {
+    if (G.phase === 'setup') {
         const rect = canvas.getBoundingClientRect();
         const px   = t.clientX - rect.left;
         const py   = t.clientY - rect.top;
@@ -279,7 +391,7 @@ function _onTouchStart(e) {
 
     _pressTimer = setTimeout(() => {
         _pressTimer = null;
-        _onLongPress(_pressOrigin.x, _pressOrigin.y);
+        if (_pressOrigin) _onLongPress(_pressOrigin.x, _pressOrigin.y);
     }, 450);
 }
 
@@ -319,6 +431,8 @@ function _onTouchEnd(e) {
     if (setupDrag) {
         const drag = setupDrag;
         setupDrag  = null;
+        // Guard: clear any pending long-press timer so it doesn't fire against a null _pressOrigin
+        if (_pressTimer) { clearTimeout(_pressTimer); _pressTimer = null; }
         const rect = canvas.getBoundingClientRect();
         const t    = e.changedTouches[0];
         const col  = Math.floor((t.clientX - rect.left) / CELL);
@@ -338,9 +452,29 @@ function _onTouchEnd(e) {
         }
 
         inspectState = null;
-        moveSetupPlayer(G, drag.player.id, col, row);  // optimistic update
-        if (NET.online) {
-            sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
+
+        // Drag released outside the pitch → demote to reserve
+        const outsidePitch = t.clientX < rect.left || t.clientX > rect.right
+                          || t.clientY < rect.top  || t.clientY > rect.bottom;
+        if (outsidePitch && drag.player.col >= 0 && G.phase === 'setup'
+                && (!NET.online || NET.side === G.setupSide)) {
+            demoteToReserve(G, drag.player.id);
+            if (NET.online) sendAction({ type: 'SETUP_DEMOTE', playerId: drag.player.id });
+            setupErrors = null;
+            const dp = document.getElementById('mobile-dugout-panel');
+            if (dp) dp.classList.add('hidden');
+            render();
+            _pressOrigin = null;
+            return;
+        }
+
+        const occupant = playerAt(G, col, row);
+        if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
+            swapSetupPlayers(G, drag.player.id, occupant.id);
+            if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
+        } else {
+            moveSetupPlayer(G, drag.player.id, col, row);
+            if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
         }
         setupErrors = null;
         render();
@@ -352,26 +486,6 @@ function _onTouchEnd(e) {
     if (_pressTimer) {
         clearTimeout(_pressTimer);
         _pressTimer = null;
-
-        // Complete a pending reserve swap when tapping a pitch player.
-        if (G.phase === 'setup' && pendingSwap) {
-            inspectState = null;
-            const rect   = canvas.getBoundingClientRect();
-            const t      = e.changedTouches[0];
-            const col    = Math.floor((t.clientX - rect.left) / CELL);
-            const row    = Math.floor((t.clientY - rect.top + cameraY) / CELL);
-            const target = playerAt(G, col, row);
-            if (target && target.side === G.setupSide && target.col >= 0
-                    && (!NET.online || NET.side === G.setupSide)) {
-                swapReservePlayer(G, pendingSwap.id, target.id);
-                if (NET.online) sendAction({ type: 'SETUP_RESERVE_SWAP', reserveId: pendingSwap.id, pitchId: target.id });
-                setupErrors = null;
-            }
-            pendingSwap = null;
-            render();
-            _pressOrigin = null;
-            return;
-        }
 
         _onTap(_pressOrigin.x, _pressOrigin.y);
     } else {
