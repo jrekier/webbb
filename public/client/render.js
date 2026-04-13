@@ -520,8 +520,9 @@ function drawPitch() {
 function drawHighlights() {
     // Movement highlights — green fill + inset border – orange if rush needed
     // Show for the activated player, or as a preview for a selected-but-not-yet-activated player.
+    const canPreview = !NET.online || G.sel?.side === NET.side;
     const mover = G.activated ?? (
-        G.sel && !G.sel.usedAction && G.sel.side === G.active
+        canPreview && G.sel && !G.sel.usedAction && G.sel.side === G.active
         && G.sel.status !== 'stunned' && !G.block ? G.sel : null
     );
     if (mover && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && !G.interceptionChoice) {
