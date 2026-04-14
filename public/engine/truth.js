@@ -1,7 +1,7 @@
 // truth.js
 // Single source of truth for what actions the selected player can take right now.
-// Called by updateButtons() (input.js), syncMobileHud() (mobile.js), and
-// _openWheel() (mobile.js) so that a new action only needs to be added here.
+// Called by updateButtons() (input.js) and _openWheel() (mobile.js) so
+// that a new action only needs to be added here.
 
 if (typeof module !== 'undefined') {
     var { isStanding, canStillCancel, getBlockTargets } = require('./helpers.js');

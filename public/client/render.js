@@ -202,7 +202,6 @@ function updateSidebar() {
     document.getElementById('score-away').textContent = score.away;
 
     updateTeams();
-    updateDetail();
 }
 
 // ── chip tooltip ─────────────────────────────────────────────────
@@ -210,41 +209,91 @@ function updateSidebar() {
 // it's never clipped by sidebar overflow.  Shown on hover (desktop)
 // and on touchstart (tablet/mobile), auto-dismissed on touchend.
 
-var _chipTooltipTimer = null;
+var _chipTooltipTimer    = null;
+var _chipTooltipPlayerId = null;
 
 function showChipTooltip(anchor, p) {
     clearTimeout(_chipTooltipTimer);
-    const tt  = document.getElementById('chip-tooltip');
-    const sts = p.status === 'ko'       ? 'KO'
-              : p.status === 'casualty' ? 'Casualty'
-              : p.status === 'stunned'  ? 'Stunned'
-              : p.status === 'prone'    ? 'Prone'
-              : p.col < 0              ? 'Reserve'
-              : p.usedAction           ? 'Done'
-              :                          null;
-    const skills = p.skills && p.skills.length
-        ? `<div class="ct-skills">${p.skills.join(', ')}</div>` : '';
-    const statusLine = sts ? `<div class="ct-status ct-${p.status}">${sts}</div>` : '';
+    const tt = document.getElementById('chip-tooltip');
+
+    const isActivated = G.activated && G.activated.id === p.id;
+    const teamColor   = p.side === 'home' ? 'var(--home)' : 'var(--away)';
+
+    const statusText = p.usedAction && p.status === 'active' ? 'Done'
+                     : p.status === 'prone'    ? 'Prone'
+                     : p.status === 'stunned'  ? 'Stunned'
+                     : p.status === 'ko'       ? 'KO'
+                     : p.status === 'casualty' ? 'Casualty'
+                     : p.col < 0              ? 'Reserve'
+                     :                          null;
+
+    const maInfo = isActivated
+        ? `${p.maLeft} MA \u00b7 ${p.rushLeft} GFI`
+        : (G.phase === 'play' && p.col >= 0 && !p.usedAction && p.status === 'active')
+          ? `MA ${p.maLeft}`
+          : null;
+
+    const skillsHtml = p.skills && p.skills.length
+        ? `<div class="ct-skills">${p.skills.map(s => `<span class="ct-skill">${s}</span>`).join('')}</div>`
+        : '';
+
+    const stClass    = p.col < 0 ? 'reserve'
+                     : (p.usedAction && p.status === 'active') ? 'done'
+                     : (p.status || 'active');
+    const badgesHtml = [
+        statusText ? `<span class="ct-badge ct-st-${stClass}">${statusText}</span>` : '',
+        p.hasBall  ? '<span class="ct-badge ct-st-ball">&#9679; Ball</span>'         : '',
+        maInfo     ? `<span class="ct-badge ct-st-ma">${maInfo}</span>`              : '',
+    ].filter(Boolean).join('');
+
     tt.innerHTML = `
-        <div class="ct-name">${p.name}</div>
-        <div class="ct-pos">${p.pos}</div>
-        <div class="ct-stats">MA <b>${p.ma}</b> &ensp; ST <b>${p.st}</b> &ensp; AG <b>${p.ag}</b> &ensp; PA <b>${p.pa}</b> &ensp; AV <b>${p.av}</b></div>
-        ${skills}
-        ${statusLine}`;
-    tt.hidden = false;
-    const r = anchor.getBoundingClientRect();
-    tt.style.left = r.left + 'px';
-    tt.style.top  = (r.bottom + 6) + 'px';
-    // prevent right-edge overflow
+        <div class="ct-top">
+          <div class="ct-sprite-slot"></div>
+          <div class="ct-info">
+            <div class="ct-name" style="color:${teamColor}">${p.name}</div>
+            <div class="ct-pos">${p.pos}</div>
+            <div class="ct-stats-grid">
+              <span>MA</span><span>ST</span><span>AG</span><span>PA</span><span>AV</span>
+              <b>${p.ma}</b><b>${p.st}</b><b>${p.ag}</b><b>${p.pa}</b><b>${p.av}</b>
+            </div>
+          </div>
+        </div>${skillsHtml || badgesHtml ? `
+        <div class="ct-bottom">${skillsHtml}${badgesHtml ? `<div class="ct-badges">${badgesHtml}</div>` : ''}</div>` : ''}`;
+
+    tt.querySelector('.ct-sprite-slot').appendChild(_drawMiniSprite(p));
+    tt.hidden            = false;
+    _chipTooltipPlayerId = p.id;
+
+    // On touch devices CSS pins the card to the bottom; skip JS positioning.
+    if ('ontouchstart' in window) return;
+
+    // Desktop: float the card near the anchor point.
+    const isEl = typeof anchor?.getBoundingClientRect === 'function';
+    let ax, ay, preferAbove;
+    if (isEl) {
+        const r = anchor.getBoundingClientRect();
+        ax = r.left + r.width / 2;  ay = r.bottom;  preferAbove = false;
+    } else {
+        ax = anchor?.clientX ?? window.innerWidth  / 2;
+        ay = anchor?.clientY ?? window.innerHeight / 2;
+        preferAbove = true;
+    }
+    tt.style.left = (ax - 80) + 'px';
+    tt.style.top  = '-9999px';
     requestAnimationFrame(() => {
-        const tr = tt.getBoundingClientRect();
-        if (tr.right > window.innerWidth - 8)
-            tt.style.left = Math.max(4, window.innerWidth - 8 - tr.width) + 'px';
+        const tr  = tt.getBoundingClientRect();
+        let top   = preferAbove ? ay - tr.height - 16 : ay + 6;
+        if  (preferAbove  && top < 8)                                  top = ay + 16;
+        if  (!preferAbove && top + tr.height > window.innerHeight - 8) top = ay - tr.height - 6;
+        const left = Math.max(8, Math.min(window.innerWidth - tr.width - 8, ax - tr.width / 2));
+        tt.style.top  = Math.max(8, top) + 'px';
+        tt.style.left = left + 'px';
     });
 }
 
 function hideChipTooltip(delay) {
     clearTimeout(_chipTooltipTimer);
+    _chipTooltipPlayerId = null;
     if (delay) _chipTooltipTimer = setTimeout(() => hideChipTooltip(0), delay);
     else document.getElementById('chip-tooltip').hidden = true;
 }
@@ -319,9 +368,13 @@ function _paintMiniSprite(canvas, p, isLying) {
 function updateTeams() {
     hideChipTooltip(0);
 
-    const section = document.getElementById('section-teams');
-    if (!G.players || !G.players.length) { section.hidden = true; return; }
+    const section   = document.getElementById('section-teams');
+    const offPitchN = G.players ? G.players.filter(p => p.col < 0).length : 0;
+    if (!offPitchN) { section.hidden = true; return; }
     section.hidden = false;
+
+    // Shared across both buildList() calls so double-tap works in both panels.
+    let _rowLastClick = { id: null, time: 0 };
 
     function buildList(elId) {
         const el = document.getElementById(elId);
@@ -331,14 +384,15 @@ function updateTeams() {
         const isSetup = G.phase === 'setup';
 
         ['home', 'away'].forEach(side => {
-            const group = G.players.filter(p => p.side === side);
+            // Dugout shows only off-pitch players: reserves, KO'd, and casualties.
+            // On-pitch players are visible on the board and don't need to be listed.
+            const group = G.players.filter(p => p.side === side && p.col < 0);
             if (!group.length) return;
 
-            // Sort: on-pitch first, then reserve, KO, casualty
+            // Sort: active reserves first (promotable), then KO, then casualties.
             const statusRank = p => {
-                if (p.status === 'casualty') return 3;
-                if (p.status === 'ko')       return 2;
-                if (p.col < 0)               return 1;
+                if (p.status === 'casualty') return 2;
+                if (p.status === 'ko')       return 1;
                 return 0;
             };
             const sorted = [...group].sort((a, b) => statusRank(a) - statusRank(b));
@@ -355,13 +409,10 @@ function updateTeams() {
                 const isSelected = G.sel && G.sel.id === p.id;
 
                 const row = document.createElement('div');
-                const isDone    = p.usedAction && p.status === 'active' && p.col >= 0;
-                const isReserve = p.col < 0 && p.status === 'active';
                 row.className = 'player-list-row'
-                    + (isSelected ? ' pl-selected'  : '')
-                    + (canSwap    ? ' pl-swappable'  : '')
-                    + (isDone     ? ' pl-done'       : '')
-                    + (isReserve  ? ' pl-reserve'    : '')
+                    + (isSelected ? ' pl-selected' : '')
+                    + (canSwap    ? ' pl-swappable' : '')
+                    + (isAvail    ? ' pl-reserve'   : '')  // styled as ready-to-promote
 ;
 
                 // Draggable onto the pitch during setup
@@ -387,21 +438,21 @@ function updateTeams() {
                 name.textContent = p.name;
                 row.appendChild(name);
 
-                // Tooltip — own players only
-                const isOwn = !NET.online || NET.side === p.side;
-                if (isOwn) {
-                    row.addEventListener('mouseenter', () => showChipTooltip(row, p));
-                    row.addEventListener('mouseleave', () => hideChipTooltip(0));
-                    row.addEventListener('touchstart', () => showChipTooltip(row, p), { passive: true });
-                    row.addEventListener('touchend',   () => hideChipTooltip(1500));
-                }
+                // Tooltip on hover — all players, including opponents.
+                row.addEventListener('mouseenter', () => showChipTooltip(row, p));
+                row.addEventListener('mouseleave', () => hideChipTooltip(0));
 
+                // Click: first click selects the player; second click within 300 ms
+                // on the same player shows the tooltip (doubles as double-tap on touch).
                 row.addEventListener('click', e => {
-                    // Suppress the synthetic click that follows a long-press drag
+                    // Suppress the synthetic click that follows a panel drag release.
                     if (_suppressRowClick) { _suppressRowClick = false; return; }
                     e.stopPropagation();
+                    const now      = Date.now();
+                    const isDouble = now - _rowLastClick.time < 300 && _rowLastClick.id === p.id;
+                    _rowLastClick  = { id: p.id, time: now };
                     G.sel = p;
-                    showChipTooltip(row, p);
+                    if (isDouble) showChipTooltip(row, p);
                     render();
                 });
 
@@ -413,51 +464,12 @@ function updateTeams() {
     buildList('teams-list');
     buildList('mobile-teams-list');
 
-    // Mobile button — show when anyone is off-pitch or injured
+    // Mobile button — show when the dugout has anyone in it.
     const mBtn = document.getElementById('mobile-dugout-btn');
     if (mBtn) {
-        const offPitch = G.players.filter(p => p.col < 0 || p.status === 'ko' || p.status === 'casualty').length;
-        mBtn.style.display = offPitch ? '' : 'none';
-        mBtn.textContent   = `↓${offPitch}`;
+        mBtn.style.display = offPitchN ? '' : 'none';
+        mBtn.textContent   = `↓${offPitchN}`;
     }
-}
-
-function updateDetail() {
-    const el = document.getElementById('detail');
-    if (!G.sel) {
-        el.innerHTML = '<span style="color:#aaa;font-size:10px;">Click a player.</span>';
-        return;
-    }
-    const p           = G.sel;
-    const isActivated = G.activated && G.activated.id === p.id;
-    const color       = p.side === 'home' ? 'var(--home)' : 'var(--away)';
-
-    const statusClass = p.usedAction        ? 'status-done'
-                      : p.status === 'prone'   ? 'status-prone'
-                      : p.status === 'stunned' ? 'status-stunned'
-                      : p.status === 'ko'      ? 'status-done'
-                      : isActivated            ? 'status-moving'
-                      :                          'status-ready';
-    const statusText  = p.usedAction        ? 'Done'
-                      : p.status === 'prone'   ? 'Prone'
-                      : p.status === 'stunned' ? 'Stunned'
-                      : p.status === 'ko'      ? 'KO'
-                      : p.status === 'casualty'? 'Casualty'
-                      : isActivated            ? `Acting · ${p.maLeft} MA · ${p.rushLeft} GFI`
-                      :                          `MA ${p.maLeft}`;
-
-    const skillsHtml = p.skills && p.skills.length
-        ? `<div class="stat-row" style="margin-top:2px">${p.skills.join(', ')}</div>`
-        : '';
-
-    el.innerHTML = `
-        <div class="name" style="color:${color}">${p.name}</div>
-        <div class="stat-row" style="color:var(--text-dim);font-size:10px;margin-top:-2px;margin-bottom:3px">${p.pos}</div>
-        <div class="stat-row">MA <b>${p.ma}</b> &nbsp; ST <b>${p.st}</b> &nbsp; AG <b>${p.ag}</b> &nbsp; PA <b>${p.pa}</b> &nbsp; AV <b>${p.av}</b></div>
-        ${skillsHtml}
-        <span class="status ${statusClass}">${statusText}</span>
-        ${p.hasBall ? '<span class="status" style="background:rgba(255,200,0,0.15);color:#cc9900;margin-left:4px">Ball</span>' : ''}
-    `;
 }
 
 // ── Pitch ─────────────────────────────────────────────────────────
@@ -1242,6 +1254,143 @@ function drawDiceOverlay() {
 }
 
 // ── roundRect ─────────────────────────────────────────────────────
+// ── drawInspectOverlay ────────────────────────────────────────────
+// Draws a small stats card near the tapped player.
+// Measures text first so the card is always wide enough.
+
+function drawInspectOverlay() {
+    if (!inspectState || !ctx) return;
+    const p = inspectState;
+
+    const fs    = Math.max(8, Math.floor(CELL * 0.19));
+    const lineH = fs * 1.65;
+    const padX  = 10;
+    const padY  = 8;
+
+    const teamRgb = p.colour
+        ? `${p.colour[0]},${p.colour[1]},${p.colour[2]}`
+        : (p.side === 'home' ? '180,40,40' : '30,70,160');
+
+    // Build lines with their font/colour already set
+    const statusColor = {
+        prone:    '#ffaa44',
+        stunned:  '#cc66ff',
+        ko:       '#888888',
+        casualty: '#ff4444',
+        active:   'rgba(255,255,255,0.35)',
+    };
+    const statusLabel = {
+        prone:    'PRONE',
+        stunned:  'STUNNED',
+        ko:       'KO',
+        casualty: 'CASUALTY',
+        active:   p.usedAction ? 'DONE' : `MA ${p.maLeft}/${p.ma}`,
+    };
+
+    const bold   = `bold ${fs + 2}px 'IBM Plex Mono', monospace`;
+    const normal = `${fs}px 'IBM Plex Mono', monospace`;
+    const small  = `${fs - 1}px 'IBM Plex Mono', monospace`;
+
+    const lines = [
+        { text: p.name,                                          font: bold,   color: `rgb(${teamRgb})` },
+        { text: p.pos,                                           font: small,  color: `rgba(${teamRgb},0.6)` },
+        { text: `ST ${p.st}  AG ${p.ag}  PA ${p.pa}  AV ${p.av}`, font: normal, color: 'rgba(255,255,255,0.7)' },
+    ];
+    if (p.skills && p.skills.length > 0)
+        lines.push({ text: p.skills.join(', '), font: small, color: 'rgba(255,255,255,0.5)' });
+    if (p.hasBall)
+        lines.push({ text: '● BALL CARRIER', font: small, color: '#ffcc00' });
+    lines.push({ text: statusLabel[p.status] || p.status.toUpperCase(), font: bold, color: statusColor[p.status] || 'white' });
+
+    // Measure each line to size the card correctly
+    let maxW = 0;
+    lines.forEach(l => { ctx.font = l.font; maxW = Math.max(maxW, ctx.measureText(l.text).width); });
+    const cardW = maxW + padX * 2;
+    const cardH = padY * 2 + lines.length * lineH;
+
+    // Float above the player (below if too close to the top edge)
+    let cardX = p.col * CELL + CELL / 2 - cardW / 2;
+    let cardY = p.row * CELL - cameraY - cardH - 6;
+    if (cardY < 0) cardY = p.row * CELL - cameraY + CELL + 6;
+    cardX = Math.max(2, Math.min(canvas.width - cardW - 2, cardX));
+    cardY = Math.max(2, Math.min(canvas.height - cardH - 2, cardY));
+
+    roundRect(ctx, cardX, cardY, cardW, cardH, 4);
+    ctx.fillStyle = 'rgba(8,6,3,0.92)';
+    ctx.fill();
+    roundRect(ctx, cardX, cardY, cardW, cardH, 4);
+    ctx.strokeStyle = `rgba(${teamRgb},0.85)`;
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
+    lines.forEach((l, i) => {
+        ctx.font      = l.font;
+        ctx.fillStyle = l.color;
+        ctx.fillText(l.text, cardX + padX, cardY + padY + i * lineH);
+    });
+}
+
+// ── drawWheelOverlay ──────────────────────────────────────────────
+// Called at the end of render(). Draws inspect card first, then wheel.
+
+function drawWheelOverlay() {
+    drawInspectOverlay();
+    if (!wheelState || !ctx) return;
+    const { cx, cy, actions, rInner, rOuter } = wheelState;
+    const n         = actions.length;
+    const sweep     = (Math.PI * 2) / n;
+    const baseAngle = -Math.PI / 2;  // 12 o'clock
+
+    // Dim the pitch behind the wheel
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const gap = 0; // radians between segments
+
+    actions.forEach((a, i) => {
+        const a0  = baseAngle + i * sweep + gap;
+        const a1  = baseAngle + (i + 1) * sweep - gap;
+        const mid = (a0 + a1) / 2;
+
+        // True donut segment: outer arc → line → inner arc reversed → close
+        ctx.beginPath();
+        ctx.arc(cx, cy, rOuter, a0, a1);
+        ctx.arc(cx, cy, rInner, a1, a0, true);
+        ctx.closePath();
+        ctx.fillStyle   = a.bg;
+        ctx.fill();
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+
+        // Label centred in the annular slice
+        const lx    = cx + Math.cos(mid) * (rInner + rOuter) / 2;
+        const ly    = cy + Math.sin(mid) * (rInner + rOuter) / 2;
+        const lines = a.label.split('\n');
+        ctx.font         = `bold ${Math.max(9, Math.floor(CELL * 0.21))}px 'IBM Plex Mono', monospace`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor  = 'rgba(0,0,0,1)';
+        ctx.shadowBlur   = 6;
+        ctx.fillStyle    = '#fff';
+        lines.forEach((line, li) =>
+            ctx.fillText(line, lx, ly + (li - (lines.length - 1) / 2) * CELL * 0.26)
+        );
+        ctx.shadowBlur = 0;
+    });
+
+    // Centre disc (tap to dismiss)
+    ctx.beginPath();
+    ctx.arc(cx, cy, rInner - 2, 0, Math.PI * 2);
+    ctx.fillStyle   = 'rgba(0,0,0,0.65)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+}
+
 function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);

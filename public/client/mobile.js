@@ -1,14 +1,14 @@
 // mobile.js
-// Touch input and radial action wheel for mobile play.
+// Camera, mobile HUD, action wheel, and panel-drag for mobile play.
 //
-// Requires three call sites in other files (already wired):
-//   render.js   render():        drawWheelOverlay();
-//   input.js    setupInput():    setupTouch();
-//   input.js    updateButtons(): syncMobileHud();
+// Touch/pointer input on the canvas is handled entirely by input.js via the
+// unified Pointer Events layer. This file owns everything else that is mobile-
+// specific: camera position, the radial action wheel, player-inspect overlay
+// state, reserve-panel drag-to-pitch, and the slide-in log/dugout panels.
 
-// ── Camera ────────────────────────────────────────────────────────
+// ── Camera ────────────────────────────────────────────────────────────────────
 // cameraY is the vertical scroll offset in pixels into the pitch.
-// 0 = top of pitch visible. Clamped in clampCamera().
+// 0 = top of pitch visible. Clamped by clampCamera().
 
 var cameraY = 0;
 
@@ -17,200 +17,23 @@ function clampCamera() {
     cameraY = Math.max(0, Math.min(maxCam, cameraY));
 }
 
-// Scroll so the current setup side's area is visible at the top of screen.
+// Scroll so the current setup side's end zone is visible at the top of screen.
 function scrollToSetupSide() {
     if (!G.setupSide) return;
     cameraY = G.setupSide === 'home' ? CELL * 13 : 0;
     clampCamera();
 }
 
-// ── Overlay state ─────────────────────────────────────────────────
+// ── Overlay state ─────────────────────────────────────────────────────────────
 // wheelState:   null = hidden; object = { actions, cx, cy, rInner, rOuter }
-// inspectState: null = hidden; player object to show stats for
+// inspectState: null = hidden; player object whose stats are shown
 
 var wheelState   = null;
 var inspectState = null;
 
-// ── drawInspectOverlay ────────────────────────────────────────────
-// Draws a small stats card near the tapped player.
-// Measures text first so the card is always wide enough.
+// ── HUD panel toggles ─────────────────────────────────────────────────────────
 
-function drawInspectOverlay() {
-    if (!inspectState || !ctx) return;
-    const p = inspectState;
-
-    const fs    = Math.max(8, Math.floor(CELL * 0.19));
-    const lineH = fs * 1.65;
-    const padX  = 10;
-    const padY  = 8;
-
-    const teamRgb = p.colour
-        ? `${p.colour[0]},${p.colour[1]},${p.colour[2]}`
-        : (p.side === 'home' ? '180,40,40' : '30,70,160');
-
-    // Build lines with their font/colour already set
-    const statusColor = {
-        prone:    '#ffaa44',
-        stunned:  '#cc66ff',
-        ko:       '#888888',
-        casualty: '#ff4444',
-        active:   'rgba(255,255,255,0.35)',
-    };
-    const statusLabel = {
-        prone:    'PRONE',
-        stunned:  'STUNNED',
-        ko:       'KO',
-        casualty: 'CASUALTY',
-        active:   p.usedAction ? 'DONE' : `MA ${p.maLeft}/${p.ma}`,
-    };
-
-    const bold   = `bold ${fs + 2}px 'IBM Plex Mono', monospace`;
-    const normal = `${fs}px 'IBM Plex Mono', monospace`;
-    const small  = `${fs - 1}px 'IBM Plex Mono', monospace`;
-
-    const lines = [
-        { text: p.name,                                          font: bold,   color: `rgb(${teamRgb})` },
-        { text: p.pos,                                           font: small,  color: `rgba(${teamRgb},0.6)` },
-        { text: `ST ${p.st}  AG ${p.ag}  PA ${p.pa}  AV ${p.av}`, font: normal, color: 'rgba(255,255,255,0.7)' },
-    ];
-    if (p.skills && p.skills.length > 0)
-        lines.push({ text: p.skills.join(', '), font: small, color: 'rgba(255,255,255,0.5)' });
-    if (p.hasBall)
-        lines.push({ text: '● BALL CARRIER', font: small, color: '#ffcc00' });
-    lines.push({ text: statusLabel[p.status] || p.status.toUpperCase(), font: bold, color: statusColor[p.status] || 'white' });
-
-    // Measure each line to size the card correctly
-    let maxW = 0;
-    lines.forEach(l => { ctx.font = l.font; maxW = Math.max(maxW, ctx.measureText(l.text).width); });
-    const cardW = maxW + padX * 2;
-    const cardH = padY * 2 + lines.length * lineH;
-
-    // Float above the player (below if too close to the top edge)
-    let cardX = p.col * CELL + CELL / 2 - cardW / 2;
-    let cardY = p.row * CELL - cameraY - cardH - 6;
-    if (cardY < 0) cardY = p.row * CELL - cameraY + CELL + 6;
-    cardX = Math.max(2, Math.min(canvas.width - cardW - 2, cardX));
-    cardY = Math.max(2, Math.min(canvas.height - cardH - 2, cardY));
-
-    roundRect(ctx, cardX, cardY, cardW, cardH, 4);
-    ctx.fillStyle = 'rgba(8,6,3,0.92)';
-    ctx.fill();
-    roundRect(ctx, cardX, cardY, cardW, cardH, 4);
-    ctx.strokeStyle = `rgba(${teamRgb},0.85)`;
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
-
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'top';
-    lines.forEach((l, i) => {
-        ctx.font      = l.font;
-        ctx.fillStyle = l.color;
-        ctx.fillText(l.text, cardX + padX, cardY + padY + i * lineH);
-    });
-}
-
-// ── drawWheelOverlay ──────────────────────────────────────────────
-// Called at the end of render(). Draws inspect card first, then wheel.
-
-function drawWheelOverlay() {
-    drawInspectOverlay();
-    if (!wheelState || !ctx) return;
-    const { cx, cy, actions, rInner, rOuter } = wheelState;
-    const n         = actions.length;
-    const sweep     = (Math.PI * 2) / n;
-    const baseAngle = -Math.PI / 2;  // 12 o'clock
-
-    // Dim the pitch behind the wheel
-    ctx.fillStyle = 'rgba(0,0,0,0.42)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const gap = 0; // radians between segments
-
-    actions.forEach((a, i) => {
-        const a0  = baseAngle + i * sweep + gap;
-        const a1  = baseAngle + (i + 1) * sweep - gap;
-        const mid = (a0 + a1) / 2;
-
-        // True donut segment: outer arc → line → inner arc reversed → close
-        ctx.beginPath();
-        ctx.arc(cx, cy, rOuter, a0, a1);
-        ctx.arc(cx, cy, rInner, a1, a0, true);
-        ctx.closePath();
-        ctx.fillStyle   = a.bg;
-        ctx.fill();
-        ctx.strokeStyle = a.color;
-        ctx.lineWidth   = 2;
-        ctx.stroke();
-
-        // Label centred in the annular slice
-        const lx    = cx + Math.cos(mid) * (rInner + rOuter) / 2;
-        const ly    = cy + Math.sin(mid) * (rInner + rOuter) / 2;
-        const lines = a.label.split('\n');
-        ctx.font         = `bold ${Math.max(9, Math.floor(CELL * 0.21))}px 'IBM Plex Mono', monospace`;
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor  = 'rgba(0,0,0,1)';
-        ctx.shadowBlur   = 6;
-        ctx.fillStyle    = '#fff';
-        lines.forEach((line, li) =>
-            ctx.fillText(line, lx, ly + (li - (lines.length - 1) / 2) * CELL * 0.26)
-        );
-        ctx.shadowBlur = 0;
-    });
-
-    // Centre disc (tap to dismiss)
-    ctx.beginPath();
-    ctx.arc(cx, cy, rInner - 2, 0, Math.PI * 2);
-    ctx.fillStyle   = 'rgba(0,0,0,0.65)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth   = 1;
-    ctx.stroke();
-}
-
-// ── syncMobileHud ─────────────────────────────────────────────────
-// Updates the mobile HUD buttons to mirror the current action state.
-// Called at the end of updateButtons() in input.js.
-
-function syncMobileHud() {
-    const activeEl = document.getElementById('mobile-active-label');
-    const turnEl   = document.getElementById('mobile-turn-label');
-    if (activeEl) {
-        const side = G.phase === 'setup'     ? G.setupSide
-                   : G.phase === 'kick'      ? G.kicker
-                   : G.phase === 'touchback' ? G.receiver
-                   :                           G.active;
-        activeEl.textContent = G.phase === 'touchback' ? 'TOUCHBACK'
-                             : G.phase === 'kick'      ? `${(G.kicker || '').toUpperCase()} KICK`
-                             :                           (side || '').toUpperCase();
-        activeEl.className   = side === 'home' ? 'team-home' : 'team-away';
-    }
-    if (turnEl)
-        turnEl.textContent = (G.phase === 'play') ? `H${G.half} T${G.turn}` : G.phase === 'gameover' ? 'FT' : '';
-
-    const score = G.score || { home: 0, away: 0 };
-    const sh = document.getElementById('mobile-score-home');
-    const sa = document.getElementById('mobile-score-away');
-    if (sh) sh.textContent = score.home;
-    if (sa) sa.textContent = score.away;
-
-    const gc = getGameContext(G, G.sel, NET);
-    mobileShow('mobile-btn-confirm-setup', gc.canConfirmSetup);
-    mobileShow('mobile-btn-cancel',        !gc.inSetup && !gc.inSpecial && gc.canCancel);
-    mobileShow('mobile-btn-throw',         !gc.inSetup && !gc.inSpecial && gc.canThrow);
-    mobileShow('mobile-btn-no-intercept',  !gc.inSetup && !gc.inSpecial && gc.canChooseNoIntercept);
-    mobileShow('mobile-btn-stop',          !gc.inSetup && !gc.inSpecial && gc.canStop);
-    mobileShow('mobile-btn-end-turn',      !gc.inSetup && !gc.inSpecial && gc.myTurn && !G.block);
-}
-
-function mobileShow(id, visible) {
-    const el = document.getElementById(id);
-    if (el) el.style.display = visible ? '' : 'none';
-}
-
-// ── toggleMobileLog ───────────────────────────────────────────────
-// Opens/closes the log panel. On open, copies current log entries.
-
+// Opens/closes the sliding log panel; on open, mirrors the current log entries.
 function toggleMobileLog() {
     const panel = document.getElementById('mobile-log-panel');
     if (panel.classList.contains('hidden')) {
@@ -223,29 +46,35 @@ function toggleMobileLog() {
     }
 }
 
+// Opens/closes the sliding dugout panel. Re-renders first so the team lists
+// are always up to date when the panel appears.
 function toggleMobileDugout() {
     const panel = document.getElementById('mobile-dugout-panel');
     if (panel.classList.contains('hidden')) {
-        render();  // ensures mobile-dugout-* containers are freshly populated
+        render();  // populate mobile-teams-list before revealing
         panel.classList.remove('hidden');
     } else {
         panel.classList.add('hidden');
     }
 }
 
-// ── Panel press-drag (mobile promote) ────────────────────────────
-// Pressing a reserve row and moving immediately starts a drag — no
-// timer needed. As soon as the pointer drifts more than ~8 px we know
-// it's not a tap, so we fire the drag right then.
-// Tracking uses Pointer Events throughout so it works in Firefox
-// DevTools touch simulation and is not affected by touchcancel.
+// ── Panel press-drag (promote reserve → pitch during setup) ───────────────────
+// Pressing a reserve-row and moving > 8 px immediately fires a drag — no timer
+// needed. Pointer Events are used throughout so it works in Firefox DevTools
+// touch simulation and is not affected by touchcancel.
+//
+// State:
+//   _panelPressOrigin  { player, clientX, clientY } — set on pointerdown
+//   _panelPressAC      AbortController for press-phase listeners
+//   _panelPointerAC    AbortController for drag-phase listeners
+//   _suppressRowClick  true while a drag is live, blocks the synthetic click
 
-var _panelPressOrigin = null;   // { player, clientX, clientY } while finger is down
-var _panelPressAC     = null;   // AbortController for press-phase window listeners
-var _suppressRowClick = false;  // block synthetic click that follows a drag release
-var _panelPointerAC   = null;   // AbortController for drag-phase window listeners
+var _panelPressOrigin = null;
+var _panelPressAC     = null;
+var _suppressRowClick = false;
+var _panelPointerAC   = null;
 
-// Called from pointerdown on a reserve row.
+// Called from pointerdown on a reserve row (wired in render.js / updateTeams).
 function startPanelPress(player, e) {
     _abortPanelPress();
     _panelPressOrigin = { player, clientX: e.clientX, clientY: e.clientY };
@@ -263,7 +92,7 @@ function _onPanelPressMove(e) {
     if (!_panelPressOrigin) return;
     const dx = e.clientX - _panelPressOrigin.clientX;
     const dy = e.clientY - _panelPressOrigin.clientY;
-    if (dx * dx + dy * dy > 64) {   // >8 px — not a tap, fire drag now
+    if (dx * dx + dy * dy > 64) {   // > 8 px — it's a drag, not a tap
         const player = _panelPressOrigin.player;
         _abortPanelPress();
         _firePanelDrag(player, e.clientX, e.clientY);
@@ -271,9 +100,11 @@ function _onPanelPressMove(e) {
 }
 
 function _onPanelPressUp() {
-    _abortPanelPress();  // short tap — let the click handler take it
+    // Short tap — abort and let the row's click handler take over.
+    _abortPanelPress();
 }
 
+// Transition from press phase to active drag phase.
 function _firePanelDrag(player, cx, cy) {
     _suppressRowClick = true;
     const rect = canvas.getBoundingClientRect();
@@ -289,13 +120,13 @@ function _firePanelDrag(player, cx, cy) {
     window.addEventListener('contextmenu',   e => e.preventDefault(), { signal: sig });
 }
 
+// Track finger/cursor position and collapse the dugout panel on first movement.
 function _onPanelPointerMove(e) {
     if (!setupDrag || !setupDrag.fromPanel) return;
     const rect = canvas.getBoundingClientRect();
     setupDrag.pixelX = e.clientX - rect.left;
     setupDrag.pixelY = e.clientY - rect.top;
     _dragMoved = true;
-    // Collapse panel on first confirmed movement.
     if (!setupDrag._panelCollapsed) {
         setupDrag._panelCollapsed = true;
         const panel = document.getElementById('mobile-dugout-panel');
@@ -304,6 +135,7 @@ function _onPanelPointerMove(e) {
     render();
 }
 
+// Drop: attempt swap or placement, then clean up.
 function _onPanelPointerUp(e) {
     _abortPanelPointers();
     if (!setupDrag || !setupDrag.fromPanel) return;
@@ -327,6 +159,7 @@ function _onPanelPointerUp(e) {
     render();
 }
 
+// Cancelled mid-drag (e.g. call received) — revert silently.
 function _onPanelPointerCancel() {
     _cleanupPanelDrag();
     render();
@@ -344,228 +177,15 @@ function _cleanupPanelDrag() {
     if (panel) { panel.classList.remove('drag-collapsing'); panel.classList.add('hidden'); }
 }
 
-// ── setupTouch ────────────────────────────────────────────────────
-// Called from setupInput() in input.js.
-// On touch devices, replaces click handling with touch handling.
-
-function setupTouch() {
-    if (!('ontouchstart' in window)) return;
-    // Prevent the synthetic click event that follows touchend
-    canvas.removeEventListener('click', handleClick);
-    canvas.addEventListener('touchstart', _onTouchStart, { passive: false });
-    canvas.addEventListener('touchend',   _onTouchEnd,   { passive: false });
-    canvas.addEventListener('touchmove',  _onTouchMove,  { passive: false });
-    // Panel-initiated drag tracking uses pointer events registered dynamically
-    // in startPanelLongPress — no document-level touch listeners needed.
-}
-
-var _pressTimer   = null;
-var _pressOrigin  = null;
-var _dragging     = false;
-var _dragCamStart = 0;
-var _lastTapTime  = 0;
-var _lastTapCol   = -1;
-var _lastTapRow   = -1;
-var _pendingTap   = null;  // { timer } — delayed single-tap during targeting states
-
-function _onTouchStart(e) {
-    e.preventDefault();
-    const t = e.touches[0];
-    _pressOrigin = { x: t.clientX, y: t.clientY };
-    _dragging    = false;
-
-    // Setup phase: immediately pick up a player for drag.
-    if (G.phase === 'setup') {
-        const rect = canvas.getBoundingClientRect();
-        const px   = t.clientX - rect.left;
-        const py   = t.clientY - rect.top;
-        const col  = Math.floor(px / CELL);
-        const row  = Math.floor((py + cameraY) / CELL);
-        const p    = playerAt(G, col, row);
-        if (p) { G.sel = p; render(); }
-        if (p && p.side === G.setupSide && (!NET.online || NET.side === G.setupSide)) {
-            setupDrag = { player: p, pixelX: px, pixelY: py };
-            return;
-        }
-    }
-
-    _pressTimer = setTimeout(() => {
-        _pressTimer = null;
-        if (_pressOrigin) _onLongPress(_pressOrigin.x, _pressOrigin.y);
-    }, 450);
-}
-
-function _onTouchMove(e) {
-    const t = e.touches[0];
-
-    // Setup drag — move the ghost
-    if (setupDrag) {
-        const rect       = canvas.getBoundingClientRect();
-        setupDrag.pixelX = t.clientX - rect.left;
-        setupDrag.pixelY = t.clientY - rect.top;
-        render();
-        return;
-    }
-
-    if (!_pressOrigin) return;
-    const dx = t.clientX - _pressOrigin.x;
-    const dy = t.clientY - _pressOrigin.y;
-
-    if (!_dragging && dx * dx + dy * dy > 64) {
-        if (_pressTimer) { clearTimeout(_pressTimer); _pressTimer = null; }
-        _dragging     = true;
-        _dragCamStart = cameraY;
-    }
-
-    if (_dragging) {
-        cameraY = _dragCamStart - dy;
-        clampCamera();
-        render();
-    }
-}
-
-function _onTouchEnd(e) {
-    e.preventDefault();
-
-    // Setup drag — drop the player
-    if (setupDrag) {
-        const drag = setupDrag;
-        setupDrag  = null;
-        // Guard: clear any pending long-press timer so it doesn't fire against a null _pressOrigin
-        if (_pressTimer) { clearTimeout(_pressTimer); _pressTimer = null; }
-        const rect = canvas.getBoundingClientRect();
-        const t    = e.changedTouches[0];
-        const col  = Math.floor((t.clientX - rect.left) / CELL);
-        const row  = Math.floor((t.clientY - rect.top + cameraY) / CELL);
-
-        // Double-tap on the same cell: toggle inspect overlay, skip the move.
-        const now = Date.now();
-        const isDoubleTap = now - _lastTapTime < 300 && col === _lastTapCol && row === _lastTapRow;
-        _lastTapTime = now;
-        _lastTapCol  = col;
-        _lastTapRow  = row;
-        if (isDoubleTap && col === drag.player.col && row === drag.player.row) {
-            inspectState = inspectState?.id !== drag.player.id ? drag.player : null;
-            render();
-            _pressOrigin = null;
-            return;
-        }
-
-        inspectState = null;
-
-        // Drag released outside the pitch → demote to reserve
-        const outsidePitch = t.clientX < rect.left || t.clientX > rect.right
-                          || t.clientY < rect.top  || t.clientY > rect.bottom;
-        if (outsidePitch && drag.player.col >= 0 && G.phase === 'setup'
-                && (!NET.online || NET.side === G.setupSide)) {
-            demoteToReserve(G, drag.player.id);
-            if (NET.online) sendAction({ type: 'SETUP_DEMOTE', playerId: drag.player.id });
-            setupErrors = null;
-            const dp = document.getElementById('mobile-dugout-panel');
-            if (dp) dp.classList.add('hidden');
-            render();
-            _pressOrigin = null;
-            return;
-        }
-
-        const occupant = playerAt(G, col, row);
-        if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
-            swapSetupPlayers(G, drag.player.id, occupant.id);
-            if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
-        } else {
-            moveSetupPlayer(G, drag.player.id, col, row);
-            if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
-        }
-        setupErrors = null;
-        render();
-        _pressOrigin = null;
-        return;
-    }
-
-    _dragging = false;
-    if (_pressTimer) {
-        clearTimeout(_pressTimer);
-        _pressTimer = null;
-
-        _onTap(_pressOrigin.x, _pressOrigin.y);
-    } else {
-        // Scroll ended — dismiss any open inspect card.
-        inspectState = null;
-        render();
-    }
-    _pressOrigin = null;
-}
-
-// ── Tap ───────────────────────────────────────────────────────────
-
-function _onTap(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-    const px   = clientX - rect.left;
-    const py   = clientY - rect.top;
-
-    if (wheelState) {
-        _handleWheelTap(px, py);
-        return;
-    }
-
-    const col = Math.floor(px / CELL);
-    const row = Math.floor((py + cameraY) / CELL);
-    const now = Date.now();
-
-    const isDoubleTap = now - _lastTapTime < 300 && col === _lastTapCol && row === _lastTapRow;
-    _lastTapTime = now;
-    _lastTapCol  = col;
-    _lastTapRow  = row;
-
-    // Double-tap: always toggle inspect card, cancel any pending single-tap, never act
-    if (isDoubleTap && !wheelState && G.phase !== 'touchback') {
-        if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
-        const player = playerAt(G, col, row);
-        inspectState = player && inspectState?.id !== player.id ? player : null;
-        render();
-        return;
-    }
-
-    // In states where tapping picks a target, delay the action so a double-tap can cancel it
-    const needsDelay = G.passing === 'targeting' || !!G.interceptionChoice;
-    if (needsDelay) {
-        if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
-        _pendingTap = { timer: setTimeout(() => {
-            _pendingTap  = null;
-            inspectState = null;
-            handleClick({ clientX, clientY });
-        }, 260) };
-        return;
-    }
-
-    // Immediate single tap in all other states
-    inspectState = null;
-    handleClick({ clientX, clientY });
-}
-
-// ── Long press ────────────────────────────────────────────────────
-
-function _onLongPress(clientX, clientY) {
-    const rect   = canvas.getBoundingClientRect();
-    const px     = clientX - rect.left;
-    const py     = clientY - rect.top;
-    const col    = Math.floor(px / CELL);
-    const row    = Math.floor((py + cameraY) / CELL);
-    const player = playerAt(G, col, row);
-    if (!player) return;
-
-    G.sel = player;
-    if (_openWheel(player, px, py)) render();
-}
-
-// ── _openWheel ────────────────────────────────────────────────────
-// Determines available actions for this player and opens the wheel.
-// Returns true if the wheel was opened.
+// ── Action wheel ──────────────────────────────────────────────────────────────
+// _openWheel() is called by input.js on long-press. It reads the game context,
+// builds the action list, then sets wheelState so render.js draws the overlay.
+// Returns true if the wheel was opened (i.e. there was at least one action).
 
 function _openWheel(player, px, py) {
     const gc = getGameContext(G, player, NET);
 
-    // Non-active player may tap a highlighted interceptor during interception choice
+    // The non-active side can still tap an interceptor candidate.
     const canIntercept = G.interceptionChoice
         && G.interceptionChoice.interceptorIds.includes(player.id)
         && (!NET.online || NET.side !== G.active);
@@ -574,6 +194,7 @@ function _openWheel(player, px, py) {
 
     const actions = [];
 
+    // ── Interception (defender's turn) ────────────────────────────────────────
     if (canIntercept) {
         const pid = player.id;
         actions.push({
@@ -585,90 +206,44 @@ function _openWheel(player, px, py) {
         });
     }
 
-    // Active-player actions (only for the team whose turn it is)
+    // ── Active player (already activated) ────────────────────────────────────
     if (gc.myTurn && G.activated && G.activated.id === player.id && !G.block) {
-        if (gc.canThrow) {
-            actions.push({
-                label: 'Throw', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
-                fn: onClickThrow,
-            });
-        }
-        if (gc.canCancel) {
-            actions.push({
-                label: 'Cancel', color: '#ffd080', bg: 'rgba(130,70,0,0.90)',
-                fn: onClickCancel,
-            });
-        } else if (gc.canStop) {
-            actions.push({
-                label: 'Stop', color: '#90f090', bg: 'rgba(20,110,20,0.90)',
-                fn: onClickStop,
-            });
-        }
+        if (gc.canThrow)
+            actions.push({ label: 'Throw',  color: '#ffe080', bg: 'rgba(120,90,0,0.90)',  fn: onClickThrow  });
+        if (gc.canCancel)
+            actions.push({ label: 'Cancel', color: '#ffd080', bg: 'rgba(130,70,0,0.90)',  fn: onClickCancel });
+        else if (gc.canStop)
+            actions.push({ label: 'Stop',   color: '#90f090', bg: 'rgba(20,110,20,0.90)', fn: onClickStop   });
     }
-    // Unactivated player on active side — declare actions
+    // ── Unactivated player — declare an action ────────────────────────────────
     else if (gc.canDeclare) {
         if (gc.selProne) {
-            // Prone players: offer Stand Up (activates in place) so they can optionally move after.
-            // Tapping a highlighted square directly also works (activate-and-move).
-            actions.push({
-                label: 'Stand\nUp', color: '#90ccff', bg: 'rgba(30,90,190,0.90)',
-                fn: onClickStandUp,
-            });
-            if (gc.canBlitz)
-                actions.push({
-                    label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
-                    fn: onClickBlitz,
-                });
-            if (gc.canHandoff)
-                actions.push({
-                    label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
-                    fn: onClickHandoff,
-                });
-            if (gc.canPass)
-                actions.push({
-                    label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
-                    fn: onClickPass,
-                });
+            // Prone players: offer Stand Up first; they may move after.
+            // Tapping a highlighted square directly also activates-and-moves.
+            actions.push({ label: 'Stand\nUp', color: '#90ccff', bg: 'rgba(30,90,190,0.90)', fn: onClickStandUp });
+            if (gc.canBlitz)   actions.push({ label: 'Blitz',   color: '#ffc060', bg: 'rgba(160,80,0,0.90)',   fn: onClickBlitz   });
+            if (gc.canHandoff) actions.push({ label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',  fn: onClickHandoff });
+            if (gc.canPass)    actions.push({ label: 'Pass',    color: '#ffe080', bg: 'rgba(120,90,0,0.90)',   fn: onClickPass    });
         } else {
-            // Standing players move by tapping a highlighted square directly — no Move button needed.
-            if (gc.hasTargets)
-                actions.push({
-                    label: 'Block', color: '#ff9090', bg: 'rgba(160,30,30,0.90)',
-                    fn: onClickBlock,
-                });
-            if (gc.canFoul)
-                actions.push({
-                    label: 'Foul', color: '#ff9090', bg: 'rgba(120,20,20,0.90)',
-                    fn: onClickFoul,
-                });
-            if (gc.canBlitz)
-                actions.push({
-                    label: 'Blitz', color: '#ffc060', bg: 'rgba(160,80,0,0.90)',
-                    fn: onClickBlitz,
-                });
-            if (gc.canSecure)
-                actions.push({
-                    label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)',
-                    fn: onClickSecureBall,
-                });
-            if (gc.canHandoff)
-                actions.push({
-                    label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',
-                    fn: onClickHandoff,
-                });
-            if (gc.canPass)
-                actions.push({
-                    label: 'Pass', color: '#ffe080', bg: 'rgba(120,90,0,0.90)',
-                    fn: onClickPass,
-                });
+            // Standing players: move by tapping a highlighted square — no Move button needed.
+            if (gc.hasTargets) actions.push({ label: 'Block',        color: '#ff9090', bg: 'rgba(160,30,30,0.90)',  fn: onClickBlock      });
+            if (gc.canFoul)    actions.push({ label: 'Foul',         color: '#ff9090', bg: 'rgba(120,20,20,0.90)',  fn: onClickFoul       });
+            if (gc.canBlitz)   actions.push({ label: 'Blitz',        color: '#ffc060', bg: 'rgba(160,80,0,0.90)',   fn: onClickBlitz      });
+            if (gc.canSecure)  actions.push({ label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)', fn: onClickSecureBall });
+            if (gc.canHandoff) actions.push({ label: 'Handoff',      color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)', fn: onClickHandoff    });
+            if (gc.canPass)    actions.push({ label: 'Pass',         color: '#ffe080', bg: 'rgba(120,90,0,0.90)',  fn: onClickPass       });
         }
     }
 
     if (actions.length === 0) return false;
 
-    inspectState = null;  // wheel takes over, no need for the card
+    // Wheel takes over — clear any tooltip that's visible.
+    inspectState = null;
+    hideChipTooltip(0);
+
     const rInner = CELL * 0.72;
     const rOuter = CELL * 2.1;
+    // Keep the wheel entirely within the canvas.
     const cx = Math.max(rOuter, Math.min(canvas.width  - rOuter, px));
     const cy = Math.max(rOuter, Math.min(canvas.height - rOuter, py));
 
@@ -676,7 +251,9 @@ function _openWheel(player, px, py) {
     return true;
 }
 
-// ── _handleWheelTap ───────────────────────────────────────────────
+// ── _handleWheelTap ───────────────────────────────────────────────────────────
+// Called by input.js _onTap() when wheelState is open.
+// Maps a tap position to one of the radial slices and fires its action.
 
 function _handleWheelTap(px, py) {
     const { cx, cy, actions, rInner, rOuter } = wheelState;
@@ -685,13 +262,13 @@ function _handleWheelTap(px, py) {
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < rInner || dist > rOuter) {
-        // Tap centre or outside ring — dismiss without action
+        // Tap centre or outside the ring — dismiss without action.
         wheelState = null;
         render();
         return;
     }
 
-    // Normalise angle to [0, 2π) with 0 = north, increasing clockwise
+    // Normalise angle: 0 = north, increasing clockwise (matches drawn segments).
     let angle = Math.atan2(dy, dx) + Math.PI / 2;
     if (angle < 0) angle += Math.PI * 2;
 
