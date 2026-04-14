@@ -284,6 +284,14 @@ canvas {
 }
 .teams-side-header:first-child { margin-top: 0; border-top: none; padding-top: 0; }
 
+.dugout-empty {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    padding: 4px 2px 6px;
+    font-style: italic;
+}
+
 .player-list-row {
     display: flex;
     align-items: center;

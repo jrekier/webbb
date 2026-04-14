@@ -320,8 +320,6 @@ function _drawMiniSprite(p) {
         canvas.style.opacity = '0.35';
     } else if (p.status === 'ko') {
         canvas.style.opacity = '0.5';
-    } else if (p.col < 0) {           // reserve
-        canvas.style.opacity = '0.55';
     }
 
     _paintMiniSprite(canvas, p, isLying);
@@ -366,12 +364,11 @@ function _paintMiniSprite(canvas, p, isLying) {
 // ── updateTeams ───────────────────────────────────────────────────
 
 function updateTeams() {
-    hideChipTooltip(0);
-
     const section   = document.getElementById('section-teams');
-    const offPitchN = G.players ? G.players.filter(p => p.col < 0).length : 0;
-    if (!offPitchN) { section.hidden = true; return; }
+    if (!G.players || !G.players.length) { section.hidden = true; return; }
     section.hidden = false;
+
+    const offPitchN = G.players.filter(p => p.col < 0).length;
 
     // Shared across both buildList() calls so double-tap works in both panels.
     let _rowLastClick = { id: null, time: 0 };
@@ -387,7 +384,6 @@ function updateTeams() {
             // Dugout shows only off-pitch players: reserves, KO'd, and casualties.
             // On-pitch players are visible on the board and don't need to be listed.
             const group = G.players.filter(p => p.side === side && p.col < 0);
-            if (!group.length) return;
 
             // Sort: active reserves first (promotable), then KO, then casualties.
             const statusRank = p => {
@@ -401,6 +397,14 @@ function updateTeams() {
             header.className = 'teams-side-header team-' + side;
             header.textContent = side.toUpperCase();
             el.appendChild(header);
+
+            if (!sorted.length) {
+                const empty = document.createElement('div');
+                empty.className   = 'dugout-empty';
+                empty.textContent = 'empty';
+                el.appendChild(empty);
+                return;
+            }
 
             sorted.forEach(p => {
                 const isAvail    = p.status !== 'ko' && p.status !== 'casualty';
@@ -437,10 +441,6 @@ function updateTeams() {
                 name.className   = 'player-list-name';
                 name.textContent = p.name;
                 row.appendChild(name);
-
-                // Tooltip on hover — all players, including opponents.
-                row.addEventListener('mouseenter', () => showChipTooltip(row, p));
-                row.addEventListener('mouseleave', () => hideChipTooltip(0));
 
                 // Click: first click selects the player; second click within 300 ms
                 // on the same player shows the tooltip (doubles as double-tap on touch).

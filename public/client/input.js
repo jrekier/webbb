@@ -39,7 +39,6 @@ var dragHover   = null;  // { col, row } | null — HTML5 drag-over highlight
 
 var _gesture        = null;
 var _longPressTimer = null;  // fires _onLongPress after 450 ms of stillness (touch/pen)
-var _hoverTimer     = null;  // fires showChipTooltip after 260 ms of hover (mouse)
 
 // ── Tap state (double-tap → tooltip) ─────────────────────────────
 // Moved here from mobile.js now that _onTap lives in input.js.
@@ -208,23 +207,6 @@ function _onPointerMove(e) {
         render();
     }
 
-    // Show the player-info card after a short hover pause.
-    if (!wheelState && !G.confirm) {
-        clearTimeout(_hoverTimer);
-        const col = Math.floor(px / CELL);
-        const row = Math.floor((py + cameraY) / CELL);
-        const hp  = playerAt(G, col, row);
-        if (hp) {
-            const cx = rect.left + (hp.col + 0.5) * CELL;
-            const cy = rect.top  + (hp.row + 0.5) * CELL - cameraY;
-            _hoverTimer = setTimeout(
-                () => { if (!wheelState) showChipTooltip({ clientX: cx, clientY: cy }, hp); },
-                260
-            );
-        } else {
-            hideChipTooltip(150);
-        }
-    }
 }
 
 
@@ -308,8 +290,8 @@ function _onPointerCancel() {
 
 
 // ── _onPointerLeave ───────────────────────────────────────────────
-// Mouse left the canvas with no active captured gesture — clear all hover
-// state so aim indicators and the inspect card don't linger.
+// Mouse left the canvas with no active captured gesture — clear aim indicators
+// so the kick/pass overlays don't linger outside the canvas boundary.
 
 function _onPointerLeave(e) {
     if (e.pointerType !== 'mouse') return;
@@ -317,8 +299,6 @@ function _onPointerLeave(e) {
     kickHover    = null;
     passHover    = null;
     inspectState = null;
-    clearTimeout(_hoverTimer);
-    hideChipTooltip(0);
     render();
 }
 
@@ -362,8 +342,16 @@ function _onTap(clientX, clientY) {
     if (isDoubleTap) {
         if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
         const player = playerAt(G, col, row);
-        if (player) showChipTooltip(null, player);
-        else        hideChipTooltip(0);
+        if (player) {
+            // Anchor the tooltip above the player's cell, not the cursor position.
+            const anchor = {
+                clientX: rect.left + (player.col + 0.5) * CELL,
+                clientY: rect.top  + (player.row + 0.5) * CELL - cameraY,
+            };
+            showChipTooltip(anchor, player);
+        } else {
+            hideChipTooltip(0);
+        }
         render();
         return;
     }
@@ -423,7 +411,6 @@ function _onContextMenu(e) {
     if (!p) return;
     G.sel = p;
     inspectState = null;
-    clearTimeout(_hoverTimer);
     // Centre the wheel on the player's cell, not the cursor position.
     const cpx = (p.col + 0.5) * CELL;
     const cpy = (p.row + 0.5) * CELL - cameraY;
