@@ -205,6 +205,9 @@ body {
     display: flex;
     align-items: stretch;
     justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
 /* ── Layout ───────────────────────────────────────────────────── */
