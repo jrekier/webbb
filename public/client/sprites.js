@@ -107,7 +107,9 @@ function getSprite(p) {
         // Recolour: keep each pixel's HSL lightness, replace hue+saturation
         // with the team colour's — shadows/highlights preserved, colour always vivid.
         const [th, ts] = rgbToHsl(r, g, b);
+        const trimLeft = p.sprite.armourTrimLeft || 0;
         for (let i = 0; i < d.length; i += 4) {
+            if ((i / 4) % armour.w < trimLeft) { d[i + 3] = 0; continue; }
             if (d[i + 3] < 10) continue;
             const [,, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
             const [nr, ng, nb] = hslToRgb(th, ts, l);

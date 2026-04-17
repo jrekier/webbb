@@ -923,11 +923,11 @@ function updateButtons() {
         G.confirm = {
             prompt: isFumble ? 'Fumble — use Pass skill to reroll?' : 'Inaccurate — use Pass skill to reroll?',
             onYes: () => {
-                if (NET.online) sendAction({ type: 'PASS_REROLL', use: true });
+                if (NET.online) { G.passRerollChoice = null; sendAction({ type: 'PASS_REROLL', use: true }); }
                 else { const m = resolvePassReroll(G, true);  if (m) log(m); }
             },
             onNo: () => {
-                if (NET.online) sendAction({ type: 'PASS_REROLL', use: false });
+                if (NET.online) { G.passRerollChoice = null; sendAction({ type: 'PASS_REROLL', use: false }); }
                 else { const m = resolvePassReroll(G, false); if (m) log(m); }
             },
         };
