@@ -391,7 +391,7 @@ function _onLongPress(clientX, clientY) {
     const player = playerAt(G, col, row);
     if (!player) return;
     G.sel = player;
-    if (_openWheel(player, px, py)) render();
+    if (_openWheel(player, px, py)) { if (_gesture) _gesture.phase = 'cancelled'; render(); }
 }
 
 
@@ -414,7 +414,7 @@ function _onContextMenu(e) {
     // Centre the wheel on the player's cell, not the cursor position.
     const cpx = (p.col + 0.5) * CELL;
     const cpy = (p.row + 0.5) * CELL - cameraY;
-    if (_openWheel(p, cpx, cpy)) render();
+    if (_openWheel(p, cpx, cpy)) { if (_gesture) _gesture.phase = 'cancelled'; render(); }
 }
 
 
