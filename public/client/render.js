@@ -8,11 +8,31 @@ var CELL = 32;
 var canvas, ctx;
 
 // ── log ──────────────────────────────────────────────────────────
+// Supports rich tags: [[side:name]] for players, [[cat:verb]] for actions.
+// Categories: home/away → team colors, block → red, foul → dark red,
+//             skill → blue, move → dim.
 function log(msg, type) {
     const el   = document.getElementById('log');
     const line = document.createElement('div');
-    line.className   = 'log-line' + (type ? ` ${type}` : '');
-    line.textContent = msg;
+    line.className = 'log-line' + (type ? ` ${type}` : '');
+    if (msg && msg.includes('[[')) {
+        const colorMap = {
+            home:  'var(--home)',
+            away:  'var(--away)',
+            block: '#c8102e',
+            foul:  '#8a0818',
+            skill: '#1a3e8c',
+            move:  'var(--text-dim)',
+        };
+        const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        line.innerHTML = esc(msg).replace(/\[\[(\w+):([^\]]+)\]\]/g, (_, cat, text) => {
+            const color = colorMap[cat] || 'inherit';
+            const bold  = (cat === 'home' || cat === 'away') ? 'font-weight:600;' : '';
+            return `<span style="color:${color};${bold}">${text}</span>`;
+        });
+    } else {
+        line.textContent = msg;
+    }
     el.appendChild(line);
     el.scrollTop = el.scrollHeight;
 }
@@ -526,6 +546,31 @@ function drawPitch() {
     ctx.fillStyle    = 'rgba(255,255,255,0.22)';
     ctx.fillText('▲  AWAY END ZONE', COLS * CELL / 2, 0 * CELL + CELL / 2);
     ctx.fillText('▼  HOME END ZONE', COLS * CELL / 2, (ROWS - 1) * CELL + CELL / 2);
+
+    // Coordinate indices — column letters top & bottom, row numbers left & right
+    const idxSz = Math.max(6, Math.floor(CELL * 0.21));
+    ctx.font      = `bold ${idxSz}px 'IBM Plex Mono', monospace`;
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+
+    ctx.textAlign = 'center';
+    for (let c = 0; c < COLS; c++) {
+        const label = String.fromCharCode(65 + c);
+        const cx    = c * CELL + CELL / 2;
+        ctx.textBaseline = 'top';
+        ctx.fillText(label, cx, 2);                      // top edge
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(label, cx, ROWS * CELL - 2);        // bottom edge
+    }
+
+    ctx.textBaseline = 'middle';
+    for (let r = 0; r < ROWS; r++) {
+        const label = ROWS - r;
+        const cy    = r * CELL + CELL / 2;
+        ctx.textAlign = 'left';
+        ctx.fillText(label, 2, cy);                      // left edge
+        ctx.textAlign = 'right';
+        ctx.fillText(label, COLS * CELL - 2, cy);        // right edge
+    }
 }
 
 // ── Highlights ────────────────────────────────────────────────────
@@ -909,9 +954,9 @@ function drawFollowUpOverlay() {
     ctx.fillText('Follow up?', canvas.width / 2, by - 10);
 
     // YES button
-    ctx.fillStyle = '#2a6a2a';
+    ctx.fillStyle = 'rgba(26,62,140,0.92)';
     roundRect(ctx, bx, by, btnW, btnH, 6); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(240,192,0,0.8)'; ctx.lineWidth = 2;
     roundRect(ctx, bx, by, btnW, btnH, 6); ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.textBaseline = 'middle';
@@ -919,9 +964,9 @@ function drawFollowUpOverlay() {
 
     // NO button
     const nx = bx + btnW + gap;
-    ctx.fillStyle = '#6a2a2a';
+    ctx.fillStyle = 'rgba(40,30,15,0.88)';
     roundRect(ctx, nx, by, btnW, btnH, 6); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(240,192,0,0.4)'; ctx.lineWidth = 2;
     roundRect(ctx, nx, by, btnW, btnH, 6); ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.fillText('NO', nx + btnW / 2, by + btnH / 2);
@@ -955,9 +1000,9 @@ function drawConfirmOverlay() {
     ctx.fillText(G.confirm.prompt, canvas.width / 2, by - 10);
 
     // YES button
-    ctx.fillStyle = '#2a6a2a';
+    ctx.fillStyle = 'rgba(26,62,140,0.92)';
     roundRect(ctx, bx, by, btnW, btnH, 6); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(240,192,0,0.8)'; ctx.lineWidth = 2;
     roundRect(ctx, bx, by, btnW, btnH, 6); ctx.stroke();
     ctx.fillStyle    = '#fff';
     ctx.textBaseline = 'middle';
@@ -965,9 +1010,9 @@ function drawConfirmOverlay() {
 
     // NO button
     const nx = bx + btnW + gap;
-    ctx.fillStyle = '#6a2a2a';
+    ctx.fillStyle = 'rgba(40,30,15,0.88)';
     roundRect(ctx, nx, by, btnW, btnH, 6); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(240,192,0,0.4)'; ctx.lineWidth = 2;
     roundRect(ctx, nx, by, btnW, btnH, 6); ctx.stroke();
     ctx.fillStyle    = '#fff';
     ctx.fillText('NO', nx + btnW / 2, by + btnH / 2);
@@ -1213,18 +1258,18 @@ function drawDiceOverlay() {
     rolls.forEach((face, i) => {
         const dx = x + i * (dieW + 12);
 
-        // Die background — warm for positive, red for bad
-        const bg = face.id === 'ATT_DOWN'  ? '#aa2222'
-                 : face.id === 'BOTH_DOWN' ? '#884400'
+        // Die background — red for bad, dark neutral for mixed, blue for good
+        const bg = face.id === 'ATT_DOWN'  ? 'rgba(200,16,46,0.92)'
+                 : face.id === 'BOTH_DOWN' ? 'rgba(40,30,15,0.88)'
                  : face.id === 'PUSH'      ? '#e8e0c8'
-                 :                           '#2a6a2a';
+                 :                           'rgba(26,62,140,0.92)';
 
         ctx.fillStyle = bg;
         roundRect(ctx, dx, y, dieW, dieH, 6);
         ctx.fill();
 
         // Border — bright if clickable, dim if not
-        ctx.strokeStyle = isMyPick ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.2)';
+        ctx.strokeStyle = isMyPick ? 'rgba(240,192,0,0.85)' : 'rgba(240,192,0,0.2)';
         ctx.lineWidth   = isMyPick ? 2 : 1;
         roundRect(ctx, dx, y, dieW, dieH, 6);
         ctx.stroke();

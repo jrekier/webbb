@@ -40,13 +40,6 @@ function startApp(homeTeam, awayTeam) {
     window._defaultHomeTeam = homeTeam;
     window._defaultAwayTeam = awayTeam;
 
-    if (typeof createBanner === 'function') {
-        const el     = document.getElementById('welcome-banner');
-        const canvas = createBanner({ title: 'Blood Bowl' });
-        el.appendChild(canvas);
-        window.addEventListener('resize', () => drawBanner(canvas, { title: 'Blood Bowl' }));
-    }
-
     // If redirected from bbauth with an action, skip the welcome screen and go straight in.
     // Clear any stale reconnect token first — it must not race with the new CREATE/JOIN.
     if (window._authAction === 'create' || window._authAction === 'join') {

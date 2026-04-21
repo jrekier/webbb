@@ -439,7 +439,12 @@ function handleConfirmSetup(room, side) {
     if (!result) return;
     const logMsg    = result.errors ? result.errors[0] : result.msg;
     const setupError = !!result.errors;
-    broadcast(room, { type: 'UPDATE', G, logMsg, setupError });
+    if (setupError) {
+        const ws = room[side];
+        if (ws) ws.send(JSON.stringify({ type: 'UPDATE', G, logMsg, setupError }));
+    } else {
+        broadcast(room, { type: 'UPDATE', G, logMsg, setupError });
+    }
 }
 
 // ── Action handler ────────────────────────────────────────────────

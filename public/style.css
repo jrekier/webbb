@@ -29,7 +29,12 @@
     color: var(--text);
 }
 
-#screen-welcome h1 { font-size: 48px; }
+#screen-welcome h1 {
+    font-size: 48px;
+    background: var(--red);
+    color: var(--yellow);
+    padding: 0.08em 0.3em;
+}
 #screen-online-setup h2,
 #screen-waiting h2  { font-size: 28px; }
 
@@ -87,7 +92,10 @@
     font-family: 'Bebas Neue', sans-serif;
     font-size: 42px;
     letter-spacing: 6px;
-    color: var(--text);
+    background: var(--red);
+    color: var(--yellow);
+    padding: 0.08em 0.25em;
+    display: inline-block;
     margin: 0;
 }
 
@@ -101,8 +109,11 @@
     font-family: 'Bebas Neue', sans-serif;
     font-size: 11px;
     letter-spacing: 3px;
-    color: var(--text-dim);
+    background: var(--blue);
+    color: var(--yellow);
+    padding: 2px 8px;
     margin-bottom: 2px;
+    display: block;
 }
 
 .lobby-card {
@@ -261,8 +272,10 @@ canvas {
     font-family: 'Bebas Neue', sans-serif;
     font-size: 10px;
     letter-spacing: 3px;
-    color: var(--text-dim);
-    margin-bottom: 8px;
+    background: var(--blue);
+    color: var(--yellow);
+    padding: 3px 14px;
+    margin: -12px -14px 8px;
 }
 
 /* ── Score teams ──────────────────────────────────────────────── */
@@ -474,7 +487,7 @@ canvas {
 }
 
 .log-line.turn-marker {
-    color: var(--gold);
+    color: var(--red);
     font-weight: 700;
     letter-spacing: 1px;
     padding-top: 6px;
@@ -509,14 +522,14 @@ canvas {
 }
 
 .action-btn:hover            { background: rgba(0,0,0,0.05); }
-.action-btn.primary          { border-color: #4a6aaa; color: #4a6aaa; }
-.action-btn.primary:hover    { background: rgba(74,106,170,0.08); }
-.action-btn.danger           { border-color: #aa4444; color: #aa4444; }
-.action-btn.danger:hover     { background: rgba(170,68,68,0.08); }
+.action-btn.primary          { border-color: var(--blue); color: var(--blue); }
+.action-btn.primary:hover    { background: rgba(26,62,140,0.08); }
+.action-btn.danger           { border-color: var(--red); color: var(--red); }
+.action-btn.danger:hover     { background: rgba(200,16,46,0.08); }
 .action-btn.success          { border-color: #4a8a4a; color: #4a8a4a; }
 .action-btn.success:hover    { background: rgba(74,138,74,0.08); }
-.action-btn.end-turn         { border-color: var(--gold); color: var(--gold); flex-basis: 100%; }
-.action-btn.end-turn:hover   { background: rgba(138,106,32,0.08); }
+.action-btn.end-turn         { border-color: var(--red); color: var(--red); flex-basis: 100%; }
+.action-btn.end-turn:hover   { background: rgba(200,16,46,0.08); }
 
 #btn-no-intercept,
 #mobile-btn-no-intercept     { letter-spacing: 0.5px; min-width: 82px; }
@@ -564,7 +577,7 @@ canvas {
     position: fixed;
     inset: 0;
     z-index: 60;
-    background: rgba(0,0,0,0.72);
+    background: rgba(0,0,0,0.42);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -576,40 +589,49 @@ canvas {
     #toss-overlay { padding-right: 0; }
 }
 #toss-card {
-    background: var(--panel);
+    background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 32px 40px;
+    padding: 0;
     text-align: center;
-    min-width: 260px;
+    min-width: 280px;
+    overflow: hidden;
 }
 #toss-winner-label {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 28px;
+    font-size: 30px;
     letter-spacing: 4px;
-    margin-bottom: 6px;
+    padding: 0.25em 0.6em;
+    color: var(--yellow);
+    display: block;
+}
+#toss-winner-label.team-home { background: var(--home); }
+#toss-winner-label.team-away { background: var(--away); }
+#toss-body {
+    padding: 20px 32px 28px;
 }
 #toss-subtitle {
     color: var(--text-dim);
     font-size: 11px;
     letter-spacing: 2px;
     text-transform: uppercase;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 }
-#toss-buttons { display: flex; gap: 12px; justify-content: center; }
+#toss-buttons { display: flex; gap: 10px; justify-content: center; }
 .toss-btn {
     font-family: 'Bebas Neue', sans-serif;
     font-size: 18px;
     letter-spacing: 3px;
     padding: 10px 28px;
     border: 1px solid var(--border);
-    border-radius: 4px;
     background: var(--bg);
     color: var(--text);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: all 0.1s;
 }
-.toss-btn:hover { background: rgba(255,255,255,0.08); }
+.toss-btn:hover {
+    border-color: var(--text);
+    color: var(--text);
+}
 
 /* ── Reconnect overlay ────────────────────────────────────────── */
 #reconnect-overlay {

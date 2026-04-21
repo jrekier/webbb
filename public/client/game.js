@@ -53,8 +53,7 @@ function showTossOverlay(winner, canChoose = true) {
     const lbl = document.getElementById('toss-winner-label');
     lbl.textContent = `${winner.toUpperCase()} WINS THE TOSS`;
     lbl.className   = winner === 'home' ? 'team-home' : 'team-away';
-    document.getElementById('toss-subtitle').style.display = canChoose ? '' : 'none';
-    document.getElementById('toss-buttons').style.display  = canChoose ? '' : 'none';
+    document.getElementById('toss-body').style.display     = canChoose ? '' : 'none';
     document.getElementById('toss-overlay').style.display  = 'flex';
 }
 

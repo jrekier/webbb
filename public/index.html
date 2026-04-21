@@ -11,7 +11,7 @@
 
 <!-- ── Welcome screen ─────────────────────────────────────── -->
 <div id="screen-welcome" class="screen">
-  <div id="welcome-banner"></div>
+  <h1>Blood Bowl</h1>
   <button onclick="onClickLocalGame();">Local Game</button>
 </div>
 
@@ -114,10 +114,12 @@
   <div id="toss-overlay" style="display:none;">
     <div id="toss-card">
       <div id="toss-winner-label"></div>
-      <div id="toss-subtitle">Choose your role for this drive</div>
-      <div id="toss-buttons">
-        <button class="toss-btn" onclick="onTossChoose('kick')">Kick</button>
-        <button class="toss-btn" onclick="onTossChoose('receive')">Receive</button>
+      <div id="toss-body">
+        <div id="toss-subtitle">Choose your role for this drive</div>
+        <div id="toss-buttons">
+          <button class="toss-btn" onclick="onTossChoose('kick')">Kick</button>
+          <button class="toss-btn" onclick="onTossChoose('receive')">Receive</button>
+        </div>
       </div>
     </div>
   </div>

@@ -198,7 +198,7 @@ function _openWheel(player, px, py) {
     if (canIntercept) {
         const pid = player.id;
         actions.push({
-            label: 'Inter-\ncept', color: '#ffaa40', bg: 'rgba(160,80,0,0.90)',
+            label: 'Inter-\ncept', color: '#f0c000', bg: 'rgba(26,62,140,0.92)',
             fn: () => {
                 if (NET.online) sendAction({ type: 'CHOOSE_INTERCEPTOR', playerId: pid });
                 else { const m = chooseInterceptor(G, pid); if (m) log(m); }
@@ -209,29 +209,29 @@ function _openWheel(player, px, py) {
     // ── Active player (already activated) ────────────────────────────────────
     if (gc.myTurn && G.activated && G.activated.id === player.id && !G.block) {
         if (gc.canThrow)
-            actions.push({ label: 'Throw',  color: '#ffe080', bg: 'rgba(120,90,0,0.90)',  fn: onClickThrow  });
+            actions.push({ label: 'Throw',  color: '#f0c000', bg: 'rgba(26,62,140,0.92)',  fn: onClickThrow  });
         if (gc.canCancel)
-            actions.push({ label: 'Cancel', color: '#ffd080', bg: 'rgba(130,70,0,0.90)',  fn: onClickCancel });
+            actions.push({ label: 'Cancel', color: 'rgba(240,192,0,0.45)', bg: 'rgba(40,30,15,0.88)',  fn: onClickCancel });
         else if (gc.canStop)
-            actions.push({ label: 'Stop',   color: '#90f090', bg: 'rgba(20,110,20,0.90)', fn: onClickStop   });
+            actions.push({ label: 'Stop',   color: 'rgba(240,192,0,0.45)', bg: 'rgba(40,30,15,0.88)', fn: onClickStop   });
     }
     // ── Unactivated player — declare an action ────────────────────────────────
     else if (gc.canDeclare) {
         if (gc.selProne) {
             // Prone players: offer Stand Up first; they may move after.
             // Tapping a highlighted square directly also activates-and-moves.
-            actions.push({ label: 'Stand\nUp', color: '#90ccff', bg: 'rgba(30,90,190,0.90)', fn: onClickStandUp });
-            if (gc.canBlitz)   actions.push({ label: 'Blitz',   color: '#ffc060', bg: 'rgba(160,80,0,0.90)',   fn: onClickBlitz   });
-            if (gc.canHandoff) actions.push({ label: 'Handoff', color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)',  fn: onClickHandoff });
-            if (gc.canPass)    actions.push({ label: 'Pass',    color: '#ffe080', bg: 'rgba(120,90,0,0.90)',   fn: onClickPass    });
+            actions.push({ label: 'Stand\nUp', color: '#f0c000', bg: 'rgba(26,62,140,0.92)', fn: onClickStandUp });
+            if (gc.canBlitz)   actions.push({ label: 'Blitz',   color: '#f0c000', bg: 'rgba(200,16,46,0.92)',  fn: onClickBlitz   });
+            if (gc.canHandoff) actions.push({ label: 'Handoff', color: '#f0c000', bg: 'rgba(26,62,140,0.92)',  fn: onClickHandoff });
+            if (gc.canPass)    actions.push({ label: 'Pass',    color: '#f0c000', bg: 'rgba(26,62,140,0.92)',  fn: onClickPass    });
         } else {
             // Standing players: move by tapping a highlighted square — no Move button needed.
-            if (gc.hasTargets) actions.push({ label: 'Block',        color: '#ff9090', bg: 'rgba(160,30,30,0.90)',  fn: onClickBlock      });
-            if (gc.canFoul)    actions.push({ label: 'Foul',         color: '#ff9090', bg: 'rgba(120,20,20,0.90)',  fn: onClickFoul       });
-            if (gc.canBlitz)   actions.push({ label: 'Blitz',        color: '#ffc060', bg: 'rgba(160,80,0,0.90)',   fn: onClickBlitz      });
-            if (gc.canSecure)  actions.push({ label: 'Secure\nBall', color: '#80ffb0', bg: 'rgba(20,120,60,0.90)', fn: onClickSecureBall });
-            if (gc.canHandoff) actions.push({ label: 'Handoff',      color: '#b0e8b0', bg: 'rgba(20,100,40,0.90)', fn: onClickHandoff    });
-            if (gc.canPass)    actions.push({ label: 'Pass',         color: '#ffe080', bg: 'rgba(120,90,0,0.90)',  fn: onClickPass       });
+            if (gc.hasTargets) actions.push({ label: 'Block',        color: '#f0c000', bg: 'rgba(200,16,46,0.92)',  fn: onClickBlock      });
+            if (gc.canFoul)    actions.push({ label: 'Foul',         color: '#f0c000', bg: 'rgba(130,8,20,0.92)',   fn: onClickFoul       });
+            if (gc.canBlitz)   actions.push({ label: 'Blitz',        color: '#f0c000', bg: 'rgba(200,16,46,0.92)',  fn: onClickBlitz      });
+            if (gc.canSecure)  actions.push({ label: 'Secure\nBall', color: '#f0c000', bg: 'rgba(26,62,140,0.92)',  fn: onClickSecureBall });
+            if (gc.canHandoff) actions.push({ label: 'Handoff',      color: '#f0c000', bg: 'rgba(26,62,140,0.92)',  fn: onClickHandoff    });
+            if (gc.canPass)    actions.push({ label: 'Pass',         color: '#f0c000', bg: 'rgba(26,62,140,0.92)',  fn: onClickPass       });
         }
     }
 

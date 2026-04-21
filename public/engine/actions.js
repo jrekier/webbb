@@ -4,7 +4,7 @@
 // No DOM, no canvas. Works identically in browser and Node.js.
 
 if (typeof module !== 'undefined') {
-    var { COLS, ROWS,
+    var { COLS, ROWS, sqLabel,
           playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
           countAssists, blockDiceCount, getBlockTargets, getPushSquares,
           isInKickerHalf, isValidKickTarget, canMoveTo,
@@ -14,6 +14,10 @@ if (typeof module !== 'undefined') {
     var { rush, dodge, BLOCK_FACES, rollBlockDice,
           rollArmourAndInjury, rollInjury, rollCrowdInjury } = require('./dice.js');
 }
+
+// ── pn ────────────────────────────────────────────────────────────
+// Tagged player name for rich log rendering. Side drives the color.
+function pn(p) { return `[[${p.side}:${p.name.replace(/[\[\]]/g, '')}]]`; }
 
 // ── knockDown ─────────────────────────────────────────────────────
 // Sets a player prone, drops the ball, rolls armour + injury.
@@ -63,7 +67,7 @@ function declareBlock(G, att, def) {
         pushSquares: null,
     };
 
-    return `${att.name} (ST${attStr}) blocks ${def.name} (ST${defStr}) · ${dice}d`;
+    return `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d`;
 }
 
 // ── pickBlockFace ─────────────────────────────────────────────────
@@ -83,7 +87,7 @@ function pickBlockFace(G, face) {
             G.activated = null;
             att.usedAction = true;
             endTurn(G);
-            return `${att.name} is knocked down! ${injMsg} TURNOVER`;
+            return `${pn(att)} is knocked down! ${injMsg} TURNOVER`;
         }
 
         case 'BOTH_DOWN': {
@@ -100,12 +104,12 @@ function pickBlockFace(G, face) {
             if (attHasBlock) {
                 G.activated = null;
                 if (defHasBlock) return `Both keep their footing (Block).`;
-                return `${def.name} knocked down! ${defInj}${scatterMsg} ${att.name} keeps footing (Block).`;
+                return `${pn(def)} knocked down! ${defInj}${scatterMsg} ${pn(att)} keeps footing (Block).`;
             }
             G.activated = null;
             endTurn(G);
-            if (defHasBlock) return `${att.name} knocked down! ${attInj}${scatterMsg} ${def.name} keeps footing (Block). TURNOVER`;
-            return `Both knocked down! ${att.name}: ${attInj} ${def.name}: ${defInj}${scatterMsg} TURNOVER`;
+            if (defHasBlock) return `${pn(att)} knocked down! ${attInj}${scatterMsg} ${pn(def)} keeps footing (Block). TURNOVER`;
+            return `Both knocked down! ${pn(att)}: ${attInj} ${pn(def)}: ${defInj}${scatterMsg} TURNOVER`;
         }
 
         case 'PUSH':
@@ -114,7 +118,7 @@ function pickBlockFace(G, face) {
             G.block.phase       = 'pick-push';
             G.block.pushSquares = getPushSquares(G, att, def);
             const falls = face.id !== 'PUSH';
-            const prefix = `${def.name} is pushed back${falls ? ' and falls!' : '.'}  `;
+            const prefix = `${pn(def)} is pushed back${falls ? ' and falls!' : '.'}  `;
             // If every candidate is off-pitch, auto-resolve into the crowd.
             if (G.block.pushSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
                 const [cc, cr] = G.block.pushSquares[0];
@@ -142,7 +146,7 @@ function pickPushSquare(G, col, row) {
             G.ball.carrier = null;
         }
         const { injuryRoll, outcome } = rollCrowdInjury(def);
-        let msg = `${def.name} pushed into the crowd! Inj ${injuryRoll}: `;
+        let msg = `${pn(def)} pushed into the crowd! Inj ${injuryRoll}: `;
         if (outcome === 'stunned') {
             markStunned(def);
             msg += `Stunned — placed in reserves.`;
@@ -168,7 +172,7 @@ function pickPushSquare(G, col, row) {
     def.col = col;
     def.row = row;
 
-    let msg = `${def.name} pushed to (${col},${row}).`;
+    let msg = `${pn(def)} pushed to ${sqLabel(col,row)}.`;
 
     let ballDropped = false;
     if (
@@ -178,7 +182,7 @@ function pickPushSquare(G, col, row) {
     ) {
         ballDropped = def.hasBall;
         const injMsg = knockDown(G, def, { attacker: att });
-        msg += ` ${def.name} is knocked down! ${injMsg}`;
+        msg += ` ${pn(def)} is knocked down! ${injMsg}`;
     }
 
     if (chainVictim) {
@@ -232,12 +236,12 @@ function resolveFollowUp(G, followUp) {
             att.usedAction = true;
             G.activated    = null;
         }
-        return (followUp ? `${att.name} follows up` : `${att.name} stays`) + maMsg + scatterMsg;
+        return (followUp ? `${pn(att)} follows up` : `${pn(att)} stays`) + maMsg + scatterMsg;
     }
 
     att.usedAction = true;
     G.activated    = null;
-    return (followUp ? `${att.name} follows up` : `${att.name} stays`) + scatterMsg;
+    return (followUp ? `${pn(att)} follows up` : `${pn(att)} stays`) + scatterMsg;
 }
 
 // ── declareFoul / executeFoul / resolveArgueCall ──────────────────
@@ -253,7 +257,7 @@ function declareFoul(G, playerId) {
     G.activated = p;
     G.sel       = p;
     G.fouling   = true;
-    return `${p.name} declares Foul — move adjacent to a prone/stunned enemy.`;
+    return `${pn(p)} [[foul:declares Foul]] — move adjacent to a prone/stunned enemy.`;
 }
 
 function executeFoul(G, targetId) {
@@ -274,7 +278,7 @@ function executeFoul(G, targetId) {
     let modFoul = '';
     if (attAssists) modFoul += `+${attAssists}`;
     if (defAssists)     modFoul += `-${defAssists}`;
-    let msg = `${att.name} fouls ${def.name}! ${d1}+${d2}${modFoul} = ${roll} vs AV${def.av}. `;
+    let msg = `${pn(att)} [[foul:fouls]] ${pn(def)}! ${d1}+${d2}${modFoul} = ${roll} vs AV${def.av}. `;
 
     const defCol = def.col, defRow = def.row;
 
@@ -310,7 +314,7 @@ function executeFoul(G, targetId) {
             // Coach already gone — eject immediately, no argue
             att.status = 'casualty'; att.col = -1; att.row = -1;
             endTurn(G);
-            return msg + ` ${att.name} ejected (coach already sent off). TURNOVER`;
+            return msg + ` ${pn(att)} ejected (coach already sent off). TURNOVER`;
         }
         G.argueCallPending = { attId: att.id, side: att.side };
         return msg + ' Argue the call?';
@@ -334,19 +338,19 @@ function resolveArgueCall(G, use) {
     if (use) {
         const roll = Math.floor(Math.random() * 6) + 1;
         if (roll === 6) {
-            return `Argue the call — rolled ${roll}: ejection overruled! ${att.name} stays on the pitch.`;
+            return `Argue the call — rolled ${roll}: ejection overruled! ${pn(att)} stays on the pitch.`;
         }
         // Upheld — coach ejected too
         G.coachEjected[side] = true;
         att.status = 'casualty'; att.col = -1; att.row = -1;
         endTurn(G);
-        return `Argue the call — rolled ${roll}: upheld! ${att.name} ejected! ${side.toUpperCase()} coach sent off for the rest of the game. TURNOVER`;
+        return `Argue the call — rolled ${roll}: upheld! ${pn(att)} ejected! ${side.toUpperCase()} coach sent off for the rest of the game. TURNOVER`;
     }
 
     // Accept the call
     att.status = 'casualty'; att.col = -1; att.row = -1;
     endTurn(G);
-    return `${att.name} ejected. TURNOVER`;
+    return `${pn(att)} ejected. TURNOVER`;
 }
 
 // ── activateBlitz ─────────────────────────────────────────────────
@@ -363,7 +367,7 @@ function activateBlitz(G, playerId) {
         p.maLeft         = Math.max(0, p.maLeft - 3);
         G.blitzFromProne = true;
     }
-    return `${p.name} declares blitz — click a target`;
+    return `${pn(p)} [[block:declares blitz]] — click a target`;
 }
 
 // ── setBlitzTarget ────────────────────────────────────────────────
@@ -373,7 +377,7 @@ function setBlitzTarget(G, defId) {
     const def = G.players.find(p => p.id === defId);
     if (!def || !G.activated || G.blitz !== 'targeting' || def.side === G.active) return null;
     G.blitz = { att: G.activated, def, phase: 'moving' };
-    return `${G.activated.name} targets ${def.name} — move into range`;
+    return `${pn(G.activated)} [[block:targets]] ${pn(def)} — move into range`;
 }
 
 // ── blitzBlock ───────────────────────────────────────────────────
@@ -423,7 +427,7 @@ function throwIn(G, lastCol, lastRow, nc, nr) {
     const tr = lastRow + dr * dist;
 
     const dirLabel = ['straight in', 'diagonal +', 'diagonal −'][pick];
-    const msg = `Throw-in: ${dirLabel}, ${dist} sq → (${tc},${tr}).`;
+    const msg = `Throw-in: ${dirLabel}, ${dist} sq → ${sqLabel(tc,tr)}.`;
 
     if (tc < 0 || tc >= COLS || tr < 0 || tr >= ROWS) {
         // Still out — repeat from the last in-bounds point along this edge
@@ -437,7 +441,7 @@ function throwIn(G, lastCol, lastRow, nc, nr) {
 
     const lander = playerAt(G, tc, tr);
     if (!lander) return msg;
-    if (!isStanding(lander)) return msg + ` Bounces off ${lander.name}. ` + scatterBall(G);
+    if (!isStanding(lander)) return msg + ` Bounces off ${pn(lander)}. ` + scatterBall(G);
 
     const tzs    = countTackleZones(G, lander.side, tc, tr);
     const target = Math.min(lander.ag + tzs, 6);
@@ -445,9 +449,9 @@ function throwIn(G, lastCol, lastRow, nc, nr) {
     if (roll >= target || roll === 6) {
         lander.hasBall = true;
         G.ball.carrier = lander;
-        return msg + ` ${lander.name} catches it! (${roll} vs ${target}+)`;
+        return msg + ` ${pn(lander)} catches it! (${roll} vs ${target}+)`;
     }
-    return msg + ` ${lander.name} fails to catch (${roll} vs ${target}+). ` + scatterBall(G);
+    return msg + ` ${pn(lander)} fails to catch (${roll} vs ${target}+). ` + scatterBall(G);
 }
 
 // ── scatterBall ───────────────────────────────────────────────────
@@ -471,10 +475,10 @@ function scatterBall(G) {
     G.ball.row = nr;
 
     const lander = playerAt(G, nc, nr);
-    if (!lander) return `Ball scattered to (${nc},${nr}).`;
+    if (!lander) return `Ball scattered to ${sqLabel(nc,nr)}.`;
 
     if (!isStanding(lander)) {
-        return `Ball bounces off ${lander.name}. ` + scatterBall(G);
+        return `Ball bounces off ${pn(lander)}. ` + scatterBall(G);
     }
 
     const tzs    = countTackleZones(G, lander.side, nc, nr);
@@ -483,9 +487,9 @@ function scatterBall(G) {
     if (roll >= target || roll === 6) {
         lander.hasBall = true;
         G.ball.carrier = lander;
-        return `Ball scattered to (${nc},${nr}) — ${lander.name} catches it! (rolled ${roll}, needed ${target}+)`;
+        return `Ball scattered to ${sqLabel(nc,nr)} — ${pn(lander)} catches it! (rolled ${roll}, needed ${target}+)`;
     }
-    return `${lander.name} fails to catch (rolled ${roll}, needed ${target}+). ` + scatterBall(G);
+    return `${pn(lander)} fails to catch (rolled ${roll}, needed ${target}+). ` + scatterBall(G);
 }
 
 // ── tryPickup ─────────────────────────────────────────────────────
@@ -508,11 +512,11 @@ function tryPickup(G, p) {
     if (roll >= target || roll === 6) {
         p.hasBall      = true;
         G.ball.carrier = p;
-        return `${p.name} picks up the ball (rolled ${roll}, needed ${target}+).${extra}`;
+        return `${pn(p)} [[skill:picks up]] the ball (rolled ${roll}, needed ${target}+).${extra}`;
     }
     const scatterMsg = scatterBall(G);
     endTurn(G);
-    return `${p.name} fails to pick up (rolled ${roll}, needed ${target}+).${extra} ${scatterMsg} TURNOVER`;
+    return `${pn(p)} fails to pick up (rolled ${roll}, needed ${target}+).${extra} ${scatterMsg} TURNOVER`;
 }
 
 // ── checkTouchdown ────────────────────────────────────────────────
@@ -543,11 +547,11 @@ function doSecureRoll(G, p) {
         p.hasBall      = true;
         G.ball.carrier = p;
         endActivation(G);
-        return `${p.name} secures the ball (rolled ${roll}).`;
+        return `${pn(p)} [[skill:secures]] the ball (rolled ${roll}).`;
     }
     const scatterMsg = scatterBall(G);
     endTurn(G);
-    return `${p.name} fails to secure (rolled ${roll}, needed 2+). ${scatterMsg} TURNOVER`;
+    return `${pn(p)} fails to secure (rolled ${roll}, needed 2+). ${scatterMsg} TURNOVER`;
 }
 
 // ── secureBall ────────────────────────────────────────────────────
@@ -561,7 +565,7 @@ function secureBall(G, playerId) {
     G.activated    = p;
     G.sel          = p;
     G.securingBall = true;
-    return `${p.name} declares Secure Ball — move to the ball.`;
+    return `${pn(p)} [[skill:declares Secure Ball]] — move to the ball.`;
 }
 
 // ── Pass Action ───────────────────────────────────────────────────
@@ -585,7 +589,7 @@ function _scatterNTimes(G, n) {
         }
         G.ball.col = nc;
         G.ball.row = nr;
-        msg += `(${nc},${nr}) `;
+        msg += `${sqLabel(nc,nr)} `;
     }
     return { msg: msg.trim(), done: false };
 }
@@ -598,7 +602,7 @@ function _scatterNTimes(G, n) {
 function _catchAtSquare(G, col, row, bouncePenalty) {
     const lander = playerAt(G, col, row);
     if (!lander) return ' Ball hits the ground. ' + scatterBall(G);
-    if (!isStanding(lander)) return ` ${lander.name} is prone. ` + scatterBall(G);
+    if (!isStanding(lander)) return ` ${pn(lander)} is prone. ` + scatterBall(G);
 
     const tzs    = countTackleZones(G, lander.side, col, row);
     const target = Math.min(lander.ag + (bouncePenalty ? 1 : 0) + tzs, 6);
@@ -616,10 +620,10 @@ function _catchAtSquare(G, col, row, bouncePenalty) {
         lander.hasBall = true;
         G.ball.carrier = lander;
         const tdMsg    = checkTouchdown(G, lander);
-        const catchMsg = `${lander.name} catches it! (${result} vs ${target}+)${extra}`;
+        const catchMsg = `${pn(lander)} catches it! (${result} vs ${target}+)${extra}`;
         return tdMsg ? ` ${catchMsg} ${tdMsg}` : ` ${catchMsg}`;
     }
-    return ` ${lander.name} fails to catch (${result} vs ${target}+).${extra} ` + scatterBall(G);
+    return ` ${pn(lander)} fails to catch (${result} vs ${target}+).${extra} ` + scatterBall(G);
 }
 
 // ── _checkPassTurnover ────────────────────────────────────────────
@@ -645,7 +649,7 @@ function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
     G.hasPassed    = true;
     endActivation(G);
 
-    msg += `Accurate! Ball lands at (${targetCol},${targetRow}).`;
+    msg += `Accurate! Ball lands at ${sqLabel(targetCol,targetRow)}.`;
     msg += _catchAtSquare(G, targetCol, targetRow, false);
 
     return _checkPassTurnover(G, passerSide, msg);
@@ -663,7 +667,7 @@ function declarePass(G, playerId) {
     G.sel           = p;
     G.passing       = true;
     G.hasPassReroll = false;
-    return `${p.name} declares Pass — move to the ball if needed, then press Throw.`;
+    return `${pn(p)} [[skill:declares Pass]] — move to the ball if needed, then press Throw.`;
 }
 
 // ── getInterceptors ───────────────────────────────────────────────
@@ -734,7 +738,7 @@ function _continueThrow(G, p, targetCol, targetRow, accurate, msg) {
         G.ball.carrier = null;
         G.ball.col     = targetCol;
         G.ball.row     = targetRow;
-        msg += `Inaccurate! Ball scatters ×3 from (${targetCol},${targetRow}): `;
+        msg += `Inaccurate! Ball scatters ×3 from ${sqLabel(targetCol,targetRow)}: `;
         const sc = _scatterNTimes(G, 3);
         scatterMsg = sc.msg + ' ';
         msg       += scatterMsg;
@@ -789,7 +793,7 @@ function throwBall(G, targetCol, targetRow) {
     const tzs     = countTackleZones(G, p.side, p.col, p.row);
     const target  = Math.min(p.pa + range.mod + tzs, 6);
     const rawRoll = Math.floor(Math.random() * 6) + 1;
-    const msg     = `${p.name} throws a ${range.label} (PA ${p.pa}+, +${range.mod + tzs} mods → ${target}+): rolled ${rawRoll}. `;
+    const msg     = `${pn(p)} [[skill:throws]] a ${range.label} (PA ${p.pa}+, +${range.mod + tzs} mods → ${target}+): rolled ${rawRoll}. `;
 
     const isFumble = rawRoll === 1;
     const accurate = !isFumble && (rawRoll === 6 || rawRoll >= target);
@@ -865,7 +869,7 @@ function chooseInterceptor(G, interceptorId) {
             const iTarget = Math.min(interceptor.ag + iMod + iTzs, 6);
             const iRoll   = Math.floor(Math.random() * 6) + 1;
             const iHit    = iRoll === 6 || iRoll >= iTarget;
-            msg += `${interceptor.name} intercepts (${iRoll} vs ${iTarget}+): ${iHit ? 'SUCCESS!' : 'failed.'} `;
+            msg += `${pn(interceptor)} [[skill:intercepts]] (${iRoll} vs ${iTarget}+): ${iHit ? 'SUCCESS!' : 'failed.'} `;
             if (iHit) {
                 interceptor.hasBall = true;
                 G.ball.carrier      = interceptor;
@@ -896,7 +900,7 @@ function declareHandoff(G, playerId) {
     G.activated  = p;
     G.sel        = p;
     G.handingOff = true;
-    return `${p.name} declares Handoff — move to a teammate and hand off.`;
+    return `${pn(p)} [[skill:declares Handoff]] — move to a teammate and hand off.`;
 }
 
 // Execute the handoff to an adjacent standing teammate.
@@ -921,7 +925,7 @@ function doHandoff(G, receiverId) {
     G.hasHandedOff     = true;
     endActivation(G);
 
-    const msg = `${p.name} hands off to ${receiver.name}.`;
+    const msg = `${pn(p)} [[skill:hands off]] to ${pn(receiver)}.`;
     return _checkPassTurnover(G, passerSide, msg + _catchAtSquare(G, receiver.col, receiver.row, false));
 }
 
@@ -945,7 +949,7 @@ function declareKick(G, col, row) {
     const nc = col + DC[dir] * dist;
     const nr = row + DR[dir] * dist;
 
-    let msg = `Kick aimed (${col},${row}): ${d6a}+${d6b} → ${dist} sq ${DIRS[dir]}.`;
+    let msg = `Kick aimed ${sqLabel(col,row)}: ${d6a}+${d6b} → ${dist} sq ${DIRS[dir]}.`;
 
     const outOfBounds  = nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS;
     const inKickerHalf = !outOfBounds && isInKickerHalf(G.kicker, nr);
@@ -957,7 +961,7 @@ function declareKick(G, col, row) {
     }
 
     G.ball = { col: nc, row: nr, carrier: null };
-    msg   += ` Lands at (${nc},${nr}).`;
+    msg   += ` Lands at ${sqLabel(nc,nr)}.`;
 
     const lander = playerAt(G, nc, nr);
     if (lander && isStanding(lander)) {
@@ -967,9 +971,9 @@ function declareKick(G, col, row) {
         if (roll >= target || roll === 6) {
             lander.hasBall = true;
             G.ball.carrier = lander;
-            msg += ` ${lander.name} catches the kick! (${roll} vs ${target}+)`;
+            msg += ` ${pn(lander)} catches the kick! (${roll} vs ${target}+)`;
         } else {
-            msg += ` ${lander.name} fails to catch (${roll} vs ${target}+). ` + scatterBall(G);
+            msg += ` ${pn(lander)} fails to catch (${roll} vs ${target}+). ` + scatterBall(G);
         }
     }
 
@@ -992,7 +996,7 @@ function touchbackGiveBall(G, playerId) {
 
     G.phase  = 'play';
     G.active = G.receiver;
-    return `${p.name} receives the touchback.`;
+    return `${pn(p)} receives the touchback.`;
 }
 
 // ── movePlayer ────────────────────────────────────────────────────
@@ -1019,7 +1023,7 @@ function movePlayer(G, col, row) {
                 let injMsg = knockDown(G, p);
                 if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) injMsg += ' ' + scatterBall(G);
                 endTurn(G);
-                return `${p.name} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
+                return `${pn(p)} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
             }
         }
         p.rushLeft -= rushesNeeded;
@@ -1027,14 +1031,14 @@ function movePlayer(G, col, row) {
         p.status    = 'active';
         G.stoodUpFromProne = true;
         const rollStr = rolls.length ? ` (rushed: ${rolls.join(', ')})` : '';
-        msg += `${p.name} stands up${rollStr}. `;
+        msg += `${pn(p)} [[move:stands up]]${rollStr}. `;
     }
 
     // Rush for regular movement
     if (needsrush) {
         const { roll: rushroll, failed: rushFailed } = rush();
         if (rushFailed) {
-            msg += `${p.name} fails rush (rolled ${rushroll}). `;
+            msg += `${pn(p)} fails rush (rolled ${rushroll}). `;
             p.col = col;
             p.row = row;
             msg += knockDown(G, p);
@@ -1042,7 +1046,7 @@ function movePlayer(G, col, row) {
             endTurn(G);
             return msg;
         }
-        msg += `${p.name} rushes (rolled ${rushroll}). `;
+        msg += `${pn(p)} [[move:rushes]] (rolled ${rushroll}). `;
     }
 
     // Dodge
@@ -1054,18 +1058,18 @@ function movePlayer(G, col, row) {
 
         let { roll, target, failed } = dodge(dodgerolltarget);
         if (!failed) {
-            msg += `${p.name} dodges (rolled ${roll}, needed ${target}+). `;
+            msg += `${pn(p)} [[move:dodges]] (rolled ${roll}, needed ${target}+). `;
         } else {
             if (p.skills?.includes('Dodge') && !G.hasDodged && !markedByTackle) {
-                msg += `${p.name} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
+                msg += `${pn(p)} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
                 G.hasDodged = true;
                 ({ roll, target, failed } = dodge(dodgerolltarget));
                 if (!failed) {
-                    msg += `${p.name} succeeds dodge on reroll (rolled ${roll}, needed ${target}+). `;
+                    msg += `${pn(p)} [[move:dodges]] on reroll (rolled ${roll}, needed ${target}+). `;
                 }
             }
             if (failed) {
-                msg += `${p.name} fails dodge (rolled ${roll}, needed ${target}+). `;
+                msg += `${pn(p)} fails dodge (rolled ${roll}, needed ${target}+). `;
                 p.col = col;
                 p.row = row;
                 msg += knockDown(G, p);
@@ -1132,7 +1136,7 @@ function activateMover(G, playerId) {
             let injMsg = knockDown(G, p);
             if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) injMsg += ' ' + scatterBall(G);
             endTurn(G);
-            return `${p.name} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
+            return `${pn(p)} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
         }
     }
 
@@ -1143,7 +1147,7 @@ function activateMover(G, playerId) {
 
     const rollStr = rolls.length ? ` (rushed: ${rolls.join(', ')})` : '';
     const maStr   = p.maLeft > 0 ? ` · ${p.maLeft} MA left` : '';
-    return `${p.name} stands up${rollStr}${maStr}`;
+    return `${pn(p)} [[move:stands up]]${rollStr}${maStr}`;
 }
 
 if (typeof module !== 'undefined') {

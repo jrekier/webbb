@@ -7,6 +7,13 @@ var COLS  = 11;
 var ROWS  = 20;
 var TURNS = 6;
 
+// ── sqLabel ───────────────────────────────────────────────────────
+// Human-readable square label: col → letter (A–K), row → 1-based number.
+// e.g. sqLabel(0, 0) → "A1",  sqLabel(10, 19) → "K20"
+function sqLabel(col, row) {
+    return String.fromCharCode(65 + col) + (ROWS - row);
+}
+
 // ── playerAt ──────────────────────────────────────────────────────
 
 function playerAt(G, col, row) {
@@ -202,6 +209,7 @@ function markStunned(p) {
 if (typeof module !== 'undefined') {
     module.exports = {
         COLS, ROWS, TURNS,
+        sqLabel,
         playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
         hasMovedYet, canStillCancel,
         isValidSetupSquare,
