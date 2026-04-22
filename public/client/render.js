@@ -388,7 +388,9 @@ function updateTeams() {
     if (!G.players || !G.players.length) { section.hidden = true; return; }
     section.hidden = false;
 
-    const offPitchN = G.players.filter(p => p.col < 0).length;
+    const offPitchN    = G.players.filter(p => p.col < 0).length;
+    const offPitchHome = G.players.filter(p => p.col < 0 && p.side === 'home').length;
+    const offPitchAway = G.players.filter(p => p.col < 0 && p.side === 'away').length;
 
     // Shared across both buildList() calls so double-tap works in both panels.
     let _rowLastClick = { id: null, time: 0 };
@@ -488,7 +490,7 @@ function updateTeams() {
     const mBtn = document.getElementById('mobile-dugout-btn');
     if (mBtn) {
         mBtn.style.display = offPitchN ? '' : 'none';
-        mBtn.textContent   = `↓${offPitchN}`;
+        mBtn.textContent   = `Dugout H:${offPitchHome} A:${offPitchAway}`;
     }
 }
 
