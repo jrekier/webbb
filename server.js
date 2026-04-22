@@ -59,7 +59,7 @@ const httpServer = http.createServer((req, res) => {
     fs.readFile(fullPath, (err, data) => {
         if (err) { res.writeHead(404); res.end('Not found'); return; }
 
-        if (filePath === '/index.html' && STATIC_URL) {
+        if ((filePath === '/index.html' || filePath === '/test.html') && STATIC_URL) {
             const injection = [
                 `<link rel="stylesheet" href="${STATIC_URL}/style.css">`,
                 `  <script>window.STATIC_BASE = ${JSON.stringify(STATIC_URL)};</script>`,

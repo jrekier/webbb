@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Blood Bowl — Skill Lab</title>
+  <!-- STATIC_INJECT -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+    #section-scenarios select { width: 100%; margin-bottom: 6px; }
+    #scenario-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; min-height: 40px; line-height: 1.4; }
+    #btn-reset-scenario { width: 100%; }
+  </style>
+</head>
+<body>
+
+<div id="screen-game" class="screen">
+<div id="layout">
+
+  <div id="pitch-wrap">
+    <canvas id="pitch"></canvas>
+    <div id="turn-toast"></div>
+  </div>
+
+  <div class="sidebar" id="sidebar-right">
+
+    <div class="section" id="section-scenarios">
+      <div class="section-title">Skill Lab</div>
+      <select id="scenario-select" onchange="loadScenario(+this.value)"></select>
+      <div id="scenario-desc"></div>
+      <button id="btn-reset-scenario" onclick="resetScenario()">↺ Reset</button>
+    </div>
+
+    <div class="section">
+      <div id="turn-banner">
+        <span id="lbl-active">HOME</span><br>
+        <span class="turn-num">TURN <span id="lbl-turn">1</span></span>
+      </div>
+      <div id="score-banner">
+        <span id="score-home" class="team-home">0</span>
+        <span id="score-sep">–</span>
+        <span id="score-away" class="team-away">0</span>
+      </div>
+      <div id="score-teams">
+        <span id="lbl-home-team" class="team-home">Home</span>
+        <span class="score-teams-sep"> – </span>
+        <span id="lbl-away-team" class="team-away">Away</span>
+      </div>
+    </div>
+
+    <div class="section" id="section-teams" hidden>
+      <div class="section-title">Dugout</div>
+      <div id="teams-list"></div>
+    </div>
+
+    <div class="section" id="section-log">
+      <div class="section-title">Match Log</div>
+      <div id="log"></div>
+    </div>
+
+    <div id="action-bar">
+      <button id="btn-throw"         class="action-btn success"  onclick="onClickThrow();"        style="display:none;">Throw</button>
+      <button id="btn-no-intercept"  class="action-btn"          onclick="onClickNoIntercept();"  style="display:none;">No Intercept</button>
+      <button id="btn-cancel"        class="action-btn"          onclick="onClickCancel();"       style="display:none;">Cancel</button>
+      <button id="btn-stop"          class="action-btn success"  onclick="onClickStop();"         style="display:none;">Stop</button>
+      <button id="btn-confirm-setup" class="action-btn success"  onclick="onClickConfirmSetup();" style="display:none;">Confirm Setup</button>
+      <button id="btn-end-turn"      class="action-btn end-turn" onclick="onClickEndTurn();">End Turn</button>
+    </div>
+
+  </div>
+</div>
+
+  <!-- Mobile HUD — hidden but IDs required by updateButtons / updateSidebar -->
+  <div id="mobile-hud" style="display:none;">
+    <div id="mobile-top-bar">
+      <span id="mobile-score-label">
+        <span id="mobile-score-home" class="team-home">0</span>
+        <span style="color:var(--text-dim)"> – </span>
+        <span id="mobile-score-away" class="team-away">0</span>
+      </span>
+      <span id="mobile-active-label">HOME</span>
+      <span id="mobile-turn-label">T1</span>
+    </div>
+    <div id="mobile-bottom-bar">
+      <button id="mobile-btn-cancel"        onclick="onClickCancel();"></button>
+      <button id="mobile-btn-throw"         onclick="onClickThrow();"></button>
+      <button id="mobile-btn-no-intercept"  onclick="onClickNoIntercept();"></button>
+      <button id="mobile-btn-stop"          onclick="onClickStop();"></button>
+      <button id="mobile-btn-confirm-setup" onclick="onClickConfirmSetup();"></button>
+      <button id="mobile-btn-end-turn"      onclick="onClickEndTurn();"></button>
+    </div>
+  </div>
+
+  <!-- Toss overlay — unused but referenced by game.js -->
+  <div id="toss-overlay" style="display:none;">
+    <div id="toss-card">
+      <div id="toss-winner-label"></div>
+      <div id="toss-body">
+        <div id="toss-subtitle"></div>
+        <div id="toss-buttons"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reconnect overlay — unused -->
+  <div id="reconnect-overlay" class="hidden">
+    <div id="reconnect-box">
+      <div id="reconnect-msg"></div>
+      <div id="reconnect-sub"></div>
+    </div>
+  </div>
+
+  <!-- Mobile panels — unused -->
+  <div id="mobile-log-panel"    class="hidden"><div id="mobile-log-header"></div><div id="mobile-log-copy"></div></div>
+  <div id="mobile-dugout-panel" class="hidden"><div id="mobile-dugout-header"></div><div id="mobile-dugout-body"><div id="mobile-teams-list"></div></div></div>
+
+</div><!-- /screen-game -->
+
+<div id="chip-tooltip" class="chip-tooltip" hidden></div>
+<input type="file" id="file-home" accept=".json" style="display:none">
+<input type="file" id="file-away" accept=".json" style="display:none">
+
+<!-- Engine -->
+<script src="engine/state.js"></script>
+<script src="engine/helpers.js"></script>
+<script src="engine/core.js"></script>
+<script src="engine/dice.js"></script>
+<script src="engine/actions.js"></script>
+<script src="engine/teams.js"></script>
+<script src="engine/truth.js"></script>
+<!-- Client -->
+<script src="client/sprites.js"></script>
+<script src="client/render.js"></script>
+<script src="client/input.js"></script>
+<script src="client/network.js"></script>
+<script src="client/game.js"></script>
+<script src="client/mobile.js"></script>
+<!-- Scenarios -->
+<script src="test-scenarios.js"></script>
+
+<script>
+  var _currentScenarioIndex = 0;
+
+  function loadScenario(index) {
+    _currentScenarioIndex = index;
+    const s = SCENARIOS[index];
+
+    // Wipe G back to a clean state, then overlay the scenario's state.
+    const fresh = createInitialState();
+    Object.assign(G, fresh, s.state);
+    G.score = { home: 0, away: 0 };
+
+    // Build players with sensible defaults.
+    G.players = s.players.map(p => ({
+      maLeft:          p.ma,
+      rushLeft:        2,
+      hasBall:         false,
+      usedAction:      false,
+      stunnedThisTurn: false,
+      colour:          p.side === 'home' ? s.homeColour : s.awayColour,
+      sprite:          null,
+      ...p,
+    }));
+
+    // Ball — wire up carrier reference by id.
+    G.ball = { col: s.ball.col, row: s.ball.row, carrier: null };
+    if (s.ball.carrierId !== undefined) {
+      G.ball.carrier = G.players.find(p => p.id === s.ball.carrierId) || null;
+      if (G.ball.carrier) G.ball.carrier.hasBall = true;
+    }
+
+    // Optional post-setup hook: lets a scenario pre-set G.block, G.activated etc.
+    if (s.setup) s.setup(G);
+
+    // Team colour CSS variables.
+    const root = document.documentElement;
+    root.style.setProperty('--home', `rgb(${s.homeColour.join(',')})`);
+    root.style.setProperty('--away', `rgb(${s.awayColour.join(',')})`);
+    document.getElementById('lbl-home-team').textContent = 'HOME';
+    document.getElementById('lbl-away-team').textContent = 'AWAY';
+
+    // Clear log and description.
+    document.getElementById('log').innerHTML = '';
+    document.getElementById('scenario-desc').textContent = s.description;
+
+    render();
+  }
+
+  function resetScenario() { loadScenario(_currentScenarioIndex); }
+
+  window.addEventListener('load', () => {
+    const sel = document.getElementById('scenario-select');
+    SCENARIOS.forEach((s, i) => {
+      const opt       = document.createElement('option');
+      opt.value       = i;
+      opt.textContent = s.name;
+      sel.appendChild(opt);
+    });
+    buildPitch();
+    setupInput();
+    loadScenario(0);
+  });
+</script>
+</body>
+</html>

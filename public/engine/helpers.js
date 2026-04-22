@@ -38,14 +38,14 @@ function isAdjacent(a, b) {
 // ── inTackleZoneOf ───────────────────────────────────────────────
 
 function inTackleZoneOf(p, threat) {
-    return isStanding(threat) && isAdjacent(p, threat);
+    return isStanding(threat) && !threat.bonedHead && isAdjacent(p, threat);
 }
 
 // ── countTackleZones ─────────────────────────────────────────────
 
 function countTackleZones(G, side, col, row) {
     return G.players.filter(e =>
-        e.side !== side && isStanding(e)
+        e.side !== side && isStanding(e) && !e.bonedHead
         && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
         && !(e.col === col && e.row === row)
     ).length;
@@ -84,17 +84,21 @@ function countAssists(G, att, def) {
     );
 
     const attAssists = friends(att.side).filter(helper => {
+        if (helper.bonedHead) return false;
         if (!isAdjacent(helper, def)) return false;
+        if (helper.skills?.includes('Guard')) return true;
         return !G.players.some(enemy =>
-            enemy.side === def.side && isStanding(enemy)
+            enemy.side === def.side && isStanding(enemy) && !enemy.bonedHead
             && enemy.id !== def.id && isAdjacent(helper, enemy)
         );
     }).length;
 
     const defAssists = friends(def.side).filter(helper => {
+        if (helper.bonedHead) return false;
         if (!isAdjacent(helper, att)) return false;
+        if (helper.skills?.includes('Guard')) return true;
         return !G.players.some(enemy =>
-            enemy.side === att.side && isStanding(enemy)
+            enemy.side === att.side && isStanding(enemy) && !enemy.bonedHead
             && enemy.id !== att.id && isAdjacent(helper, enemy)
         );
     }).length;
@@ -185,12 +189,14 @@ function canMoveTo(G, player, col, row) {
         : player.maLeft === 0;
 
     const needsDodge = G.players.some(enemy =>
-        enemy.side !== player.side && isStanding(enemy) && isAdjacent(player, enemy)
+        enemy.side !== player.side && isStanding(enemy) && !enemy.bonedHead && isAdjacent(player, enemy)
     );
 
     let dodgerolltarget = 0;
     if (needsDodge) {
-        const destTZs = countTackleZones(G, player.side, col, row);
+        const destTZs = player.skills?.includes('Stunty')
+            ? 0
+            : countTackleZones(G, player.side, col, row);
         dodgerolltarget = Math.min(player.ag + destTZs, 6);
     }
 

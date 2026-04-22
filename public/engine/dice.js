@@ -66,11 +66,18 @@ function rollArmourAndInjury(p, attacker) {
     const d2i        = Math.floor(Math.random() * 6) + 1;
     const injuryRoll = d1i + d2i + injuryBonus;
     const thickSkull = p.skills?.includes('Thick Skull');
+    const stunty     = p.skills?.includes('Stunty');
 
     let outcome;
-    if      (injuryRoll <= 7) outcome = 'stunned';
-    else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
-    else                      outcome = 'casualty';
+    if (stunty) {
+        if      (injuryRoll <= 6) outcome = 'stunned';
+        else if (injuryRoll <= 8) outcome = thickSkull ? 'stunned' : 'ko';
+        else                      outcome = 'casualty';
+    } else {
+        if      (injuryRoll <= 7) outcome = 'stunned';
+        else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
+        else                      outcome = 'casualty';
+    }
 
     return { armorRoll, armorBroken: true, injuryRoll, outcome };
 }
@@ -84,10 +91,17 @@ function rollInjury(p) {
     const d2 = Math.floor(Math.random() * 6) + 1;
     const injuryRoll  = d1 + d2;
     const thickSkull  = p.skills?.includes('Thick Skull');
+    const stunty      = p.skills?.includes('Stunty');
     let outcome;
-    if      (injuryRoll <= 7) outcome = 'stunned';
-    else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
-    else                      outcome = 'casualty';
+    if (stunty) {
+        if      (injuryRoll <= 6) outcome = 'stunned';
+        else if (injuryRoll <= 8) outcome = thickSkull ? 'stunned' : 'ko';
+        else                      outcome = 'casualty';
+    } else {
+        if      (injuryRoll <= 7) outcome = 'stunned';
+        else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
+        else                      outcome = 'casualty';
+    }
     return { d1, d2, injuryRoll, outcome };
 }
 
@@ -100,10 +114,17 @@ function rollCrowdInjury(p) {
     const d2 = Math.floor(Math.random() * 6) + 1;
     const injuryRoll = d1 + d2;
     const thickSkull = p.skills?.includes('Thick Skull');
+    const stunty     = p.skills?.includes('Stunty');
     let outcome;
-    if      (injuryRoll <= 7) outcome = thickSkull ? 'ko' : 'stunned';
-    else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
-    else                      outcome = 'casualty';
+    if (stunty) {
+        if      (injuryRoll <= 6) outcome = thickSkull ? 'ko' : 'stunned';
+        else if (injuryRoll <= 8) outcome = thickSkull ? 'stunned' : 'ko';
+        else                      outcome = 'casualty';
+    } else {
+        if      (injuryRoll <= 7) outcome = thickSkull ? 'ko' : 'stunned';
+        else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
+        else                      outcome = 'casualty';
+    }
     return { injuryRoll, outcome };
 }
 

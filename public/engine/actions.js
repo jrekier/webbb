@@ -52,10 +52,36 @@ function knockDown(G, p, { attacker } = {}) {
     return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: CASUALTY!`;
 }
 
+// ── _boneHeadCheck ────────────────────────────────────────────────
+// Rolls Bone Head if the player has the trait.
+// On 2+: clears any previous bonedHead flag, returns null (proceed).
+// On 1: sets flag, ends activation. causesTurnover=true calls endTurn.
+// Returns a log message on failure, null on pass or when trait absent.
+
+function _boneHeadCheck(G, p, causesTurnover) {
+    if (!p.skills?.includes('Bone Head')) return null;
+    const roll = Math.floor(Math.random() * 6) + 1;
+    if (roll >= 2) {
+        p.bonedHead = false;
+        return null;
+    }
+    p.bonedHead  = true;
+    p.usedAction = true;
+    G.activated  = null;
+    G.block      = null;
+    G.blitz      = null;
+    const base = `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — activation lost!`;
+    if (causesTurnover) { endTurn(G); return base + ' TURNOVER'; }
+    return base;
+}
+
 // ── declareBlock ─────────────────────────────────────────────────
 // Rolls block dice and sets G.block with phase 'pick-face'.
 
 function declareBlock(G, att, def) {
+    const bhMsg = _boneHeadCheck(G, att, true);
+    if (bhMsg !== null) return bhMsg;
+
     const { attStr, defStr } = countAssists(G, att, def);
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
@@ -119,6 +145,10 @@ function pickBlockFace(G, face) {
             G.block.pushSquares = getPushSquares(G, att, def);
             const falls = face.id !== 'PUSH';
             const prefix = `${pn(def)} is pushed back${falls ? ' and falls!' : '.'}  `;
+            if (def.skills?.includes('Stand Firm')) {
+                G.block.phase = 'stand-firm-choice';
+                return prefix + `${pn(def)} may use [[skill:Stand Firm]] — stay in place?`;
+            }
             // If every candidate is off-pitch, auto-resolve into the crowd.
             if (G.block.pushSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
                 const [cc, cr] = G.block.pushSquares[0];
@@ -200,6 +230,11 @@ function pickPushSquare(G, col, row) {
             pushSquares: chainSquares,
             pendingFollowUp,
         };
+        if (chainVictim.skills?.includes('Stand Firm') && isStanding(chainVictim)) {
+            G.block.phase        = 'stand-firm-choice';
+            G.block.pushedPlayer = def;
+            return msg + ` Chain push — ${pn(chainVictim)} may use [[skill:Stand Firm]] — stay in place?`;
+        }
         // If every candidate is off-pitch, auto-resolve into the crowd.
         if (chainSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
             const [cc, cr] = chainSquares[0];
@@ -244,6 +279,72 @@ function resolveFollowUp(G, followUp) {
     return (followUp ? `${pn(att)} follows up` : `${pn(att)} stays`) + scatterMsg;
 }
 
+// ── resolveStandFirm ──────────────────────────────────────────────
+// Called after a PUSH/DEF_STUMBLES/DEF_DOWN result suspends into
+// G.block.phase='stand-firm-choice'.
+// use=true : defender stays in place, no push, no follow-up.
+// use=false: proceed to normal push resolution.
+
+function resolveStandFirm(G, use) {
+    if (!G.block || G.block.phase !== 'stand-firm-choice') return null;
+    const { att, def, chosenFace, pushSquares, pendingFollowUp, pushedPlayer } = G.block;
+
+    if (!use) {
+        G.block.phase = 'pick-push';
+        if (pushSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
+            const [cc, cr] = pushSquares[0];
+            return pickPushSquare(G, cc, cr);
+        }
+        return 'Choose push square.';
+    }
+
+    // Defender stays — determine whether they still fall (push is prevented, knockdown is not).
+    // For chain pushes chosenFace is always PUSH so falls is always false.
+    const falls =
+        chosenFace.id === 'DEF_DOWN'
+        || (chosenFace.id === 'DEF_STUMBLES' && !def.skills?.includes('Dodge'))
+        || (chosenFace.id === 'DEF_STUMBLES' && def.skills?.includes('Dodge') && att.skills?.includes('Tackle'));
+
+    let msg = `${pn(def)} uses [[skill:Stand Firm]] — stays in place!`;
+    if (falls) {
+        const injMsg = knockDown(G, def, { attacker: att });
+        msg += ` ${pn(def)} is knocked down! ${injMsg}`;
+        if (!G.ball.carrier && G.ball.col === def.col && G.ball.row === def.row)
+            msg += ' ' + scatterBall(G);
+    }
+
+    // Chain push: restore the pushed player to their pre-push square (att = fakeAtt = vacated square).
+    // Neither player moves — no follow-up.
+    if (pendingFollowUp) {
+        if (pushedPlayer) { pushedPlayer.col = att.col; pushedPlayer.row = att.row; }
+        const realAtt    = pendingFollowUp.att;
+        const scatterMsg = pendingFollowUp.ballDropped ? ' ' + scatterBall(G) : '';
+        msg += ` Neither player moves.${scatterMsg}`;
+        G.block = null;
+        if (G.blitz) {
+            G.blitz = null;
+            const maMsg = realAtt.maLeft > 0 ? ` · ${realAtt.maLeft} MA left` : '';
+            if (realAtt.maLeft === 0) { realAtt.usedAction = true; G.activated = null; }
+            return msg + maMsg;
+        }
+        realAtt.usedAction = true;
+        G.activated = null;
+        return msg;
+    }
+
+    // Direct push: defender didn't vacate so no follow-up is possible.
+    G.block = null;
+    if (G.blitz) {
+        G.blitz = null;
+        const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
+        if (att.maLeft === 0) { att.usedAction = true; G.activated = null; }
+        return msg + maMsg;
+    }
+    att.usedAction = true;
+    G.activated    = null;
+    return msg;
+}
+
 // ── declareFoul / executeFoul / resolveArgueCall ──────────────────
 // Foul action: standing player moves adjacent to a prone/stunned enemy
 // and kicks them. Armor checked with 2d6 + assists − TZs.
@@ -254,6 +355,8 @@ function resolveFollowUp(G, followUp) {
 function declareFoul(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
+    const bhMsg = _boneHeadCheck(G, p, false);
+    if (bhMsg !== null) return bhMsg;
     G.activated = p;
     G.sel       = p;
     G.fouling   = true;
@@ -359,9 +462,12 @@ function resolveArgueCall(G, use) {
 function activateBlitz(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
+    G.hasBlitzed = true;
+    const bhMsg = _boneHeadCheck(G, p, true);
+    if (bhMsg !== null) return bhMsg;
+
     G.activated  = p;
     G.blitz      = 'targeting';
-    G.hasBlitzed = true;
     if (p.status === 'prone') {
         p.status         = 'active';
         p.maLeft         = Math.max(0, p.maLeft - 3);
@@ -662,6 +768,8 @@ function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
 function declarePass(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
+    const bhMsg = _boneHeadCheck(G, p, false);
+    if (bhMsg !== null) return bhMsg;
 
     G.activated     = p;
     G.sel           = p;
@@ -864,9 +972,10 @@ function chooseInterceptor(G, interceptorId) {
         const interceptor = G.players.find(pl => pl.id === interceptorId
                                               && interceptorIds.includes(pl.id));
         if (interceptor) {
-            const iMod    = accurate ? 3 : 2;
-            const iTzs    = countTackleZones(G, interceptor.side, interceptor.col, interceptor.row);
-            const iTarget = Math.min(interceptor.ag + iMod + iTzs, 6);
+            const iMod       = accurate ? 3 : 2;
+            const iTzs       = countTackleZones(G, interceptor.side, interceptor.col, interceptor.row);
+            const stuntyMod  = interceptor.skills?.includes('Stunty') ? 1 : 0;
+            const iTarget    = Math.min(interceptor.ag + iMod + iTzs + stuntyMod, 6);
             const iRoll   = Math.floor(Math.random() * 6) + 1;
             const iHit    = iRoll === 6 || iRoll >= iTarget;
             msg += `${pn(interceptor)} [[skill:intercepts]] (${iRoll} vs ${iTarget}+): ${iHit ? 'SUCCESS!' : 'failed.'} `;
@@ -896,6 +1005,8 @@ function chooseInterceptor(G, interceptorId) {
 function declareHandoff(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
+    const bhMsg = _boneHeadCheck(G, p, false);
+    if (bhMsg !== null) return bhMsg;
 
     G.activated  = p;
     G.sel        = p;
@@ -1117,6 +1228,9 @@ function activateMover(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
 
+    const bhMsg = _boneHeadCheck(G, p, false);
+    if (bhMsg !== null) return bhMsg;
+
     if (p.status !== 'prone') {
         return activatePlayer(G, playerId);
     }
@@ -1152,7 +1266,7 @@ function activateMover(G, playerId) {
 
 if (typeof module !== 'undefined') {
     module.exports = {
-        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
+        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm,
         activateBlitz, setBlitzTarget, blitzBlock,
         declareFoul, executeFoul, resolveArgueCall,
         scatterBall, throwIn, tryPickup, checkTouchdown,

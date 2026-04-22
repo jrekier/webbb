@@ -59,6 +59,9 @@ function getGameContext(G, sel, NET) {
 
     const canStop = myTurn && G.activated && (!canStillCancel(G) || G.stoodUpFromProne) && !G.block && G.passing !== 'targeting';
 
+    const canUseStandFirm      = G.block && G.block.phase === 'stand-firm-choice'
+        && (!NET.online || NET.side !== G.active);
+
     const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
 
     const canConfirmSetup = (G.phase === 'setup') && (!NET.online || NET.side === G.setupSide);
@@ -83,6 +86,7 @@ function getGameContext(G, sel, NET) {
         canThrow,
         canCancel,
         canStop,
+        canUseStandFirm,
         canChooseNoIntercept,
         canConfirmSetup,
     };

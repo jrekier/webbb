@@ -937,6 +937,21 @@ function updateButtons() {
     const gc   = getGameContext(G, G.sel, NET);
     const play = !gc.inSetup && !gc.inSpecial;
 
+    // Stand Firm — defending team decides whether to absorb the push.
+    if (gc.canUseStandFirm && !G.confirm) {
+        G.confirm = {
+            prompt: `${G.block.def.name} — use Stand Firm?`,
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'STAND_FIRM', use: true });
+                else { const m = resolveStandFirm(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'STAND_FIRM', use: false });
+                else { const m = resolveStandFirm(G, false); if (m) log(m); }
+            },
+        };
+    }
+
     // ── Button visibility — desktop + mobile in one pass ──────────
     const btnDefs = [
         ['btn-throw',         'mobile-btn-throw',         play && gc.canThrow],
