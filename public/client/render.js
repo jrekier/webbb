@@ -494,22 +494,21 @@ function updateTeams() {
 
 // ── Pitch ─────────────────────────────────────────────────────────
 function drawPitch() {
+    // Horizontal mowed-grass stripes
     for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            ctx.fillStyle = (r + c) % 2 === 0 ? '#2d6e2d' : '#286028';
-            ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
-        }
+        ctx.fillStyle = r % 2 === 0 ? '#2a7030' : '#236127';
+        ctx.fillRect(0, r * CELL, COLS * CELL, CELL);
     }
 
-    // End zones (Sevens: 1 row deep)
-    ctx.fillStyle = 'rgba(20,20,100,0.30)';
+    // End zones — theme colors (away=blue, home=red)
+    ctx.fillStyle = 'rgba(26,62,140,0.42)';
     ctx.fillRect(0, 0, COLS * CELL, CELL);           // away end zone (row 0)
 
-    ctx.fillStyle = 'rgba(100,20,20,0.30)';
+    ctx.fillStyle = 'rgba(200,16,46,0.38)';
     ctx.fillRect(0, (ROWS - 1) * CELL, COLS * CELL, CELL); // home end zone (row 19)
 
     // Lines of scrimmage (Sevens: rows 6/13)
-    ctx.strokeStyle = 'rgba(255,210,0,0.5)';
+    ctx.strokeStyle = 'rgba(240,192,0,0.75)';
     ctx.lineWidth   = 2;
     ctx.beginPath();
     ctx.moveTo(0, 13 * CELL);
@@ -524,7 +523,7 @@ function drawPitch() {
     const scrTop      = 7 * CELL;
     const scrBottom   = 13 * CELL;
     const innerBounds = [2, 9];
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = 'rgba(240,192,0,0.22)';
     ctx.lineWidth   = 1;
     innerBounds.forEach(c => {
         // Away half: from top of pitch to away LoS
@@ -539,18 +538,35 @@ function drawPitch() {
         ctx.stroke();
     });
 
+    // Tiny crosses at every grid intersection
+    const arm = Math.max(2, Math.floor(CELL * 0.09));
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth   = 1;
+    for (let r = 0; r <= ROWS; r++) {
+        for (let c = 0; c <= COLS; c++) {
+            const x = c * CELL;
+            const y = r * CELL;
+            ctx.beginPath();
+            ctx.moveTo(x - arm, y);
+            ctx.lineTo(x + arm, y);
+            ctx.moveTo(x, y - arm);
+            ctx.lineTo(x, y + arm);
+            ctx.stroke();
+        }
+    }
+
     // End zone labels
     ctx.font         = `${Math.max(9, Math.floor(CELL * 0.38))}px 'IBM Plex Mono', monospace`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle    = 'rgba(255,255,255,0.22)';
+    ctx.fillStyle    = 'rgba(240,192,0,0.55)';
     ctx.fillText('▲  AWAY END ZONE', COLS * CELL / 2, 0 * CELL + CELL / 2);
     ctx.fillText('▼  HOME END ZONE', COLS * CELL / 2, (ROWS - 1) * CELL + CELL / 2);
 
     // Coordinate indices — column letters top & bottom, row numbers left & right
     const idxSz = Math.max(6, Math.floor(CELL * 0.21));
     ctx.font      = `bold ${idxSz}px 'IBM Plex Mono', monospace`;
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.fillStyle = 'rgba(240,192,0,0.5)';
 
     ctx.textAlign = 'center';
     for (let c = 0; c < COLS; c++) {
@@ -582,7 +598,7 @@ function drawHighlights() {
         canPreview && G.sel && !G.sel.usedAction && G.sel.side === G.active
         && G.sel.status !== 'stunned' && !G.block ? G.sel : null
     );
-    if (mover && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && !G.interceptionChoice) {
+    if (mover && G.phase !== 'setup' && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && !G.interceptionChoice) {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, mover, c, r);

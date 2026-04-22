@@ -383,6 +383,7 @@ function _onTap(clientX, clientY) {
 // wheel for the player under the contact point, if any.
 
 function _onLongPress(clientX, clientY) {
+    if (G.phase === 'toss' || G.phase === 'gameover' || G.phase === 'setup') return;
     const rect   = canvas.getBoundingClientRect();
     const px     = clientX - rect.left;
     const py     = clientY - rect.top;
