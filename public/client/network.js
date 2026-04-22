@@ -9,6 +9,23 @@ var NET = {
     ws:     null,
 };
 
+// ── Auto-reconnect ────────────────────────────────────────────────
+// Schedules a reconnect attempt when the WebSocket closes and there
+// is a saved game session.  Uses a simple delay; the guard flag
+// prevents multiple concurrent timers.
+
+var _reconnectTimer = null;
+
+function _scheduleReconnect() {
+    if (_reconnectTimer) return;
+    const saved = loadReconnectToken();
+    if (!saved) return;
+    _reconnectTimer = setTimeout(() => {
+        _reconnectTimer = null;
+        connect().catch(_scheduleReconnect);
+    }, 2000);
+}
+
 // ── connect ───────────────────────────────────────────────────────
 // Opens a WebSocket connection to the server.
 // Does NOT create or join a room — call createRoom() or joinRoom() after.
@@ -27,6 +44,7 @@ function connect() {
         NET.ws.onclose   = () => {
             console.log('Disconnected');
             NET.online = false;
+            _scheduleReconnect();
         };
         NET.ws.onerror = (err) => {
             console.error('WebSocket error:', err);
@@ -126,7 +144,12 @@ function netReceive(msg) {
             NET.side   = saved.side;
             NET.roomId = saved.roomId;
             NET.online = true;
-            startGame(msg.homeTeam, msg.awayTeam);
+            // Cold start (page reloaded): game UI not yet built.
+            // Warm reconnect (WS dropped but page still running): skip
+            // startGame to avoid re-registering duplicate event listeners.
+            if (!homeTeamDef) {
+                startGame(msg.homeTeam, msg.awayTeam);
+            }
             Object.assign(G, msg.G);
             fixReferences(G);
             render();

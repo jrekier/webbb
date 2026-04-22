@@ -306,8 +306,22 @@ function startGame(room) {
 
 const wss = new WebSocketServer({ server: httpServer });
 
+// Heartbeat: ping every 30s and terminate sockets that don't respond.
+// This forces a close event for silently-dead connections (mobile NAT
+// teardown, etc.) so the room slot is freed and the opponent is notified.
+const _heartbeatInterval = setInterval(() => {
+    wss.clients.forEach(ws => {
+        if (!ws.isAlive) { ws.terminate(); return; }
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30_000);
+wss.on('close', () => clearInterval(_heartbeatInterval));
+
 wss.on('connection', (ws) => {
     console.log('Client connected');
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
 
     ws.on('message', (raw) => {
         let msg;
