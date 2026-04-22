@@ -234,6 +234,7 @@ body {
    centres the canvas inside it */
 #pitch-wrap {
     flex: 1;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -331,6 +332,14 @@ canvas {
 .pl-selected .player-list-name { color: var(--text); font-weight: 700; }
 .pl-done    .player-list-name { text-decoration: line-through; opacity: 0.55; }
 
+.player-list-pos {
+    font-size: 8px;
+    color: var(--text-dim);
+    opacity: 0.6;
+    white-space: nowrap;
+    margin-left: 3px;
+}
+
 .player-mini-canvas {
     flex-shrink: 0;
     image-rendering: pixelated;
@@ -405,6 +414,31 @@ canvas {
         max-width: none; width: auto; border-radius: 10px;
     }
 }
+
+/* ── Your-turn toast ─────────────────────────────────────────── */
+#turn-toast {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translateX(-50%) translateY(calc(-50% - 30px));
+    padding: 14px 48px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    letter-spacing: 4px;
+    text-align: center;
+    color: var(--gold);
+    border: 2px solid var(--gold);
+    pointer-events: none;
+    z-index: 500;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+#turn-toast.toast-in {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-50%);
+}
+#turn-toast.toast-home { background: var(--red); }
+#turn-toast.toast-away { background: var(--blue); }
 
 /* ── Turn banner ──────────────────────────────────────────────── */
 #turn-banner {
@@ -486,13 +520,19 @@ canvas {
     border-bottom: 1px solid rgba(0,0,0,0.04);
 }
 
-.log-line.turn-marker {
-    color: var(--red);
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding-top: 6px;
-    border-bottom: 1px solid rgba(0,0,0,0.08);
+.log-line.turn-marker-home,
+.log-line.turn-marker-away {
+    margin-top: 6px;
+    padding: 4px 6px;
+    color: var(--gold);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: none;
 }
+.log-line.turn-marker-home { background: var(--red); }
+.log-line.turn-marker-away { background: var(--blue); }
 
 /* ── Action bar ───────────────────────────────────────────────── */
 #action-bar {
@@ -696,6 +736,8 @@ canvas {
     font-size: 18px;
     line-height: 1;
     flex: 1;
+    text-align: right;
+    padding-right: 8px;
 }
 
 #mobile-score-label {

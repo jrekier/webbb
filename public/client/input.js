@@ -567,7 +567,7 @@ function handleClick(event) {
         if (isKicker && isValidKickTarget(G.kicker, col, row)) {
             kickHover = null;
             if (NET.online) sendAction({ type: 'KICK_AIM', col, row });
-            else { const msg = declareKick(G, col, row); if (msg) log(msg, 'turn-marker'); }
+            else { const msg = declareKick(G, col, row); if (msg) log(msg); }
         }
         render();
         return;
@@ -580,7 +580,7 @@ function handleClick(event) {
             const player = playerAt(G, col, row);
             if (player && player.side === G.receiver) {
                 if (NET.online) sendAction({ type: 'TOUCHBACK', playerId: player.id });
-                else { const msg = touchbackGiveBall(G, player.id); if (msg) log(msg, 'turn-marker'); }
+                else { const msg = touchbackGiveBall(G, player.id); if (msg) log(msg); }
             }
         }
         render();
@@ -880,7 +880,7 @@ function onClickConfirmSetup() {
         result.errors.forEach(e => log(e, 'error'));
     } else {
         setupErrors = null;
-        log(result.msg, 'turn-marker');
+        log(result.msg);
         scrollToSetupSide();
     }
     render();
@@ -891,7 +891,7 @@ function onClickEndTurn() {
         prompt: 'End your turn?',
         onYes: () => {
             if (NET.online) sendAction({ type: 'END_TURN' });
-            else { const msg = endTurn(G); if (msg) log(msg, 'turn-marker'); render(); }
+            else { endTurn(G); render(); }
         },
     };
     render();

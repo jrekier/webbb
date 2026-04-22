@@ -117,6 +117,7 @@ function netReceive(msg) {
         case 'UPDATE': {
             document.getElementById('reconnect-overlay').classList.add('hidden');
             if (msg.logMsg) log(msg.logMsg);
+            const prevActive    = G.active;
             const prevSetupSide = G.setupSide;
             Object.assign(G, msg.G);
             fixReferences(G);
@@ -126,6 +127,9 @@ function netReceive(msg) {
                 setupErrors = [msg.logMsg];
             }
             if (G.phase === 'setup' && G.setupSide !== prevSetupSide) scrollToSetupSide();
+            if (G.phase === 'play' && G.active !== prevActive && G.active === NET.side) {
+                showTurnToast(NET.side);
+            }
             render();
             if (G.phase === 'toss') {
                 showTossOverlay(G.tossWinner, NET.side === G.tossWinner);

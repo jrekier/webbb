@@ -365,7 +365,7 @@ wss.on('connection', (ws) => {
         console.log(`Room ${room.id} · ${side}: ${msg.type}`);
         handleAction(room, msg);
         broadcast(room, { type: 'UPDATE', G: room.G, logMsg: room.lastLogMsg });
-        room.lastLogMsg = null;
+        room.lastLogMsg  = null;
     });
 
     ws.on('close', () => {
@@ -482,7 +482,7 @@ function handleAction(room, msg) {
         case 'MOVE':          room.lastLogMsg = movePlayer(G, msg.col, msg.row);     break;
         case 'CANCEL':        room.lastLogMsg = cancelActivation(G);                 break;
         case 'STOP':          room.lastLogMsg = endActivation(G);                    break;
-        case 'END_TURN':      room.lastLogMsg = endTurn(G);                          break;
+        case 'END_TURN':      endTurn(G); room.lastLogMsg = null; break;
         case 'SECURE_BALL':   if (!gc.canSecure)  return; room.lastLogMsg = secureBall(G, msg.playerId);         break;
         case 'FOUL_DECLARE':        if (!gc.canFoul)    return; room.lastLogMsg = declareFoul(G, msg.playerId);           break;
         case 'DO_FOUL':             room.lastLogMsg = executeFoul(G, msg.targetId);           break;

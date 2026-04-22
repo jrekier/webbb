@@ -68,8 +68,23 @@ function sizePitch() {
 }
 
 // ── render ───────────────────────────────────────────────────────
+var _renderPrevActive = null;
+var _renderPrevPhase  = null;
+
 function render() {
     if (!ctx) return;
+
+    // Log a turn-start marker when play begins (kickoff / after TD) or when
+    // the active side changes mid-play (end of turn or turnover).
+    if (G.phase === 'play') {
+        const enteredPlay = _renderPrevPhase !== 'play';
+        const sideChanged = !enteredPlay && _renderPrevActive !== null && G.active !== _renderPrevActive;
+        if (enteredPlay || sideChanged) {
+            log(`Turn ${G.turn} · ${G.active.toUpperCase()}`, 'turn-marker-' + G.active);
+        }
+        _renderPrevActive = G.active;
+    }
+    _renderPrevPhase = G.phase;
     const cam = cameraY;
 
     ctx.save();
@@ -464,17 +479,31 @@ function updateTeams() {
                 name.textContent = p.name;
                 row.appendChild(name);
 
-                // Click: first click selects the player; second click within 300 ms
-                // on the same player shows the tooltip (doubles as double-tap on touch).
+                if (p.col < 0 && p.pos) {
+                    const pos = document.createElement('span');
+                    pos.className   = 'player-list-pos';
+                    pos.textContent = p.pos;
+                    row.appendChild(pos);
+                }
+
+                // Dugout players (off-pitch): single tap shows the card immediately.
+                // On-pitch players: first tap selects; second tap within 300 ms shows tooltip.
                 row.addEventListener('click', e => {
                     // Suppress the synthetic click that follows a panel drag release.
                     if (_suppressRowClick) { _suppressRowClick = false; return; }
                     e.stopPropagation();
-                    const now      = Date.now();
-                    const isDouble = now - _rowLastClick.time < 300 && _rowLastClick.id === p.id;
-                    _rowLastClick  = { id: p.id, time: now };
-                    G.sel = p;
-                    if (isDouble) showChipTooltip(row, p);
+                    if (p.col < 0) {
+                        showChipTooltip(row, p);
+                        setTimeout(() => {
+                            document.addEventListener('click', () => hideChipTooltip(0), { once: true, capture: true });
+                        }, 0);
+                    } else {
+                        G.sel = p;
+                        const now      = Date.now();
+                        const isDouble = now - _rowLastClick.time < 300 && _rowLastClick.id === p.id;
+                        _rowLastClick  = { id: p.id, time: now };
+                        if (isDouble) showChipTooltip(row, p);
+                    }
                     render();
                 });
 

@@ -47,6 +47,24 @@ function startGame(homeTeam, awayTeam) {
     }
 }
 
+// ── Your-turn toast ──────────────────────────────────────────────
+
+var _toastTimer = null;
+
+function showTurnToast(side) {
+    const el = document.getElementById('turn-toast');
+    if (!el) return;
+    if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
+    el.textContent = 'YOUR TURN';
+    el.classList.remove('toast-in', 'toast-home', 'toast-away');
+    void el.offsetWidth;
+    el.classList.add(side === 'home' ? 'toast-home' : 'toast-away', 'toast-in');
+    _toastTimer = setTimeout(() => {
+        el.classList.remove('toast-in');
+        _toastTimer = null;
+    }, 2500);
+}
+
 // ── Toss overlay ─────────────────────────────────────────────────
 
 function showTossOverlay(winner, canChoose = true) {
@@ -64,7 +82,7 @@ function onTossChoose(choice) {
         return;
     }
     const msg = chooseTossResult(G, choice);
-    log(msg, 'turn-marker');
+    log(msg);
     scrollToSetupSide();
     render();
 }
