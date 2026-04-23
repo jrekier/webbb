@@ -16,8 +16,11 @@ function getGameContext(G, sel, NET) {
     const canDeclare = myTurn && sel
         && sel.side === G.active
         && !sel.usedAction
+        && sel.col >= 0
         && noAction
         && !selStunned
+        && sel.status !== 'ko'
+        && sel.status !== 'casualty'
         && (!selProne || sel.maLeft + sel.rushLeft >= 3);
 
     const canBlitz = myTurn && sel
@@ -55,13 +58,18 @@ function getGameContext(G, sel, NET) {
 
     const canCancel = myTurn && (G.passing === 'targeting'
         || G.block === 'targeting'
+        || G.ttm?.phase === 'targeting'
         || (G.activated && canStillCancel(G) && !G.block));
 
-    const canStop = myTurn && G.activated && (!canStillCancel(G) || G.stoodUpFromProne) && !G.block && G.passing !== 'targeting';
+    const canStop = myTurn && G.activated && (!canStillCancel(G) || G.stoodUpFromProne) && !G.block
+        && G.passing !== 'targeting' && G.ttm?.phase !== 'targeting';
 
     const canDeclarePV = !!sel?.specialSkills?.includes('Projectile Vomit')
         && ((canDeclare && !selProne)
             || (myTurn && G.activated?.id === sel?.id && G.blitz?.phase === 'moving'));
+
+    const canDeclareTTM = canDeclare && !G.hasThrownMate
+        && !!sel?.skills?.includes('Throw Team-Mate');
 
     const canUseStandFirm      = G.block && G.block.phase === 'stand-firm-choice'
         && (!NET.online || NET.side !== G.active);
@@ -91,6 +99,7 @@ function getGameContext(G, sel, NET) {
         canCancel,
         canStop,
         canDeclarePV,
+        canDeclareTTM,
         canUseStandFirm,
         canChooseNoIntercept,
         canConfirmSetup,

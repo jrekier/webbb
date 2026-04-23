@@ -20,6 +20,7 @@ var _dragMoved = false;
 
 var kickHover   = null;  // { col, row } — kick-phase aim square
 var passHover   = null;  // { col, row } — pass-targeting overlay
+var ttmHover    = null;  // { col, row } — TTM targeting overlay
 var setupErrors = null;  // string[] | null — setup validation failures
 var dragHover   = null;  // { col, row } | null — HTML5 drag-over highlight
 
@@ -206,6 +207,10 @@ function _onPointerMove(e) {
         passHover = { col: Math.floor(px / CELL), row: Math.floor((py + cameraY) / CELL) };
         render();
     }
+    if (G.ttm?.phase === 'targeting' && !G.confirm) {
+        ttmHover = { col: Math.floor(px / CELL), row: Math.floor((py + cameraY) / CELL) };
+        render();
+    }
 
 }
 
@@ -298,6 +303,7 @@ function _onPointerLeave(e) {
     if (_gesture) return;  // captured drag in progress — leave state alone
     kickHover    = null;
     passHover    = null;
+    ttmHover     = null;
     inspectState = null;
     render();
 }
@@ -359,7 +365,7 @@ function _onTap(clientX, clientY) {
     // In states where a tap picks a target (pass, intercept), delay the action
     // by 260 ms so a quick second tap can show the tooltip instead of firing
     // an accidental game action.
-    const needsDelay = G.passing === 'targeting' || !!G.interceptionChoice;
+    const needsDelay = G.passing === 'targeting' || !!G.interceptionChoice || G.ttm?.phase === 'targeting';
     if (needsDelay) {
         if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
         _pendingTap = { timer: setTimeout(() => {
@@ -658,6 +664,23 @@ function clickPlayer(player) {
         return;
     }
 
+    // TTM pick-missile — tap an adjacent standing Right Stuff teammate.
+    if (G.ttm?.phase === 'pick-missile' && G.activated && player.side === G.active
+            && player.id !== G.activated.id && player.skills?.includes('Right Stuff')
+            && isStanding(player) && isAdjacent(G.activated, player)) {
+        if (NET.online) sendAction({ type: 'TTM_PICK_MISSILE', missileId: player.id });
+        else { const msg = pickTTMMissile(G, player.id); if (msg) log(msg); }
+        render();
+        return;
+    }
+
+    // TTM targeting — throw to this player's square.
+    if (G.ttm?.phase === 'targeting' && G.activated && player.id !== G.activated.id) {
+        ttmHover = null;
+        _doTTMThrow(player.col, player.row);
+        return;
+    }
+
     // Pass targeting — throw to this player's square.
     if (G.passing === 'targeting' && G.activated && player.id !== G.activated.id) {
         passHover = null;
@@ -726,6 +749,13 @@ function clickCell(col, row) {
             if (NET.online) sendAction({ type: 'BLOCK_PUSH', col, row });
             else { const msg = pickPushSquare(G, col, row); if (msg) log(msg); }
         }
+        return;
+    }
+
+    // TTM targeting — any tap resolves the throw.
+    if (G.ttm?.phase === 'targeting' && G.activated) {
+        ttmHover = null;
+        _doTTMThrow(col, row);
         return;
     }
 
@@ -850,6 +880,18 @@ function onClickPV() {
     else { const msg = declarePV(G, G.sel.id); if (msg) log(msg); render(); }
 }
 
+function onClickTTM() {
+    if (!G.sel || G.sel.side !== G.active) return;
+    if (NET.online) sendAction({ type: 'TTM_DECLARE', playerId: G.sel.id });
+    else { const msg = declareTTM(G, G.sel.id); if (msg) log(msg); render(); }
+}
+
+function _doTTMThrow(col, row) {
+    if (!G.activated) return;
+    if (NET.online) sendAction({ type: 'TTM_THROW', col, row });
+    else { const msg = throwTeamMate(G, col, row); if (msg) log(msg); }
+}
+
 function onClickHandoff() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (NET.online) sendAction({ type: 'HANDOFF_DECLARE', playerId: G.sel.id });
@@ -863,6 +905,13 @@ function onClickPass() {
 }
 
 function onClickCancel() {
+    if (G.ttm?.phase === 'targeting') {
+        G.ttm    = { phase: 'pick-missile' };
+        ttmHover = null;
+        log('Missile unselected — pick again or move first.');
+        render();
+        return;
+    }
     if (G.passing === 'targeting') {
         G.passing = true;
         passHover = null;

@@ -1328,6 +1328,292 @@ function executePV(G, targetId) {
     return msg;
 }
 
+// ── Throw Team-Mate ────────────────────────────────────────────────
+
+// ── declareTTM ─────────────────────────────────────────────────────
+// Activates the thrower in TTM pick-missile mode.
+// Bone Head check applies before anything else.
+
+function declareTTM(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p) return null;
+    const bhMsg = _boneHeadCheck(G, p, false);
+    if (bhMsg !== null) return bhMsg;
+
+    G.activated = p;
+    G.sel       = p;
+    G.ttm       = { phase: 'pick-missile' };
+    return `${pn(p)} [[skill:declares Throw Team-Mate]] — pick an adjacent teammate with Right Stuff.`;
+}
+
+// ── pickTTMMissile ──────────────────────────────────────────────────
+// Locks in the player to be thrown and enters targeting phase.
+
+function pickTTMMissile(G, missileId) {
+    if (!G.ttm || G.ttm.phase !== 'pick-missile') return null;
+    if (!G.activated) return null;
+    const p       = G.activated;
+    const missile = G.players.find(pl => pl.id === missileId);
+    if (!missile) return null;
+    if (missile.side !== p.side) return null;
+    if (missile.id === p.id) return null;
+    if (!missile.skills?.includes('Right Stuff')) return null;
+    if (!isStanding(missile)) return null;
+    if (!isAdjacent(p, missile)) return null;
+
+    G.ttm = { phase: 'targeting', missileId };
+    return `${pn(p)} picks up ${pn(missile)} — click target square to throw.`;
+}
+
+// ── _ttmScatterNTimes ───────────────────────────────────────────────
+// Scatters missile n times from (col, row).
+// Returns { col, row, msg, offPitch }.
+
+function _ttmScatterNTimes(col, row, n) {
+    const DC   = [ 0, 1, 1, 1, 0,-1,-1,-1];
+    const DR   = [-1,-1, 0, 1, 1, 1, 0,-1];
+    const DIRS = ['N','NE','E','SE','S','SW','W','NW'];
+    let sc = col, sr = row;
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+        const dir = Math.floor(Math.random() * 8);
+        const nc = sc + DC[dir];
+        const nr = sr + DR[dir];
+        parts.push(DIRS[dir]);
+        if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) {
+            return { col: nc, row: nr, fromCol: sc, fromRow: sr, msg: parts.join('·'), offPitch: true };
+        }
+        sc = nc;
+        sr = nr;
+    }
+    return { col: sc, row: sr, fromCol: sc, fromRow: sr, msg: parts.join('·'), offPitch: false };
+}
+
+// ── _landMissile ────────────────────────────────────────────────────
+// Places missile at (col, row) and resolves landing.
+// landMod: 0 for Superb, 1 for Subpar or Fumble.
+// Off-pitch always causes a TURNOVER. Failed landing on-pitch does not.
+
+function _landMissile(G, missile, col, row, msg, landMod, fromCol, fromRow) {
+    const DC   = [ 0, 1, 1, 1, 0,-1,-1,-1];
+    const DR   = [-1,-1, 0, 1, 1, 1, 0,-1];
+    const DIRS = ['N','NE','E','SE','S','SW','W','NW'];
+
+    const hadBall = !!missile.hasBall;
+    if (hadBall) {
+        missile.hasBall = false;
+        G.ball.carrier  = null;
+    }
+
+    // Off-pitch landing — crowd injury + throw-in (if ball) + TURNOVER
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) {
+        msg += `${pn(missile)} lands in the crowd! `;
+        const injMsg = rollCrowdInjury(missile);
+        missile.col = -1;
+        missile.row = -1;
+        if (hadBall) {
+            G.ball.col = fromCol;
+            G.ball.row = fromRow;
+            msg += throwIn(G, fromCol, fromRow, col, row) + ' ';
+        }
+        endTurn(G);
+        return msg + injMsg + ' TURNOVER';
+    }
+
+    // Crash landing: target square is occupied
+    const occupant = G.players.find(p => p.col === col && p.row === row
+                                       && p.id !== missile.id && p.col >= 0);
+    if (occupant) {
+        msg += `${pn(missile)} crash-lands on ${pn(occupant)}! `;
+        const oHadBall = occupant.hasBall;
+        if (oHadBall) {
+            occupant.hasBall = false;
+            G.ball.carrier   = null;
+            G.ball.col       = occupant.col;
+            G.ball.row       = occupant.row;
+        }
+        occupant.status = 'prone';
+        const { armorRoll: oAV, armorBroken: oBroken,
+                injuryRoll: oInj, outcome: oOut } = rollArmourAndInjury(occupant, null);
+        msg += `${pn(occupant)} knocked down (AV${oAV}/${occupant.av}`;
+        if (oBroken) {
+            msg += ` broken! Inj${oInj}: `;
+            if (oOut === 'stunned') { markStunned(occupant); msg += 'Stunned'; }
+            else if (oOut === 'ko') { occupant.status = 'ko'; occupant.col = -1; msg += "KO'd"; }
+            else                   { occupant.status = 'casualty'; occupant.col = -1; msg += 'Casualty'; }
+        } else { msg += ' holds'; }
+        msg += '). ';
+        if (oHadBall && !G.ball.carrier) msg += scatterBall(G) + ' ';
+
+        // Missile bounces ×1 from crash square
+        const bounceDir = Math.floor(Math.random() * 8);
+        const bc = col + DC[bounceDir];
+        const br = row + DR[bounceDir];
+        msg += `${pn(missile)} bounces ${DIRS[bounceDir]}. `;
+
+        if (bc < 0 || bc >= COLS || br < 0 || br >= ROWS) {
+            missile.col    = -1;
+            missile.row    = -1;
+            missile.status = 'prone';
+            const injMsg = rollCrowdInjury(missile);
+            if (hadBall) {
+                G.ball.col = col;
+                G.ball.row = row;
+                msg += throwIn(G, col, row, bc, br) + ' ';
+            }
+            endTurn(G);
+            return msg + `Into the crowd! ${injMsg} TURNOVER`;
+        }
+
+        // Second crash: knock down occ2, missile falls over
+        const occ2 = G.players.find(p => p.col === bc && p.row === br
+                                       && p.id !== missile.id && p.col >= 0);
+        if (occ2) {
+            const o2HadBall = occ2.hasBall;
+            if (o2HadBall) {
+                occ2.hasBall   = false;
+                G.ball.carrier = null;
+                G.ball.col     = bc;
+                G.ball.row     = br;
+            }
+            occ2.status = 'prone';
+            const inj2 = rollArmourAndInjury(occ2, null);
+            msg += `Also hits ${pn(occ2)}! `;
+            if (inj2.armorBroken) {
+                if (inj2.outcome === 'stunned') { markStunned(occ2); }
+                else if (inj2.outcome === 'ko') { occ2.status = 'ko'; occ2.col = -1; }
+                else                           { occ2.status = 'casualty'; occ2.col = -1; }
+            }
+            if (o2HadBall && !G.ball.carrier) msg += scatterBall(G) + ' ';
+        }
+
+        // Missile falls over at bounce destination
+        missile.col    = bc;
+        missile.row    = br;
+        missile.status = 'prone';
+        const { armorRoll: mAV, armorBroken: mBroken,
+                injuryRoll: mInj, outcome: mOut } = rollArmourAndInjury(missile, null);
+        msg += `${pn(missile)} falls over (AV${mAV}/${missile.av}`;
+        if (mBroken) {
+            msg += ` broken! Inj${mInj}: `;
+            if (mOut === 'stunned') { markStunned(missile); msg += 'Stunned'; }
+            else if (mOut === 'ko') { missile.status = 'ko'; missile.col = -1; msg += "KO'd"; }
+            else                   { missile.status = 'casualty'; missile.col = -1; msg += 'Casualty'; }
+        } else { msg += ' holds'; }
+        msg += '). ';
+
+        if (hadBall) {
+            const fallCol = missile.col >= 0 ? missile.col : bc;
+            const fallRow = missile.row >= 0 ? missile.row : br;
+            G.ball.col     = fallCol;
+            G.ball.row     = fallRow;
+            G.ball.carrier = null;
+            msg += scatterBall(G);
+            endTurn(G);
+            return msg + ' TURNOVER';
+        }
+        return msg.trimEnd();
+    }
+
+    // Empty square: landing roll
+    missile.col    = col;
+    missile.row    = row;
+    missile.status = 'active';
+
+    const tzs    = countTackleZones(G, missile.side, col, row);
+    const target = Math.min(missile.ag + landMod + tzs, 6);
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    const success = roll !== 1 && (roll === 6 || roll >= target);
+
+    const modStr = (landMod + tzs) > 0 ? ` +${landMod + tzs} mods,` : '';
+    msg += `${pn(missile)} landing (AG${missile.ag}+,${modStr} → ${target}+): rolled ${roll}. `;
+
+    if (success) {
+        if (hadBall) {
+            missile.hasBall = true;
+            G.ball.carrier  = missile;
+            G.ball.col      = col;
+            G.ball.row      = row;
+            const tdMsg = checkTouchdown(G, missile);
+            if (tdMsg) return msg + 'Lands safely! ' + tdMsg;
+        }
+        return msg + 'Lands safely!';
+    }
+
+    // Failed landing — TURNOVER only if ball carried
+    msg += 'Failed landing. ';
+    missile.status = 'prone';
+    const { armorRoll, armorBroken, injuryRoll, outcome } = rollArmourAndInjury(missile, null);
+    msg += `AV${armorRoll}/${missile.av}`;
+    let failMsg;
+    if (!armorBroken) {
+        failMsg = ' — armour holds.';
+    } else {
+        msg += ` broken! Inj${injuryRoll}: `;
+        if (outcome === 'stunned') { markStunned(missile); failMsg = 'Stunned.'; }
+        else if (outcome === 'ko') { missile.status = 'ko'; missile.col = -1; failMsg = "KO'd!"; }
+        else { missile.status = 'casualty'; missile.col = -1; failMsg = 'CASUALTY!'; }
+    }
+    if (hadBall) {
+        G.ball.col     = col;
+        G.ball.row     = row;
+        G.ball.carrier = null;
+        const scMsg = scatterBall(G);
+        endTurn(G);
+        return msg + failMsg + ' ' + scMsg + ' TURNOVER';
+    }
+    return msg + failMsg;
+}
+
+// ── throwTeamMate ────────────────────────────────────────────────────
+// Resolves the throw and landing after a target square is chosen.
+// Superb: scatter ×3 from target, landing roll (no penalty).
+// Subpar: scatter ×3 from target, landing roll (-1 modifier).
+// Fumble: bounce ×1 from thrower's square, landing roll (-1 modifier).
+
+function throwTeamMate(G, targetCol, targetRow) {
+    if (!G.ttm || G.ttm.phase !== 'targeting') return null;
+    if (!G.activated) return null;
+    const p       = G.activated;
+    const missile = G.players.find(pl => pl.id === G.ttm.missileId);
+    if (!missile) return null;
+    if (targetCol < 0 || targetCol >= COLS || targetRow < 0 || targetRow >= ROWS) return null;
+
+    const dx   = Math.abs(p.col - targetCol);
+    const dy   = Math.abs(p.row - targetRow);
+    const dist = Math.floor(Math.sqrt(dx * dx + dy * dy));
+    if (dist === 0 || dist > 6) return null;
+    const range = dist <= 3 ? { label: 'Quick', mod: 0 } : { label: 'Short', mod: 1 };
+
+    const tzs           = countTackleZones(G, p.side, p.col, p.row);
+    const mods          = range.mod + tzs;
+    const rawRoll       = Math.floor(Math.random() * 6) + 1;
+    const effectiveRoll = rawRoll - mods;
+    const isFumble      = rawRoll === 1 || effectiveRoll <= 1;
+    const isSuperb      = !isFumble && (rawRoll === 6 || rawRoll >= p.pa + mods);
+
+    const effStr = mods > 0 ? ` → eff. ${effectiveRoll}` : '';
+    let msg = `${pn(p)} [[skill:Throw Team-Mate]] ${pn(missile)} (${range.label}, PA${p.pa}+${mods > 0 ? ` +${mods}` : ''}): rolled ${rawRoll}${effStr}. `;
+
+    G.ttm           = null;
+    G.hasThrownMate = true;
+    const throwerCol = p.col;
+    const throwerRow = p.row;
+    endActivation(G);
+
+    if (isFumble) {
+        msg += 'FUMBLE! ';
+        const { col: bc, row: br, fromCol: fc, fromRow: fr, msg: bMsg, offPitch } = _ttmScatterNTimes(throwerCol, throwerRow, 1);
+        msg += `${pn(missile)} bounces ${bMsg}${offPitch ? ' (off pitch)' : ' to ' + sqLabel(bc, br)}. `;
+        return _landMissile(G, missile, bc, br, msg, 1, fc, fr);
+    }
+
+    const throwLabel = isSuperb ? 'Superb' : 'Subpar';
+    const { col: lc, row: lr, fromCol: fc, fromRow: fr, msg: scMsg, offPitch } = _ttmScatterNTimes(targetCol, targetRow, 3);
+    msg += `${throwLabel}! Scatter ×3: ${scMsg}${offPitch ? ' (off pitch)' : ` → ${sqLabel(lc, lr)}`}. `;
+    return _landMissile(G, missile, lc, lr, msg, isSuperb ? 0 : 1, fc, fr);
+}
+
 if (typeof module !== 'undefined') {
     module.exports = {
         knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm,
@@ -1340,5 +1626,6 @@ if (typeof module !== 'undefined') {
         declareKick, touchbackGiveBall,
         movePlayer, activateMover,
         declarePV, executePV,
+        declareTTM, pickTTMMissile, throwTeamMate,
     };
 }

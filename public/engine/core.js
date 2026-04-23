@@ -32,6 +32,7 @@ function createInitialState() {
         hasPassed:          false,
         hasHandedOff:       false,
         hasFouled:          false,
+        hasThrownMate:      false,
         fouling:            false,
         argueCallPending:   null,
         coachEjected:       { home: false, away: false },
@@ -44,6 +45,7 @@ function createInitialState() {
         hasPassReroll:      false,
         passRerollChoice:   null,
         interceptionChoice: null,
+        ttm:                null,
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
     };
@@ -57,7 +59,8 @@ function activatePlayer(G, playerId) {
     if (p.side !== G.active) return null;
     if (p.usedAction) return null;
     if (G.activated) return null;
-    if (p.status === 'stunned') return null;
+    if (p.col < 0) return null;
+    if (p.status === 'stunned' || p.status === 'ko' || p.status === 'casualty') return null;
     G.activated = p;
     G.sel       = p;
     return `${p.name} activated`;
@@ -86,6 +89,7 @@ function cancelActivation(G) {
     G.securingBall       = false;
     G.fouling            = false;
     G.pvTargeting        = false;
+    G.ttm                = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -106,6 +110,7 @@ function endActivation(G) {
     G.hasDodged          = false;
     G.fouling            = false;
     G.pvTargeting        = false;
+    G.ttm                = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -134,6 +139,7 @@ function endTurn(G) {
     G.hasPassed      = false;
     G.hasHandedOff   = false;
     G.hasFouled      = false;
+    G.hasThrownMate  = false;
     G.hasDodged      = false;
     G.blitzFromProne = false;
     G.securingBall       = false;
@@ -200,11 +206,13 @@ function startHalfTime(G) {
     G.hasPassed          = false;
     G.hasHandedOff       = false;
     G.hasFouled          = false;
+    G.hasThrownMate      = false;
     G.hasDodged          = false;
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
     G.fouling            = false;
+    G.ttm                = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passRerollChoice   = null;
@@ -337,11 +345,13 @@ function resetAfterTouchdown(G, scoringSide) {
     G.hasPassed          = false;
     G.hasHandedOff       = false;
     G.hasFouled          = false;
+    G.hasThrownMate      = false;
     G.hasDodged          = false;
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
     G.fouling            = false;
+    G.ttm                = null;
     G.argueCallPending   = null;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;

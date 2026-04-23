@@ -285,8 +285,8 @@ function _buildSpecialActions(player, gc) {
     const actions = [];
     if (gc.canDeclarePV)
         actions.push({ label: 'Proj.\nVomit', color: '#80ff60', bg: 'rgba(20,70,20,0.92)', fn: onClickPV });
-    // e.g.: if (gc.canThrowTeammate)
-    //     actions.push({ label: 'Throw\nTeam', color: '#f0c000', bg: 'rgba(26,62,140,0.92)', fn: onClickThrowTeammate });
+    if (gc.canDeclareTTM)
+        actions.push({ label: 'Throw\nMate', color: '#c0c0ff', bg: 'rgba(40,20,80,0.92)', fn: onClickTTM });
     return actions;
 }
 

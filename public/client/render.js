@@ -101,6 +101,7 @@ function render() {
     drawBall();
     drawPlayers();
     drawPassTargetingOverlay();
+    drawTTMTargetingOverlay();
     ctx.restore();
 
     // Overlays in screen space
@@ -629,7 +630,7 @@ function drawHighlights() {
         canPreview && G.sel && !G.sel.usedAction && G.sel.side === G.active
         && G.sel.status !== 'stunned' && !G.block ? G.sel : null
     );
-    if (mover && G.phase !== 'setup' && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && !G.interceptionChoice) {
+    if (mover && G.phase !== 'setup' && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && G.ttm?.phase !== 'targeting' && !G.interceptionChoice) {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, mover, c, r);
@@ -669,6 +670,25 @@ function drawHighlights() {
         const fill   = adjacent ? 'rgba(220,130,30,0.35)' : 'rgba(220,130,30,0.12)';
         const border = adjacent ? 'rgba(255,160,40,0.9)'  : 'rgba(255,160,40,0.3)';
         hlCell(def.col, def.row, fill, border, false);
+    }
+
+    // TTM pick-missile — purple on adjacent standing Right Stuff teammates
+    if (G.ttm?.phase === 'pick-missile' && G.activated) {
+        G.players.filter(p =>
+            p.side === G.active && p.id !== G.activated.id
+            && p.skills?.includes('Right Stuff') && isStanding(p)
+            && isAdjacent(G.activated, p)
+        ).forEach(t => {
+            hlCell(t.col, t.row, 'rgba(180,80,220,0.25)', 'rgba(200,100,240,0.85)', false);
+        });
+    }
+
+    // TTM targeting — highlight the selected missile's current square
+    if (G.ttm?.phase === 'targeting' && G.ttm.missileId) {
+        const missile = G.players.find(p => p.id === G.ttm.missileId);
+        if (missile && missile.col >= 0) {
+            hlCell(missile.col, missile.row, 'rgba(180,80,220,0.40)', 'rgba(200,100,240,1.0)', false);
+        }
     }
 
     // PV targets — green on adjacent standing enemies
@@ -1273,6 +1293,117 @@ function drawPassTargetingOverlay() {
                 ctx.lineWidth   = 2;
                 ctx.strokeRect(ip.col * CELL, ip.row * CELL, CELL, CELL);
             }
+        }
+    }
+
+    ctx.restore();
+}
+
+// ── drawTTMTargetingOverlay ───────────────────────────────────────
+// Drawn during G.ttm.phase === 'targeting'.
+// Shows Quick/Short range bands and a hover trajectory (purple tint).
+
+function drawTTMTargetingOverlay() {
+    if (!G.ttm || G.ttm.phase !== 'targeting') return;
+    if (!G.activated || !ctx) return;
+    const p = G.activated;
+
+    ctx.save();
+
+    const BANDS = [
+        { max: 3, fill: 'rgba(160,80,220,0.12)', stroke: 'rgba(180,100,240,0.70)', label: 'Quick' },
+        { max: 6, fill: 'rgba(120,50,180,0.10)', stroke: 'rgba(140,60,200,0.65)',  label: 'Short' },
+    ];
+
+    const fs = Math.max(8, Math.floor(CELL * 0.22));
+    const distAt = (c, r) => Math.floor(Math.sqrt((c - p.col) ** 2 + (r - p.row) ** 2));
+    const bandOf = d => BANDS.find(b => d <= b.max) ?? null;
+
+    // Fill range bands
+    for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < ROWS; r++) {
+            const d = distAt(c, r);
+            if (d === 0) continue;
+            const band = bandOf(d);
+            if (!band) continue;
+            ctx.fillStyle = band.fill;
+            ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+        }
+    }
+
+    // Band borders
+    ctx.lineWidth = 1.5;
+    for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < ROWS; r++) {
+            const bd = bandOf(distAt(c, r));
+            for (const [dc, dr] of [[1, 0], [0, 1]]) {
+                const nc = c + dc, nr = r + dr;
+                if (nc >= COLS || nr >= ROWS) continue;
+                const nb = bandOf(distAt(nc, nr));
+                if (bd === nb) continue;
+                const colour = (nb && (!bd || nb.max > bd.max)) ? nb.stroke : bd?.stroke;
+                if (!colour) continue;
+                ctx.strokeStyle = colour;
+                ctx.beginPath();
+                if (dc === 1) { ctx.moveTo((c+1)*CELL, r*CELL); ctx.lineTo((c+1)*CELL, (r+1)*CELL); }
+                else          { ctx.moveTo(c*CELL, (r+1)*CELL); ctx.lineTo((c+1)*CELL, (r+1)*CELL); }
+                ctx.stroke();
+            }
+        }
+    }
+
+    // Band labels
+    ctx.font = `bold ${fs}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    for (const band of BANDS) {
+        let labelRow = -1;
+        for (let r = 0; r < ROWS; r++) {
+            if (distAt(p.col, r) === band.max) { labelRow = r; break; }
+        }
+        if (labelRow < 0) continue;
+        const ly = labelRow * CELL;
+        if (ly < 0 || ly > ROWS * CELL) continue;
+        ctx.fillStyle = band.stroke;
+        ctx.fillText(band.label, p.col * CELL + CELL / 2, ly);
+    }
+
+    // Hover trajectory
+    if (ttmHover && !(ttmHover.col === p.col && ttmHover.row === p.row)) {
+        const { col: hc, row: hr } = ttmHover;
+        const dist  = distAt(hc, hr);
+        const band  = bandOf(dist);
+
+        // Trajectory corridor
+        ctx.save();
+        ctx.strokeStyle = 'rgba(200,120,255,0.20)';
+        ctx.lineWidth   = CELL * 2;
+        ctx.lineCap     = 'round';
+        ctx.beginPath();
+        ctx.moveTo(p.col * CELL + CELL / 2, p.row * CELL + CELL / 2);
+        ctx.lineTo(hc * CELL + CELL / 2, hr * CELL + CELL / 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Hover cell highlight + range label
+        if (band) {
+            ctx.fillStyle   = band.stroke.replace('0.70', '0.30').replace('0.65', '0.28');
+            ctx.fillRect(hc * CELL, hr * CELL, CELL, CELL);
+            ctx.strokeStyle = band.stroke;
+            ctx.lineWidth   = 2;
+            ctx.strokeRect(hc * CELL, hr * CELL, CELL, CELL);
+
+            const label = `${band.label} (${dist}sq)`;
+            ctx.font      = `bold ${fs}px 'IBM Plex Mono', monospace`;
+            ctx.textAlign = 'center';
+            const tw      = ctx.measureText(label).width + 8;
+            const tx      = hc * CELL + CELL / 2;
+            const ty      = hr * CELL - fs - 6;
+            ctx.fillStyle = 'rgba(0,0,0,0.72)';
+            ctx.fillRect(tx - tw / 2, ty, tw, fs + 4);
+            ctx.fillStyle    = '#fff';
+            ctx.textBaseline = 'top';
+            ctx.fillText(label, tx, ty + 2);
         }
     }
 
