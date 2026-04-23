@@ -1264,6 +1264,70 @@ function activateMover(G, playerId) {
     return `${pn(p)} [[move:stands up]]${rollStr}${maStr}`;
 }
 
+// ── declarePV ─────────────────────────────────────────────────────
+// Enters Projectile Vomit targeting mode. Works as a standalone action
+// or as a blitz replacement (clears G.blitz in either case).
+
+function declarePV(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p) return null;
+    G.activated   = p;
+    G.sel         = p;
+    G.blitz       = null;
+    G.pvTargeting = true;
+    return `${pn(p)} [[skill:Projectile Vomit]] — select an adjacent standing enemy.`;
+}
+
+// ── executePV ─────────────────────────────────────────────────────
+// Resolves a Projectile Vomit action.
+// Roll d6: 2+ = unmodified armour roll on target; 1 = on self.
+// Neither roll can be modified (attacker = null → no Mighty Blow etc.).
+
+function executePV(G, targetId) {
+    if (!G.pvTargeting || !G.activated) return null;
+    const att = G.activated;
+    const def = G.players.find(p => p.id === targetId);
+    if (!def || def.side === att.side || !isAdjacent(att, def) || !isStanding(def)) return null;
+
+    const roll     = Math.floor(Math.random() * 6) + 1;
+    G.pvTargeting  = false;
+    att.usedAction = true;
+    G.activated    = null;
+
+    const victim = roll >= 2 ? def : att;
+    let msg = roll >= 2
+        ? `${pn(att)} [[skill:Projectile Vomit]] (${roll}) → ${pn(def)}! `
+        : `${pn(att)} [[skill:Projectile Vomit]] (${roll}) — self-splattered! `;
+
+    const { armorRoll, armorBroken, injuryRoll, outcome } = rollArmourAndInjury(victim, null);
+    if (!armorBroken) return msg + `AV ${armorRoll}/${victim.av} — armour holds.`;
+
+    const hadBall = victim.hasBall;
+    if (hadBall) {
+        victim.hasBall = false;
+        G.ball.carrier = null;
+        G.ball.col     = victim.col;
+        G.ball.row     = victim.row;
+    }
+
+    msg += `AV ${armorRoll}/${victim.av} broken! Inj ${injuryRoll}: `;
+    if (outcome === 'stunned') {
+        victim.status = 'prone';
+        markStunned(victim);
+        msg += 'Stunned.';
+    } else if (outcome === 'ko') {
+        victim.status = 'ko';
+        victim.col    = -1;
+        msg += "KO'd!";
+    } else {
+        victim.status = 'casualty';
+        victim.col    = -1;
+        msg += 'CASUALTY!';
+    }
+    if (hadBall) msg += ' ' + scatterBall(G);
+    return msg;
+}
+
 if (typeof module !== 'undefined') {
     module.exports = {
         knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm,
@@ -1275,5 +1339,6 @@ if (typeof module !== 'undefined') {
         declareHandoff, doHandoff,
         declareKick, touchbackGiveBall,
         movePlayer, activateMover,
+        declarePV, executePV,
     };
 }

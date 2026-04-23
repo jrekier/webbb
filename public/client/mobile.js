@@ -247,8 +247,47 @@ function _openWheel(player, px, py) {
     const cx = Math.max(rOuter, Math.min(canvas.width  - rOuter, px));
     const cy = Math.max(rOuter, Math.min(canvas.height - rOuter, py));
 
+    // If the player has active special skills, add a "Special" entry that
+    // swaps the wheel to a second layer. Tapping "Back" in that layer
+    // restores the main actions. Both layers share the same cx/cy/radii.
+    const specials = _buildSpecialActions(player, gc);
+    if (specials.length > 0) {
+        let mainSnap;
+        actions.push({
+            label: 'Special',
+            color: '#c080ff',
+            bg:    'rgba(60,20,100,0.92)',
+            fn: () => {
+                const back = {
+                    label: 'Back',
+                    color: 'rgba(240,192,0,0.45)',
+                    bg:    'rgba(40,30,15,0.88)',
+                    fn:    () => { wheelState = { actions: mainSnap, cx, cy, rInner, rOuter }; render(); },
+                };
+                wheelState = { actions: [...specials, back], cx, cy, rInner, rOuter };
+                render();
+            },
+        });
+        mainSnap = actions.slice();  // captured after Special is pushed — includes it
+    }
+
     wheelState = { actions, cx, cy, rInner, rOuter };
     return true;
+}
+
+// ── _buildSpecialActions ──────────────────────────────────────────────────────
+// Returns the action list for the Special wheel layer.
+// Add one entry per active special skill as they are implemented.
+// Returns an empty array (Special button stays hidden) until at least one
+// active skill is present.
+
+function _buildSpecialActions(player, gc) {
+    const actions = [];
+    if (gc.canDeclarePV)
+        actions.push({ label: 'Proj.\nVomit', color: '#80ff60', bg: 'rgba(20,70,20,0.92)', fn: onClickPV });
+    // e.g.: if (gc.canThrowTeammate)
+    //     actions.push({ label: 'Throw\nTeam', color: '#f0c000', bg: 'rgba(26,62,140,0.92)', fn: onClickThrowTeammate });
+    return actions;
 }
 
 // ── _handleWheelTap ───────────────────────────────────────────────────────────

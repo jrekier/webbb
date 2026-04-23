@@ -85,6 +85,7 @@ function cancelActivation(G) {
     }
     G.securingBall       = false;
     G.fouling            = false;
+    G.pvTargeting        = false;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -104,6 +105,7 @@ function endActivation(G) {
     G.stoodUpFromProne   = false;
     G.hasDodged          = false;
     G.fouling            = false;
+    G.pvTargeting        = false;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;

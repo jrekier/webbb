@@ -59,6 +59,10 @@ function getGameContext(G, sel, NET) {
 
     const canStop = myTurn && G.activated && (!canStillCancel(G) || G.stoodUpFromProne) && !G.block && G.passing !== 'targeting';
 
+    const canDeclarePV = !!sel?.specialSkills?.includes('Projectile Vomit')
+        && ((canDeclare && !selProne)
+            || (myTurn && G.activated?.id === sel?.id && G.blitz?.phase === 'moving'));
+
     const canUseStandFirm      = G.block && G.block.phase === 'stand-firm-choice'
         && (!NET.online || NET.side !== G.active);
 
@@ -86,6 +90,7 @@ function getGameContext(G, sel, NET) {
         canThrow,
         canCancel,
         canStop,
+        canDeclarePV,
         canUseStandFirm,
         canChooseNoIntercept,
         canConfirmSetup,

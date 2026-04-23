@@ -15,6 +15,10 @@
         { "name": "Grimfang", "pos": "Blitzer",   "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 9, "skills": ["Block"],
           "sprite": { "sheet": "assets/sprites/orc.gif", "base": { "x": 0, "y":  83, "w": 27, "h": 25 }, "armour": { "x": 32, "y":  82, "w": 27, "h": 26 } } },
         { "name": "Ugroth",   "pos": "Black Orc", "ma": 4, "st": 4, "ag": 2, "pa": 6, "av": 9, "skills": [],
-          "sprite": { "sheet": "assets/sprites/orc.gif", "base": { "x": 0, "y": 191, "w": 30, "h": 31 }, "armour": { "x": 32, "y": 191, "w": 29, "h": 31 } } }
+          "sprite": { "sheet": "assets/sprites/orc.gif", "base": { "x": 0, "y": 191, "w": 30, "h": 31 }, "armour": { "x": 32, "y": 191, "w": 29, "h": 31 } } },
+        { "name": "Grotsnot", "pos": "Troll",     "ma": 4, "st": 5, "ag": 1, "pa": 6, "av": 10,
+          "skills": ["Bone Head", "Mighty Blow", "Projectile Vomit", "Really Stupid", "Regeneration", "Throw Team-Mate"],
+          "specialSkills": ["Projectile Vomit"],
+          "sprite": { "sheet": "assets/sprites/goblin.gif", "base": { "x": 0, "y": 396, "w": 40, "h": 38 }, "armour": { "x": 38, "y": 396, "w": 40, "h": 38 } , "armourTrimLeft": 2 } }
     ]
 }

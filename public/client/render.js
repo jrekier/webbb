@@ -671,6 +671,15 @@ function drawHighlights() {
         hlCell(def.col, def.row, fill, border, false);
     }
 
+    // PV targets — green on adjacent standing enemies
+    if (G.pvTargeting && G.activated) {
+        G.players.filter(p =>
+            p.side !== G.active && isStanding(p) && isAdjacent(G.activated, p)
+        ).forEach(t => {
+            hlCell(t.col, t.row, 'rgba(80,200,60,0.25)', 'rgba(100,230,70,0.8)', false);
+        });
+    }
+
     // Foul targets — dark red on adjacent prone/stunned enemies
     if (G.fouling && G.activated) {
         G.players.filter(p =>
