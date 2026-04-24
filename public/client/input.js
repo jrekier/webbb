@@ -207,7 +207,7 @@ function _onPointerMove(e) {
         passHover = { col: Math.floor(px / CELL), row: Math.floor((py + cameraY) / CELL) };
         render();
     }
-    if (G.ttm?.phase === 'targeting' && !G.confirm) {
+    if (G.throwTeamMate?.phase === 'targeting' && !G.confirm) {
         ttmHover = { col: Math.floor(px / CELL), row: Math.floor((py + cameraY) / CELL) };
         render();
     }
@@ -365,7 +365,7 @@ function _onTap(clientX, clientY) {
     // In states where a tap picks a target (pass, intercept), delay the action
     // by 260 ms so a quick second tap can show the tooltip instead of firing
     // an accidental game action.
-    const needsDelay = G.passing === 'targeting' || !!G.interceptionChoice || G.ttm?.phase === 'targeting';
+    const needsDelay = G.passing === 'targeting' || !!G.interceptionChoice || G.throwTeamMate?.phase === 'targeting';
     if (needsDelay) {
         if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
         _pendingTap = { timer: setTimeout(() => {
@@ -664,8 +664,20 @@ function clickPlayer(player) {
         return;
     }
 
+    // Animal Savagery — pick an adjacent standing teammate to attack.
+    if (G.animalSavagery?.phase === 'pick-target') {
+        const asPlayer = G.players.find(pl => pl.id === G.animalSavagery.playerId);
+        if (asPlayer && player.side === G.active && player.id !== asPlayer.id
+                && isStanding(player) && isAdjacent(asPlayer, player)) {
+            if (NET.online) sendAction({ type: 'AS_PICK_TARGET', targetId: player.id });
+            else { const msg = resolveASBlock(G, player.id); if (msg) log(msg); }
+            render();
+            return;
+        }
+    }
+
     // TTM pick-missile — tap an adjacent standing Right Stuff teammate.
-    if (G.ttm?.phase === 'pick-missile' && G.activated && player.side === G.active
+    if (G.throwTeamMate?.phase === 'pick-missile' && G.activated && player.side === G.active
             && player.id !== G.activated.id && player.skills?.includes('Right Stuff')
             && isStanding(player) && isAdjacent(G.activated, player)) {
         if (NET.online) sendAction({ type: 'TTM_PICK_MISSILE', missileId: player.id });
@@ -675,7 +687,7 @@ function clickPlayer(player) {
     }
 
     // TTM targeting — throw to this player's square.
-    if (G.ttm?.phase === 'targeting' && G.activated && player.id !== G.activated.id) {
+    if (G.throwTeamMate?.phase === 'targeting' && G.activated && player.id !== G.activated.id) {
         ttmHover = null;
         _doTTMThrow(player.col, player.row);
         return;
@@ -753,7 +765,7 @@ function clickCell(col, row) {
     }
 
     // TTM targeting — any tap resolves the throw.
-    if (G.ttm?.phase === 'targeting' && G.activated) {
+    if (G.throwTeamMate?.phase === 'targeting' && G.activated) {
         ttmHover = null;
         _doTTMThrow(col, row);
         return;
@@ -905,8 +917,8 @@ function onClickPass() {
 }
 
 function onClickCancel() {
-    if (G.ttm?.phase === 'targeting') {
-        G.ttm    = { phase: 'pick-missile' };
+    if (G.throwTeamMate?.phase === 'targeting') {
+        G.throwTeamMate    = { phase: 'pick-missile' };
         ttmHover = null;
         log('Missile unselected — pick again or move first.');
         render();

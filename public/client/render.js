@@ -630,7 +630,7 @@ function drawHighlights() {
         canPreview && G.sel && !G.sel.usedAction && G.sel.side === G.active
         && G.sel.status !== 'stunned' && !G.block ? G.sel : null
     );
-    if (mover && G.phase !== 'setup' && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && G.ttm?.phase !== 'targeting' && !G.interceptionChoice) {
+    if (mover && G.phase !== 'setup' && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && G.throwTeamMate?.phase !== 'targeting' && !G.interceptionChoice) {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, mover, c, r);
@@ -672,8 +672,21 @@ function drawHighlights() {
         hlCell(def.col, def.row, fill, border, false);
     }
 
+    // Animal Savagery pick-target — red on adjacent standing teammates
+    if (G.animalSavagery?.phase === 'pick-target') {
+        const asPlayer = G.players.find(p => p.id === G.animalSavagery.playerId);
+        if (asPlayer) {
+            G.players.filter(p =>
+                p.side === G.active && p.id !== asPlayer.id
+                && isStanding(p) && p.col >= 0 && isAdjacent(asPlayer, p)
+            ).forEach(t => {
+                hlCell(t.col, t.row, 'rgba(220,50,50,0.30)', 'rgba(240,80,80,0.90)', false);
+            });
+        }
+    }
+
     // TTM pick-missile — purple on adjacent standing Right Stuff teammates
-    if (G.ttm?.phase === 'pick-missile' && G.activated) {
+    if (G.throwTeamMate?.phase === 'pick-missile' && G.activated) {
         G.players.filter(p =>
             p.side === G.active && p.id !== G.activated.id
             && p.skills?.includes('Right Stuff') && isStanding(p)
@@ -684,8 +697,8 @@ function drawHighlights() {
     }
 
     // TTM targeting — highlight the selected missile's current square
-    if (G.ttm?.phase === 'targeting' && G.ttm.missileId) {
-        const missile = G.players.find(p => p.id === G.ttm.missileId);
+    if (G.throwTeamMate?.phase === 'targeting' && G.throwTeamMate.missileId) {
+        const missile = G.players.find(p => p.id === G.throwTeamMate.missileId);
         if (missile && missile.col >= 0) {
             hlCell(missile.col, missile.row, 'rgba(180,80,220,0.40)', 'rgba(200,100,240,1.0)', false);
         }
@@ -1300,11 +1313,11 @@ function drawPassTargetingOverlay() {
 }
 
 // ── drawTTMTargetingOverlay ───────────────────────────────────────
-// Drawn during G.ttm.phase === 'targeting'.
+// Drawn during G.throwTeamMate.phase === 'targeting'.
 // Shows Quick/Short range bands and a hover trajectory (purple tint).
 
 function drawTTMTargetingOverlay() {
-    if (!G.ttm || G.ttm.phase !== 'targeting') return;
+    if (!G.throwTeamMate || G.throwTeamMate.phase !== 'targeting') return;
     if (!G.activated || !ctx) return;
     const p = G.activated;
 

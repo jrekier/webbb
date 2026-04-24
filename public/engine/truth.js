@@ -58,11 +58,11 @@ function getGameContext(G, sel, NET) {
 
     const canCancel = myTurn && (G.passing === 'targeting'
         || G.block === 'targeting'
-        || G.ttm?.phase === 'targeting'
+        || G.throwTeamMate?.phase === 'targeting'
         || (G.activated && canStillCancel(G) && !G.block));
 
     const canStop = myTurn && G.activated && (!canStillCancel(G) || G.stoodUpFromProne) && !G.block
-        && G.passing !== 'targeting' && G.ttm?.phase !== 'targeting';
+        && G.passing !== 'targeting' && G.throwTeamMate?.phase !== 'targeting';
 
     const canDeclarePV = !!sel?.specialSkills?.includes('Projectile Vomit')
         && ((canDeclare && !selProne)
@@ -70,6 +70,10 @@ function getGameContext(G, sel, NET) {
 
     const canDeclareTTM = canDeclare && !G.hasThrownMate
         && !!sel?.skills?.includes('Throw Team-Mate');
+
+    const canPickASTarget = myTurn && !!G.animalSavagery
+        && G.animalSavagery.phase === 'pick-target'
+        && (!NET.online || NET.side === G.active);
 
     const canUseStandFirm      = G.block && G.block.phase === 'stand-firm-choice'
         && (!NET.online || NET.side !== G.active);
@@ -100,6 +104,7 @@ function getGameContext(G, sel, NET) {
         canStop,
         canDeclarePV,
         canDeclareTTM,
+        canPickASTarget,
         canUseStandFirm,
         canChooseNoIntercept,
         canConfirmSetup,

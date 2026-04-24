@@ -52,35 +52,151 @@ function knockDown(G, p, { attacker } = {}) {
     return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: CASUALTY!`;
 }
 
-// ── _boneHeadCheck ────────────────────────────────────────────────
-// Rolls Bone Head if the player has the trait.
-// On 2+: clears any previous bonedHead flag, returns null (proceed).
-// On 1: sets flag, ends activation. causesTurnover=true calls endTurn.
-// Returns a log message on failure, null on pass or when trait absent.
+// ── _boneHeadCheck / _reallyStupidCheck / _preActivate ────────────
+// Pre-activation trait checks. Each returns { msg, abort } when the
+// trait is present, null when absent. _preActivate combines both.
 
 function _boneHeadCheck(G, p, causesTurnover) {
     if (!p.skills?.includes('Bone Head')) return null;
     const roll = Math.floor(Math.random() * 6) + 1;
     if (roll >= 2) {
         p.bonedHead = false;
-        return null;
+        return { msg: `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — OK!`, abort: false };
     }
     p.bonedHead  = true;
     p.usedAction = true;
     G.activated  = null;
     G.block      = null;
     G.blitz      = null;
+    G.throwTeamMate        = null;
     const base = `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — activation lost!`;
-    if (causesTurnover) { endTurn(G); return base + ' TURNOVER'; }
-    return base;
+    if (causesTurnover) { endTurn(G); return { msg: base + ' TURNOVER', abort: true }; }
+    return { msg: base, abort: true };
+}
+
+function _reallyStupidCheck(G, p, causesTurnover) {
+    if (!p.skills?.includes('Really Stupid')) return null;
+    const hasFriend = G.players.some(f =>
+        f.id !== p.id && f.side === p.side && isStanding(f)
+        && !f.usedAction && f.col >= 0
+        && !f.skills?.includes('Bone Head') && !f.skills?.includes('Really Stupid')
+        && Math.abs(f.col - p.col) <= 3 && Math.abs(f.row - p.row) <= 3
+    );
+    const target = hasFriend ? 2 : 4;
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    const ctx    = hasFriend ? 'friend nearby' : 'alone';
+    if (roll >= target) {
+        p.reallyStupid = false;
+        return { msg: `${pn(p)} [[skill:Really Stupid]] (${ctx}, rolled ${roll}/${target}+) — OK!`, abort: false };
+    }
+    p.reallyStupid = true;
+    p.usedAction   = true;
+    G.activated    = null;
+    G.block        = null;
+    G.blitz        = null;
+    G.throwTeamMate          = null;
+    const base = `${pn(p)} [[skill:Really Stupid]] (${ctx}, rolled ${roll}/${target}+) — too stupid to act!`;
+    if (causesTurnover) { endTurn(G); return { msg: base + ' TURNOVER', abort: true }; }
+    return { msg: base, abort: true };
+}
+
+function _animalSavageryCheck(G, p) {
+    if (!p.skills?.includes('Animal Savagery')) return null;
+    const roll = Math.floor(Math.random() * 6) + 1;
+    if (roll >= 2) {
+        return { msg: `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}) — OK!`, abort: false };
+    }
+
+    p.usedAction = true;
+    G.activated  = null;
+    G.block      = null;
+    G.blitz      = null;
+    G.throwTeamMate = null;
+
+    const base = `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}) — goes berserk!`;
+    const adjacentFriends = G.players.filter(f =>
+        f.id !== p.id && f.side === p.side && isStanding(f) && f.col >= 0 && isAdjacent(p, f)
+    );
+
+    if (adjacentFriends.length === 0) {
+        return { msg: base + ' No adjacent teammate — activation lost.', abort: true };
+    }
+
+    G.animalSavagery = { phase: 'pick-target', playerId: p.id };
+    return { msg: base + ' Pick an adjacent teammate to attack.', abort: true };
+}
+
+function resolveASBlock(G, targetId) {
+    if (!G.animalSavagery || G.animalSavagery.phase !== 'pick-target') return null;
+    const p      = G.players.find(pl => pl.id === G.animalSavagery.playerId);
+    const target = G.players.find(pl => pl.id === targetId);
+    if (!p || !target) return null;
+    if (target.id === p.id || target.side !== p.side) return null;
+    if (!isStanding(target) || target.col < 0 || !isAdjacent(p, target)) return null;
+
+    G.animalSavagery = null;
+
+    const { dice } = blockDiceCount(p.st, target.st);
+    const rolls    = rollBlockDice(dice);
+
+    const priority = ['DEF_DOWN', 'DEF_STUMBLES', 'PUSH', 'BOTH_DOWN', 'ATT_DOWN'];
+    const face = priority.reduce((best, id) => best || rolls.find(f => f.id === id), null) || rolls[0];
+    const rollStr = rolls.map(f => f.label.replace('\n', ' ')).join(', ');
+
+    let msg = `${pn(p)} attacks ${pn(target)} (${dice}d: ${rollStr} → ${face.label.replace('\n', ' ')}). `;
+    let turnover = false;
+
+    if (face.id === 'ATT_DOWN') {
+        msg += knockDown(G, p);
+        if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
+    } else if (face.id === 'BOTH_DOWN') {
+        if (!p.skills?.includes('Block')) {
+            msg += knockDown(G, p) + ' ';
+            if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += scatterBall(G) + ' ';
+        }
+        if (!target.skills?.includes('Block')) {
+            msg += knockDown(G, target);
+            if (!G.ball.carrier && G.ball.col === target.col && G.ball.row === target.row) msg += ' ' + scatterBall(G);
+            turnover = true;
+        }
+    } else if (face.id === 'PUSH') {
+        msg += `${pn(target)} pushed (no movement).`;
+    } else if (face.id === 'DEF_STUMBLES') {
+        if (!target.skills?.includes('Dodge')) {
+            msg += knockDown(G, target);
+            if (!G.ball.carrier && G.ball.col === target.col && G.ball.row === target.row) msg += ' ' + scatterBall(G);
+            turnover = true;
+        } else {
+            msg += `${pn(target)} stumbles but uses Dodge — stays up.`;
+        }
+    } else if (face.id === 'DEF_DOWN') {
+        msg += knockDown(G, target);
+        if (!G.ball.carrier && G.ball.col === target.col && G.ball.row === target.row) msg += ' ' + scatterBall(G);
+        turnover = true;
+    }
+
+    if (turnover) { endTurn(G); msg += ' TURNOVER'; }
+    return msg.trimEnd();
+}
+
+function _preActivate(G, p, causesTurnover) {
+    const bh = _boneHeadCheck(G, p, causesTurnover);
+    if (bh?.abort) return bh;
+    const rs = _reallyStupidCheck(G, p, causesTurnover);
+    if (rs?.abort) return { msg: (bh ? bh.msg + ' ' : '') + rs.msg, abort: true };
+    const as = _animalSavageryCheck(G, p);
+    if (as?.abort) return { msg: [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' '), abort: true };
+    const msg = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    return msg ? { msg, abort: false } : null;
 }
 
 // ── declareBlock ─────────────────────────────────────────────────
 // Rolls block dice and sets G.block with phase 'pick-face'.
 
 function declareBlock(G, att, def) {
-    const bhMsg = _boneHeadCheck(G, att, true);
-    if (bhMsg !== null) return bhMsg;
+    const pre = _preActivate(G, att, true);
+    if (pre?.abort) return pre.msg;
+    const preMsg = pre ? pre.msg + ' ' : '';
 
     const { attStr, defStr } = countAssists(G, att, def);
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
@@ -93,7 +209,7 @@ function declareBlock(G, att, def) {
         pushSquares: null,
     };
 
-    return `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d`;
+    return preMsg + `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d`;
 }
 
 // ── pickBlockFace ─────────────────────────────────────────────────
@@ -355,12 +471,13 @@ function resolveStandFirm(G, use) {
 function declareFoul(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bhMsg = _boneHeadCheck(G, p, false);
-    if (bhMsg !== null) return bhMsg;
+    const pre = _preActivate(G, p, false);
+    if (pre?.abort) return pre.msg;
+    const preMsg = pre ? pre.msg + ' ' : '';
     G.activated = p;
     G.sel       = p;
     G.fouling   = true;
-    return `${pn(p)} [[foul:declares Foul]] — move adjacent to a prone/stunned enemy.`;
+    return preMsg + `${pn(p)} [[foul:declares Foul]] — move adjacent to a prone/stunned enemy.`;
 }
 
 function executeFoul(G, targetId) {
@@ -463,8 +580,9 @@ function activateBlitz(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
     G.hasBlitzed = true;
-    const bhMsg = _boneHeadCheck(G, p, true);
-    if (bhMsg !== null) return bhMsg;
+    const pre = _preActivate(G, p, true);
+    if (pre?.abort) return pre.msg;
+    const preMsg = pre ? pre.msg + ' ' : '';
 
     G.activated  = p;
     G.blitz      = 'targeting';
@@ -473,7 +591,7 @@ function activateBlitz(G, playerId) {
         p.maLeft         = Math.max(0, p.maLeft - 3);
         G.blitzFromProne = true;
     }
-    return `${pn(p)} [[block:declares blitz]] — click a target`;
+    return preMsg + `${pn(p)} [[block:declares blitz]] — click a target`;
 }
 
 // ── setBlitzTarget ────────────────────────────────────────────────
@@ -768,14 +886,15 @@ function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
 function declarePass(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bhMsg = _boneHeadCheck(G, p, false);
-    if (bhMsg !== null) return bhMsg;
+    const pre = _preActivate(G, p, false);
+    if (pre?.abort) return pre.msg;
+    const preMsg = pre ? pre.msg + ' ' : '';
 
     G.activated     = p;
     G.sel           = p;
     G.passing       = true;
     G.hasPassReroll = false;
-    return `${pn(p)} [[skill:declares Pass]] — move to the ball if needed, then press Throw.`;
+    return preMsg + `${pn(p)} [[skill:declares Pass]] — move to the ball if needed, then press Throw.`;
 }
 
 // ── getInterceptors ───────────────────────────────────────────────
@@ -1005,13 +1124,14 @@ function chooseInterceptor(G, interceptorId) {
 function declareHandoff(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bhMsg = _boneHeadCheck(G, p, false);
-    if (bhMsg !== null) return bhMsg;
+    const pre = _preActivate(G, p, false);
+    if (pre?.abort) return pre.msg;
+    const preMsg = pre ? pre.msg + ' ' : '';
 
     G.activated  = p;
     G.sel        = p;
     G.handingOff = true;
-    return `${pn(p)} [[skill:declares Handoff]] — move to a teammate and hand off.`;
+    return preMsg + `${pn(p)} [[skill:declares Handoff]] — move to a teammate and hand off.`;
 }
 
 // Execute the handoff to an adjacent standing teammate.
@@ -1228,11 +1348,13 @@ function activateMover(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
 
-    const bhMsg = _boneHeadCheck(G, p, false);
-    if (bhMsg !== null) return bhMsg;
+    const pre = _preActivate(G, p, false);
+    if (pre?.abort) return pre.msg;
+    const preMsg = pre ? pre.msg + ' ' : '';
 
     if (p.status !== 'prone') {
-        return activatePlayer(G, playerId);
+        const r = activatePlayer(G, playerId);
+        return r != null ? preMsg + r : null;
     }
 
     // Prone: need at least 3 total MA+rush to stand
@@ -1250,7 +1372,7 @@ function activateMover(G, playerId) {
             let injMsg = knockDown(G, p);
             if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) injMsg += ' ' + scatterBall(G);
             endTurn(G);
-            return `${pn(p)} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
+            return preMsg + `${pn(p)} fails to stand (rolled ${rolls.join(', ')}). ${injMsg} TURNOVER`;
         }
     }
 
@@ -1261,7 +1383,7 @@ function activateMover(G, playerId) {
 
     const rollStr = rolls.length ? ` (rushed: ${rolls.join(', ')})` : '';
     const maStr   = p.maLeft > 0 ? ` · ${p.maLeft} MA left` : '';
-    return `${pn(p)} [[move:stands up]]${rollStr}${maStr}`;
+    return preMsg + `${pn(p)} [[move:stands up]]${rollStr}${maStr}`;
 }
 
 // ── declarePV ─────────────────────────────────────────────────────
@@ -1337,20 +1459,21 @@ function executePV(G, targetId) {
 function declareTTM(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bhMsg = _boneHeadCheck(G, p, false);
-    if (bhMsg !== null) return bhMsg;
+    const pre = _preActivate(G, p, false);
+    if (pre?.abort) return pre.msg;
+    const preMsg = pre ? pre.msg + ' ' : '';
 
     G.activated = p;
     G.sel       = p;
-    G.ttm       = { phase: 'pick-missile' };
-    return `${pn(p)} [[skill:declares Throw Team-Mate]] — pick an adjacent teammate with Right Stuff.`;
+    G.throwTeamMate       = { phase: 'pick-missile' };
+    return preMsg + `${pn(p)} [[skill:declares Throw Team-Mate]] — pick an adjacent teammate with Right Stuff.`;
 }
 
 // ── pickTTMMissile ──────────────────────────────────────────────────
 // Locks in the player to be thrown and enters targeting phase.
 
 function pickTTMMissile(G, missileId) {
-    if (!G.ttm || G.ttm.phase !== 'pick-missile') return null;
+    if (!G.throwTeamMate || G.throwTeamMate.phase !== 'pick-missile') return null;
     if (!G.activated) return null;
     const p       = G.activated;
     const missile = G.players.find(pl => pl.id === missileId);
@@ -1361,7 +1484,7 @@ function pickTTMMissile(G, missileId) {
     if (!isStanding(missile)) return null;
     if (!isAdjacent(p, missile)) return null;
 
-    G.ttm = { phase: 'targeting', missileId };
+    G.throwTeamMate = { phase: 'targeting', missileId };
     return `${pn(p)} picks up ${pn(missile)} — click target square to throw.`;
 }
 
@@ -1572,10 +1695,10 @@ function _landMissile(G, missile, col, row, msg, landMod, fromCol, fromRow) {
 // Fumble: bounce ×1 from thrower's square, landing roll (-1 modifier).
 
 function throwTeamMate(G, targetCol, targetRow) {
-    if (!G.ttm || G.ttm.phase !== 'targeting') return null;
+    if (!G.throwTeamMate || G.throwTeamMate.phase !== 'targeting') return null;
     if (!G.activated) return null;
     const p       = G.activated;
-    const missile = G.players.find(pl => pl.id === G.ttm.missileId);
+    const missile = G.players.find(pl => pl.id === G.throwTeamMate.missileId);
     if (!missile) return null;
     if (targetCol < 0 || targetCol >= COLS || targetRow < 0 || targetRow >= ROWS) return null;
 
@@ -1595,7 +1718,7 @@ function throwTeamMate(G, targetCol, targetRow) {
     const effStr = mods > 0 ? ` → eff. ${effectiveRoll}` : '';
     let msg = `${pn(p)} [[skill:Throw Team-Mate]] ${pn(missile)} (${range.label}, PA${p.pa}+${mods > 0 ? ` +${mods}` : ''}): rolled ${rawRoll}${effStr}. `;
 
-    G.ttm           = null;
+    G.throwTeamMate           = null;
     G.hasThrownMate = true;
     const throwerCol = p.col;
     const throwerRow = p.row;
@@ -1627,5 +1750,6 @@ if (typeof module !== 'undefined') {
         movePlayer, activateMover,
         declarePV, executePV,
         declareTTM, pickTTMMissile, throwTeamMate,
+        resolveASBlock,
     };
 }

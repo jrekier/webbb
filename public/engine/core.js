@@ -45,7 +45,8 @@ function createInitialState() {
         hasPassReroll:      false,
         passRerollChoice:   null,
         interceptionChoice: null,
-        ttm:                null,
+        throwTeamMate:      null,
+        animalSavagery:     null,
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
     };
@@ -89,7 +90,8 @@ function cancelActivation(G) {
     G.securingBall       = false;
     G.fouling            = false;
     G.pvTargeting        = false;
-    G.ttm                = null;
+    G.throwTeamMate      = null;
+    G.animalSavagery     = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -110,7 +112,8 @@ function endActivation(G) {
     G.hasDodged          = false;
     G.fouling            = false;
     G.pvTargeting        = false;
-    G.ttm                = null;
+    G.throwTeamMate      = null;
+    G.animalSavagery     = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -144,6 +147,7 @@ function endTurn(G) {
     G.blitzFromProne = false;
     G.securingBall       = false;
     G.fouling            = false;
+    G.animalSavagery     = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -212,7 +216,8 @@ function startHalfTime(G) {
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
     G.fouling            = false;
-    G.ttm                = null;
+    G.throwTeamMate      = null;
+    G.animalSavagery     = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passRerollChoice   = null;
@@ -351,7 +356,8 @@ function resetAfterTouchdown(G, scoringSide) {
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
     G.fouling            = false;
-    G.ttm                = null;
+    G.throwTeamMate      = null;
+    G.animalSavagery     = null;
     G.argueCallPending   = null;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
