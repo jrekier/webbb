@@ -21,10 +21,14 @@ const {
     activateMover, movePlayer,
     activateBlitz, setBlitzTarget, blitzBlock,
     declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
+    resolveFend, resolveStandFirm, resolveStripBall,
+    resolveASBlock,
     declareFoul, executeFoul, resolveArgueCall,
     declareHandoff, doHandoff,
     declarePass, throwBall, resolvePassReroll, chooseInterceptor,
     declareKick, touchbackGiveBall, secureBall,
+    declarePV, executePV,
+    declareTTM, pickTTMMissile, throwTeamMate,
 } = require('./public/engine/actions.js');
 const TM = require('./public/engine/teams.js');
 const { getGameContext } = require('./public/engine/truth.js');
@@ -521,10 +525,16 @@ function handleAction(room, msg) {
                 room.lastLogMsg = pickPushSquare(G, msg.col, msg.row);
             break;
         }
-        case 'FOLLOW_UP': {
-            room.lastLogMsg = resolveFollowUp(G, msg.choice);
-            break;
-        }
+        case 'FOLLOW_UP':   room.lastLogMsg = resolveFollowUp(G, msg.choice);         break;
+        case 'FEND':        room.lastLogMsg = resolveFend(G, msg.use);                break;
+        case 'STAND_FIRM':  room.lastLogMsg = resolveStandFirm(G, msg.use);           break;
+        case 'STRIP_BALL':  room.lastLogMsg = resolveStripBall(G, msg.use);           break;
+        case 'AS_PICK_TARGET': room.lastLogMsg = resolveASBlock(G, msg.targetId);     break;
+        case 'PV_DECLARE':  if (!gc.canDeclarePV)  return; room.lastLogMsg = declarePV(G, msg.playerId);       break;
+        case 'PV_EXECUTE':  room.lastLogMsg = executePV(G, msg.targetId);             break;
+        case 'TTM_DECLARE': if (!gc.canDeclareTTM) return; room.lastLogMsg = declareTTM(G, msg.playerId);      break;
+        case 'TTM_PICK_MISSILE': room.lastLogMsg = pickTTMMissile(G, msg.missileId);  break;
+        case 'TTM_THROW':   room.lastLogMsg = throwTeamMate(G, msg.col, msg.row);     break;
     }
 }
 

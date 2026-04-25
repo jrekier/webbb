@@ -47,6 +47,7 @@ function createInitialState() {
         interceptionChoice: null,
         throwTeamMate:      null,
         animalSavagery:     null,
+        targeting:          null,
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
     };
@@ -92,6 +93,7 @@ function cancelActivation(G) {
     G.pvTargeting        = false;
     G.throwTeamMate      = null;
     G.animalSavagery     = null;
+    G.targeting          = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -114,6 +116,7 @@ function endActivation(G) {
     G.pvTargeting        = false;
     G.throwTeamMate      = null;
     G.animalSavagery     = null;
+    G.targeting          = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -148,6 +151,7 @@ function endTurn(G) {
     G.securingBall       = false;
     G.fouling            = false;
     G.animalSavagery     = null;
+    G.targeting          = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passing            = false;
@@ -218,6 +222,7 @@ function startHalfTime(G) {
     G.fouling            = false;
     G.throwTeamMate      = null;
     G.animalSavagery     = null;
+    G.targeting          = null;
     G.argueCallPending   = null;
     G.handingOff         = false;
     G.passRerollChoice   = null;
@@ -358,6 +363,7 @@ function resetAfterTouchdown(G, scoringSide) {
     G.fouling            = false;
     G.throwTeamMate      = null;
     G.animalSavagery     = null;
+    G.targeting          = null;
     G.argueCallPending   = null;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;

@@ -790,7 +790,7 @@ function clickCell(col, row) {
     }
 
     // Selected but not yet activated — activate-and-move on a highlighted cell.
-    if (G.sel && G.sel.side === G.active && !G.sel.usedAction && !G.block) {
+    if (G.sel && G.sel.side === G.active && !G.sel.usedAction && !G.block && !G.targeting) {
         const { allowed } = canMoveTo(G, G.sel, col, row);
         if (!allowed) return;
         if (NET.online) {
@@ -829,6 +829,7 @@ function onClickBlock() {
     if (G.sel.status !== 'active') return;  // prone/stunned players can't block
     G.activated = G.sel;
     G.block     = 'targeting';
+    G.targeting = true;
     log(`${G.sel.name} declares block — click a target`);
     render();
 }
@@ -868,8 +869,9 @@ function _doThrow(col, row) {
 
 function onClickThrow() {
     if (!G.passing || !G.activated || !G.activated.hasBall) return;
-    G.passing = 'targeting';
-    passHover = null;
+    G.passing   = 'targeting';
+    G.targeting = true;
+    passHover   = null;
     log(`${G.activated.name} ready to throw — click target square.`);
     render();
 }
@@ -1026,6 +1028,36 @@ function updateButtons() {
             onNo: () => {
                 if (NET.online) sendAction({ type: 'STAND_FIRM', use: false });
                 else { const m = resolveStandFirm(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Fend — defending team may deny the attacker's follow-up.
+    if (gc.canUseFend && !G.confirm) {
+        G.confirm = {
+            prompt: `${G.block.def?.name} — use Fend to deny follow-up?`,
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'FEND', use: true });
+                else { const m = resolveFend(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'FEND', use: false });
+                else { const m = resolveFend(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Strip Ball — attacking team may force a pushed ball carrier to drop the ball.
+    if (gc.canUseStripBall && !G.confirm) {
+        G.confirm = {
+            prompt: `${G.block.att?.name} — use Strip Ball against ${G.block.def?.name}?`,
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'STRIP_BALL', use: true });
+                else { const m = resolveStripBall(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'STRIP_BALL', use: false });
+                else { const m = resolveStripBall(G, false); if (m) log(m); }
             },
         };
     }

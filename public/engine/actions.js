@@ -56,7 +56,7 @@ function knockDown(G, p, { attacker } = {}) {
 // Pre-activation trait checks. Each returns { msg, abort } when the
 // trait is present, null when absent. _preActivate combines both.
 
-function _boneHeadCheck(G, p, causesTurnover) {
+function _boneHeadCheck(G, p) {
     if (!p.skills?.includes('Bone Head')) return null;
     const roll = Math.floor(Math.random() * 6) + 1;
     if (roll >= 2) {
@@ -68,13 +68,11 @@ function _boneHeadCheck(G, p, causesTurnover) {
     G.activated  = null;
     G.block      = null;
     G.blitz      = null;
-    G.throwTeamMate        = null;
-    const base = `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — activation lost!`;
-    if (causesTurnover) { endTurn(G); return { msg: base + ' TURNOVER', abort: true }; }
-    return { msg: base, abort: true };
+    G.throwTeamMate = null;
+    return { msg: `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — activation lost!`, abort: true };
 }
 
-function _reallyStupidCheck(G, p, causesTurnover) {
+function _reallyStupidCheck(G, p) {
     if (!p.skills?.includes('Really Stupid')) return null;
     const hasFriend = G.players.some(f =>
         f.id !== p.id && f.side === p.side && isStanding(f)
@@ -94,17 +92,16 @@ function _reallyStupidCheck(G, p, causesTurnover) {
     G.activated    = null;
     G.block        = null;
     G.blitz        = null;
-    G.throwTeamMate          = null;
-    const base = `${pn(p)} [[skill:Really Stupid]] (${ctx}, rolled ${roll}/${target}+) — too stupid to act!`;
-    if (causesTurnover) { endTurn(G); return { msg: base + ' TURNOVER', abort: true }; }
-    return { msg: base, abort: true };
+    G.throwTeamMate = null;
+    return { msg: `${pn(p)} [[skill:Really Stupid]] (${ctx}, rolled ${roll}/${target}+) — too stupid to act!`, abort: true };
 }
 
-function _animalSavageryCheck(G, p) {
+function _animalSavageryCheck(G, p, isBlockOrBlitz) {
     if (!p.skills?.includes('Animal Savagery')) return null;
-    const roll = Math.floor(Math.random() * 6) + 1;
-    if (roll >= 2) {
-        return { msg: `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}) — OK!`, abort: false };
+    const target = isBlockOrBlitz ? 2 : 4;
+    const roll   = Math.floor(Math.random() * 6) + 1;
+    if (roll >= target) {
+        return { msg: `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}/${target}+) — OK!`, abort: false };
     }
 
     p.usedAction = true;
@@ -113,7 +110,7 @@ function _animalSavageryCheck(G, p) {
     G.blitz      = null;
     G.throwTeamMate = null;
 
-    const base = `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}) — goes berserk!`;
+    const base = `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}/${target}+) — goes berserk!`;
     const adjacentFriends = G.players.filter(f =>
         f.id !== p.id && f.side === p.side && isStanding(f) && f.col >= 0 && isAdjacent(p, f)
     );
@@ -123,6 +120,7 @@ function _animalSavageryCheck(G, p) {
     }
 
     G.animalSavagery = { phase: 'pick-target', playerId: p.id };
+    G.targeting      = true;
     return { msg: base + ' Pick an adjacent teammate to attack.', abort: true };
 }
 
@@ -135,56 +133,20 @@ function resolveASBlock(G, targetId) {
     if (!isStanding(target) || target.col < 0 || !isAdjacent(p, target)) return null;
 
     G.animalSavagery = null;
+    G.targeting      = null;
 
-    const { dice } = blockDiceCount(p.st, target.st);
-    const rolls    = rollBlockDice(dice);
-
-    const priority = ['DEF_DOWN', 'DEF_STUMBLES', 'PUSH', 'BOTH_DOWN', 'ATT_DOWN'];
-    const face = priority.reduce((best, id) => best || rolls.find(f => f.id === id), null) || rolls[0];
-    const rollStr = rolls.map(f => f.label.replace('\n', ' ')).join(', ');
-
-    let msg = `${pn(p)} attacks ${pn(target)} (${dice}d: ${rollStr} → ${face.label.replace('\n', ' ')}). `;
-    let turnover = false;
-
-    if (face.id === 'ATT_DOWN') {
-        msg += knockDown(G, p);
-        if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
-    } else if (face.id === 'BOTH_DOWN') {
-        if (!p.skills?.includes('Block')) {
-            msg += knockDown(G, p) + ' ';
-            if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += scatterBall(G) + ' ';
-        }
-        if (!target.skills?.includes('Block')) {
-            msg += knockDown(G, target);
-            if (!G.ball.carrier && G.ball.col === target.col && G.ball.row === target.row) msg += ' ' + scatterBall(G);
-            turnover = true;
-        }
-    } else if (face.id === 'PUSH') {
-        msg += `${pn(target)} pushed (no movement).`;
-    } else if (face.id === 'DEF_STUMBLES') {
-        if (!target.skills?.includes('Dodge')) {
-            msg += knockDown(G, target);
-            if (!G.ball.carrier && G.ball.col === target.col && G.ball.row === target.row) msg += ' ' + scatterBall(G);
-            turnover = true;
-        } else {
-            msg += `${pn(target)} stumbles but uses Dodge — stays up.`;
-        }
-    } else if (face.id === 'DEF_DOWN') {
-        msg += knockDown(G, target);
-        if (!G.ball.carrier && G.ball.col === target.col && G.ball.row === target.row) msg += ' ' + scatterBall(G);
-        turnover = true;
-    }
-
-    if (turnover) { endTurn(G); msg += ' TURNOVER'; }
+    const hitMsg = knockDown(G, target);
+    let msg = `${pn(p)} [[skill:Animal Savagery]] hits ${pn(target)}! ${hitMsg}`;
+    if (!G.ball.carrier && G.ball.col === target.col && G.ball.row === target.row) msg += ' ' + scatterBall(G);
     return msg.trimEnd();
 }
 
-function _preActivate(G, p, causesTurnover) {
-    const bh = _boneHeadCheck(G, p, causesTurnover);
+function _preActivate(G, p, isBlockOrBlitz = false) {
+    const bh = _boneHeadCheck(G, p);
     if (bh?.abort) return bh;
-    const rs = _reallyStupidCheck(G, p, causesTurnover);
+    const rs = _reallyStupidCheck(G, p);
     if (rs?.abort) return { msg: (bh ? bh.msg + ' ' : '') + rs.msg, abort: true };
-    const as = _animalSavageryCheck(G, p);
+    const as = _animalSavageryCheck(G, p, isBlockOrBlitz);
     if (as?.abort) return { msg: [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' '), abort: true };
     const msg = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
     return msg ? { msg, abort: false } : null;
@@ -192,6 +154,10 @@ function _preActivate(G, p, causesTurnover) {
 
 // ── declareBlock ─────────────────────────────────────────────────
 // Rolls block dice and sets G.block with phase 'pick-face'.
+// G.block.frenzy is intentionally absent here. It is only set to true
+// by resolveFollowUp when spawning the mandatory Frenzy second block,
+// so that resolveFollowUp can distinguish "first block (may still
+// trigger Frenzy)" from "second block (Frenzy already spent)".
 
 function declareBlock(G, att, def) {
     const pre = _preActivate(G, att, true);
@@ -279,7 +245,7 @@ function pickBlockFace(G, face) {
 // Moves the defender, optionally knocks them down, offers follow-up.
 
 function pickPushSquare(G, col, row) {
-    const { att, def, chosenFace } = G.block;
+    const { att, def, chosenFace, frenzy } = G.block;
     const vacCol = def.col;
     const vacRow = def.row;
 
@@ -307,8 +273,10 @@ function pickPushSquare(G, col, row) {
         def.row = -1;
         // Ball thrown back in from the boundary (no scatter).
         if (hadBall) msg += ' ' + throwIn(G, vacCol, vacRow, col, row);
-        const followUp = G.block.pendingFollowUp || { att, vacCol, vacRow };
-        G.block = { phase: 'follow-up', att: followUp.att, vacCol: followUp.vacCol, vacRow: followUp.vacRow };
+        const followUp = G.block.pendingFollowUp || { att, def, vacCol, vacRow, frenzy };
+        G.block = { phase: 'follow-up', att: followUp.att, def: followUp.def, vacCol: followUp.vacCol, vacRow: followUp.vacRow, frenzy: followUp.frenzy };
+        if (_fendEligible(followUp.def, followUp.att, G)) { G.block.phase = 'fend-choice'; return msg + ` ${pn(followUp.def)} may use [[skill:Fend]] — deny follow-up?`; }
+        if (followUp.att.skills?.includes('Frenzy')) return msg + ' ' + resolveFollowUp(G, true);
         return msg + ' Follow up?';
     }
 
@@ -334,7 +302,7 @@ function pickPushSquare(G, col, row) {
     if (chainVictim) {
         // Preserve the original follow-up data so we can restore it after all
         // chain pushes resolve. For nested chains, pendingFollowUp already holds it.
-        const pendingFollowUp = G.block.pendingFollowUp || { att, vacCol, vacRow, ballDropped };
+        const pendingFollowUp = G.block.pendingFollowUp || { att, def, vacCol, vacRow, ballDropped, frenzy };
         // The chain direction is away from def's old square.
         const fakeAtt = { col: vacCol, row: vacRow };
         const chainSquares = getPushSquares(G, fakeAtt, chainVictim);
@@ -359,9 +327,35 @@ function pickPushSquare(G, col, row) {
         return msg + ` Chain push — choose where ${chainVictim.name} goes.`;
     }
 
-    const followUp = G.block.pendingFollowUp || { att, vacCol, vacRow, ballDropped };
-    G.block = { phase: 'follow-up', att: followUp.att, vacCol: followUp.vacCol, vacRow: followUp.vacRow, ballDropped: followUp.ballDropped };
+    const followUp = G.block.pendingFollowUp || { att, def, vacCol, vacRow, ballDropped, frenzy };
+    G.block = { phase: 'follow-up', att: followUp.att, def: followUp.def, vacCol: followUp.vacCol, vacRow: followUp.vacRow, ballDropped: followUp.ballDropped, frenzy: followUp.frenzy };
+    if (_fendEligible(followUp.def, followUp.att, G)) { G.block.phase = 'fend-choice'; return msg + ` ${pn(followUp.def)} may use [[skill:Fend]] — deny follow-up?`; }
+    if (followUp.att.skills?.includes('Frenzy')) return msg + ' ' + resolveFollowUp(G, true);
     return msg + ' Follow up?';
+}
+
+// ── _fendEligible / resolveFend ───────────────────────────────────
+// Fend (ACTIVE): the defending coach may deny the attacker's follow-up.
+// Cannot be used against Ball & Chain, or Juggernaut during a Blitz.
+
+function _fendEligible(def, att, G) {
+    return def?.skills?.includes('Fend')
+        && !att.skills?.includes('Ball & Chain')
+        && !(att.skills?.includes('Juggernaut') && G.blitz);
+}
+
+function resolveFend(G, use) {
+    if (!G.block || G.block.phase !== 'fend-choice') return null;
+    const { att } = G.block;
+    G.block.phase = 'follow-up';
+    if (use) {
+        // Fend used: mark the block so resolveFollowUp ignores Frenzy's mandatory follow-up.
+        G.block.fendUsed = true;
+        return `[[skill:Fend]]! ${resolveFollowUp(G, false)}`;
+    }
+    // Fend declined: proceed with normal follow-up flow.
+    if (att.skills?.includes('Frenzy')) return resolveFollowUp(G, true);
+    return 'Follow up?';
 }
 
 // ── resolveFollowUp ───────────────────────────────────────────────
@@ -369,16 +363,135 @@ function pickPushSquare(G, col, row) {
 
 function resolveFollowUp(G, followUp) {
     if (!G.block || G.block.phase !== 'follow-up') return null;
-    const { att, vacCol, vacRow, ballDropped } = G.block;
+    const { att, def, vacCol, vacRow, ballDropped, frenzy, fendUsed } = G.block;
+
+    // Fend overrides Frenzy's mandatory follow-up — checked first.
+    if (fendUsed)                         followUp = false;
+    else if (att.skills?.includes('Frenzy')) followUp = true;
 
     if (followUp) {
         att.col = vacCol;
         att.row = vacRow;
     }
 
+    const followMsg = followUp ? `${pn(att)} follows up` : `${pn(att)} stays`;
+
+    // Strip Ball (ACTIVE): attacker's coach may force a pushed-back ball carrier to drop the ball.
+    // Only meaningful on a plain PUSH (def still standing, hasBall still set).
+    // For knockdown results, hasBall was already cleared by knockDown in pickPushSquare.
+    if (att.skills?.includes('Strip Ball') && def?.hasBall && def.col >= 0) {
+        G.block = { phase: 'strip-ball-choice', att, def, frenzy, ballDropped };
+        return `${followMsg} — use [[skill:Strip Ball]] against ${pn(def)}?`;
+    }
+
     G.block = null;
 
     const scatterMsg = ballDropped ? ' ' + scatterBall(G) : '';
+
+    // Frenzy second block: only on the first block, def still standing and adjacent
+    // (if Fend denied the follow-up, att didn't move and is no longer adjacent — naturally blocked).
+    if (!frenzy && att.skills?.includes('Frenzy') && def && def.col >= 0 && isStanding(def) && isAdjacent(att, def)) {
+        if (G.blitz) {
+            if (att.maLeft > 0) {
+                att.maLeft--;
+            } else if (att.rushLeft > 0) {
+                const { roll, failed } = rush();
+                att.rushLeft--;
+                if (failed) {
+                    let injMsg = knockDown(G, att);
+                    if (!G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row) injMsg += ' ' + scatterBall(G);
+                    G.blitz = null;
+                    att.usedAction = true;
+                    G.activated = null;
+                    endTurn(G);
+                    return `${followMsg}${scatterMsg} — [[skill:Frenzy]] rush (rolled ${roll}) fails! ${injMsg} TURNOVER`;
+                }
+            } else {
+                // No MA left, no Rush available — second block impossible
+                G.blitz = null;
+                att.usedAction = true;
+                G.activated = null;
+                return `${followMsg}${scatterMsg} — no MA for [[skill:Frenzy]] second block.`;
+            }
+        }
+
+        const { attStr, defStr } = countAssists(G, att, def);
+        const { dice, chooser }  = blockDiceCount(attStr, defStr);
+        const rolls = rollBlockDice(dice);
+        // frenzy: true marks this as the Frenzy second block so resolveFollowUp won't spawn a third.
+        G.block = { att, def, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null, frenzy: true };
+        const maMsg = G.blitz ? ` · ${att.maLeft} MA left` : '';
+        return `${followMsg}${scatterMsg} [[skill:Frenzy]]! Second block — ${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d${maMsg}`;
+    }
+
+    // Normal end of activation
+    if (G.blitz) {
+        G.blitz = null;
+        const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
+        if (att.maLeft === 0) {
+            att.usedAction = true;
+            G.activated    = null;
+        }
+        return followMsg + maMsg + scatterMsg;
+    }
+
+    att.usedAction = true;
+    G.activated    = null;
+    return followMsg + scatterMsg;
+}
+
+// ── resolveStripBall ──────────────────────────────────────────────
+// Called after the Strip Ball choice is offered.
+// use=true : defender drops the ball at their current square, ball bounces.
+// use=false: skip, proceed to Frenzy check / end activation as normal.
+
+function resolveStripBall(G, use) {
+    if (!G.block || G.block.phase !== 'strip-ball-choice') return null;
+    const { att, def, frenzy, ballDropped } = G.block;
+    G.block = null;
+
+    let msg = '';
+    if (use) {
+        def.hasBall    = false;
+        G.ball.carrier = null;
+        G.ball.col     = def.col;
+        G.ball.row     = def.row;
+        msg = `[[skill:Strip Ball]]! ${pn(def)} drops the ball! ` + scatterBall(G) + ' ';
+    }
+
+    const scatterMsg = ballDropped ? ' ' + scatterBall(G) : '';
+
+    // Frenzy second block (same conditions as resolveFollowUp).
+    if (!frenzy && att.skills?.includes('Frenzy') && def && def.col >= 0 && isStanding(def) && isAdjacent(att, def)) {
+        if (G.blitz) {
+            if (att.maLeft > 0) {
+                att.maLeft--;
+            } else if (att.rushLeft > 0) {
+                const { roll, failed } = rush();
+                att.rushLeft--;
+                if (failed) {
+                    let injMsg = knockDown(G, att);
+                    if (!G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row) injMsg += ' ' + scatterBall(G);
+                    G.blitz = null;
+                    att.usedAction = true;
+                    G.activated = null;
+                    endTurn(G);
+                    return `${msg}[[skill:Frenzy]] rush (rolled ${roll}) fails! ${injMsg} TURNOVER`;
+                }
+            } else {
+                G.blitz = null;
+                att.usedAction = true;
+                G.activated = null;
+                return `${msg}no MA for [[skill:Frenzy]] second block.`;
+            }
+        }
+        const { attStr, defStr } = countAssists(G, att, def);
+        const { dice, chooser }  = blockDiceCount(attStr, defStr);
+        const rolls = rollBlockDice(dice);
+        G.block = { att, def, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null, frenzy: true };
+        const maMsg = G.blitz ? ` · ${att.maLeft} MA left` : '';
+        return `${msg}[[skill:Frenzy]]! Second block — ${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d${maMsg}`;
+    }
 
     if (G.blitz) {
         G.blitz = null;
@@ -387,12 +500,12 @@ function resolveFollowUp(G, followUp) {
             att.usedAction = true;
             G.activated    = null;
         }
-        return (followUp ? `${pn(att)} follows up` : `${pn(att)} stays`) + maMsg + scatterMsg;
+        return msg + maMsg + scatterMsg;
     }
 
     att.usedAction = true;
     G.activated    = null;
-    return (followUp ? `${pn(att)} follows up` : `${pn(att)} stays`) + scatterMsg;
+    return msg + scatterMsg;
 }
 
 // ── resolveStandFirm ──────────────────────────────────────────────
@@ -471,7 +584,7 @@ function resolveStandFirm(G, use) {
 function declareFoul(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p, false);
+    const pre = _preActivate(G, p);
     if (pre?.abort) return pre.msg;
     const preMsg = pre ? pre.msg + ' ' : '';
     G.activated = p;
@@ -586,6 +699,7 @@ function activateBlitz(G, playerId) {
 
     G.activated  = p;
     G.blitz      = 'targeting';
+    G.targeting  = true;
     if (p.status === 'prone') {
         p.status         = 'active';
         p.maLeft         = Math.max(0, p.maLeft - 3);
@@ -886,7 +1000,7 @@ function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
 function declarePass(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p, false);
+    const pre = _preActivate(G, p);
     if (pre?.abort) return pre.msg;
     const preMsg = pre ? pre.msg + ' ' : '';
 
@@ -1124,7 +1238,7 @@ function chooseInterceptor(G, interceptorId) {
 function declareHandoff(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p, false);
+    const pre = _preActivate(G, p);
     if (pre?.abort) return pre.msg;
     const preMsg = pre ? pre.msg + ' ' : '';
 
@@ -1348,7 +1462,7 @@ function activateMover(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
 
-    const pre = _preActivate(G, p, false);
+    const pre = _preActivate(G, p);
     if (pre?.abort) return pre.msg;
     const preMsg = pre ? pre.msg + ' ' : '';
 
@@ -1397,6 +1511,7 @@ function declarePV(G, playerId) {
     G.sel         = p;
     G.blitz       = null;
     G.pvTargeting = true;
+    G.targeting   = true;
     return `${pn(p)} [[skill:Projectile Vomit]] — select an adjacent standing enemy.`;
 }
 
@@ -1412,7 +1527,8 @@ function executePV(G, targetId) {
     if (!def || def.side === att.side || !isAdjacent(att, def) || !isStanding(def)) return null;
 
     const roll     = Math.floor(Math.random() * 6) + 1;
-    G.pvTargeting  = false;
+    G.pvTargeting = false;
+    G.targeting   = null;
     att.usedAction = true;
     G.activated    = null;
 
@@ -1459,13 +1575,14 @@ function executePV(G, targetId) {
 function declareTTM(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p, false);
+    const pre = _preActivate(G, p);
     if (pre?.abort) return pre.msg;
     const preMsg = pre ? pre.msg + ' ' : '';
 
     G.activated = p;
     G.sel       = p;
-    G.throwTeamMate       = { phase: 'pick-missile' };
+    G.throwTeamMate = { phase: 'pick-missile' };
+    G.targeting     = true;
     return preMsg + `${pn(p)} [[skill:declares Throw Team-Mate]] — pick an adjacent teammate with Right Stuff.`;
 }
 
@@ -1739,7 +1856,7 @@ function throwTeamMate(G, targetCol, targetRow) {
 
 if (typeof module !== 'undefined') {
     module.exports = {
-        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm,
+        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall,
         activateBlitz, setBlitzTarget, blitzBlock,
         declareFoul, executeFoul, resolveArgueCall,
         scatterBall, throwIn, tryPickup, checkTouchdown,

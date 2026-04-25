@@ -9,7 +9,7 @@ if (typeof module !== 'undefined') {
 
 function getGameContext(G, sel, NET) {
     const myTurn     = !NET.online || NET.side === G.active;
-    const noAction   = !G.activated && !G.block;
+    const noAction   = !G.activated && !G.block && !G.targeting;
     const selProne   = sel && sel.status === 'prone';
     const selStunned = sel && sel.status === 'stunned';
 
@@ -75,8 +75,14 @@ function getGameContext(G, sel, NET) {
         && G.animalSavagery.phase === 'pick-target'
         && (!NET.online || NET.side === G.active);
 
+    const canUseFend           = G.block?.phase === 'fend-choice'
+        && (!NET.online || NET.side !== G.active);
+
     const canUseStandFirm      = G.block && G.block.phase === 'stand-firm-choice'
         && (!NET.online || NET.side !== G.active);
+
+    const canUseStripBall      = G.block?.phase === 'strip-ball-choice'
+        && (!NET.online || NET.side === G.active);
 
     const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
 
@@ -105,7 +111,9 @@ function getGameContext(G, sel, NET) {
         canDeclarePV,
         canDeclareTTM,
         canPickASTarget,
+        canUseFend,
         canUseStandFirm,
+        canUseStripBall,
         canChooseNoIntercept,
         canConfirmSetup,
     };
