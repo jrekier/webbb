@@ -11,8 +11,21 @@ var awayTeamDef = null;
 // ruleset: 'sevens' | 'classic'
 
 function startGame(homeTeam, awayTeam) {
-    homeTeamDef = loadTeamFromJSON(homeTeam);
-    awayTeamDef = loadTeamFromJSON(awayTeam);
+    // Copy so colour mutation below doesn't affect the shared _allTeams objects.
+    homeTeamDef = { ...loadTeamFromJSON(homeTeam) };
+    awayTeamDef = { ...loadTeamFromJSON(awayTeam) };
+
+    if (!NET.online) {
+        // Local only: server already resolves colours before broadcasting START,
+        // so online teams arrive with .colour pre-set — don't touch them here.
+        // For local play, pick home colour; fall back to away colour if it clashes.
+        const homeCol  = homeTeamDef.homeColour || homeTeamDef.colour || [180, 40, 40];
+        const awayPref = awayTeamDef.homeColour || awayTeamDef.colour || [40, 40, 180];
+        const awayFb   = awayTeamDef.awayColour || awayPref;
+        const clash    = homeCol.every((v, i) => v === awayPref[i]);
+        homeTeamDef.colour = homeCol;
+        awayTeamDef.colour = clash ? awayFb : awayPref;
+    }
 
     showScreen('game');
     initFormations();

@@ -34,11 +34,27 @@ function showScreen(name) {
 })();
 
 // ── App entry point ───────────────────────────────────────────────
+// allTeams: { humans, orcs, skaven } — team definitions loaded from JSON
 
-function startApp(homeTeam, awayTeam) {
-    // Stash default teams for local play
-    window._defaultHomeTeam = homeTeam;
-    window._defaultAwayTeam = awayTeam;
+var _allTeams = {};
+
+var _TEAM_LOGOS = {
+    humans: 'assets/logos/Human_BB2025.svg',
+    orcs:   'assets/logos/Orc_BB2025.svg',
+    skaven: 'assets/logos/Skaven_BB2025.svg',
+};
+
+function _initTeamLogos() {
+    document.querySelectorAll('#screen-team-select .team-choice-btn').forEach(btn => {
+        const src = _TEAM_LOGOS[btn.dataset.race];
+        const img = btn.querySelector('.tcb-logo');
+        if (img && src) img.src = resolveSheet(src);
+    });
+}
+
+function startApp(allTeams) {
+    _allTeams = allTeams;
+    _initTeamLogos();
 
     // If redirected from bbauth with an action, skip the welcome screen and go straight in.
     // Clear any stale reconnect token first — it must not race with the new CREATE/JOIN.
@@ -63,11 +79,32 @@ function startApp(homeTeam, awayTeam) {
     if (saved) connect().catch(() => {});
 }
 
-// ── Local game ────────────────────────────────────────────────────
+// ── Local game — team selection ───────────────────────────────────
+
+var _selectedHomeKey = 'humans';
+var _selectedAwayKey = 'orcs';
 
 function onClickLocalGame() {
-    const home = window._authTeamDef || window._defaultHomeTeam;
-    startGame(home, window._defaultAwayTeam);
+    showScreen('team-select');
+}
+
+function selectTeam(side, key) {
+    if (side === 'home') _selectedHomeKey = key;
+    else                 _selectedAwayKey = key;
+
+    const groupId = side === 'home' ? 'tcg-home' : 'tcg-away';
+    const group   = document.getElementById(groupId);
+    if (!group) return;
+
+    group.querySelectorAll('.team-choice-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.race === key);
+    });
+}
+
+function onClickStartLocalGame() {
+    const home = window._authTeamDef || _allTeams[_selectedHomeKey];
+    const away = _allTeams[_selectedAwayKey];
+    startGame(home, away);
 }
 
 // ── Online game ───────────────────────────────────────────────────

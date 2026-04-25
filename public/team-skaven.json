@@ -1,0 +1,29 @@
+{
+    "name": "Vermintide",
+    "colour": [210, 85, 10],
+    "awayColour": [110, 15, 165],
+    "players": [
+        { "name": "Skritch",   "pos": "Skaven Clanrat", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y":  0, "w": 23, "h": 25 }, "armour": { "x": 34, "y":  0, "w": 24, "h": 25 } } },
+        { "name": "The Brute", "pos": "Rat Ogre", "ma": 6, "st": 5, "ag": 4, "pa": 6, "av": 9, "skills": ["Animal Savagery", "Frenzy", "Loner", "Mighty Blow", "Prehensile Tail"],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y": 251, "w": 38, "h": 38 }, "armour": { "x": 34, "y": 251, "w": 24, "h": 38 }, "armourTrimLeft": 4 } },
+        { "name": "Queek",     "pos": "Skaven Clanrat", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y": 26, "w": 23, "h": 23 }, "armour": { "x": 34, "y": 26, "w": 22, "h": 23 } } },
+        { "name": "Scritclaw", "pos": "Skaven Blitzer", "ma": 8, "st": 3, "ag": 3, "pa": 4, "av": 9, "skills": ["Block", "Strip Ball"],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y":  74, "w": 23, "h": 23 }, "armour": { "x": 34, "y":  74, "w": 23, "h": 23 } } },
+        { "name": "Vrrsk",     "pos": "Skaven Blitzer", "ma": 8, "st": 3, "ag": 3, "pa": 4, "av": 9, "skills": ["Block", "Strip Ball"],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y":  98, "w": 23, "h": 25 }, "armour": { "x": 34, "y":  98, "w": 23, "h": 25 } } },
+        { "name": "Vrisk",     "pos": "Skaven Thrower", "ma": 7, "st": 3, "ag": 3, "pa": 2, "av": 8, "skills": ["Pass", "Sure Hands"],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y": 224, "w": 23, "h": 26 }, "armour": { "x": 34, "y": 224, "w": 23, "h": 26 } } },
+        { "name": "Gnawfang",  "pos": "Gutter Runner", "ma": 9, "st": 2, "ag": 2, "pa": 4, "av": 8, "skills": ["Dodge", "Stab"],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y": 124, "w": 25, "h": 24 }, "armour": { "x": 34, "y": 124, "w": 24, "h": 24 } } },
+        { "name": "Snikch",    "pos": "Skaven Clanrat", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y": 50, "w": 23, "h": 23 }, "armour": { "x": 34, "y": 50, "w": 21, "h": 23 } } },
+        { "name": "Kratch",    "pos": "Skaven Clanrat", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y":  0, "w": 23, "h": 25 }, "armour": { "x": 34, "y":  0, "w": 24, "h": 25 } } },
+        { "name": "Feskit",    "pos": "Skaven Clanrat", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y": 26, "w": 23, "h": 23 }, "armour": { "x": 34, "y": 26, "w": 22, "h": 23 } } },
+        { "name": "Skitter",   "pos": "Gutter Runner", "ma": 9, "st": 2, "ag": 2, "pa": 4, "av": 8, "skills": ["Dodge", "Stab"],
+          "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y": 149, "w": 25, "h": 24 }, "armour": { "x": 34, "y": 149, "w": 24, "h": 24 } } }
+    ]
+}

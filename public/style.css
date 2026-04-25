@@ -11,6 +11,7 @@
 }
 
 #screen-welcome,
+#screen-team-select,
 #screen-online-setup,
 #screen-waiting {
     display: flex;
@@ -22,6 +23,7 @@
 }
 
 #screen-welcome h1,
+#screen-team-select h2,
 #screen-online-setup h2,
 #screen-waiting h2 {
     font-family: 'Bebas Neue', sans-serif;
@@ -35,6 +37,143 @@
     color: var(--yellow);
     padding: 0.08em 0.3em;
 }
+
+/* ── Team select screen ───────────────────────────────────── */
+#screen-team-select h2 {
+    font-size: 36px;
+    background: var(--red);
+    color: var(--yellow);
+    padding: 0.06em 0.3em;
+}
+
+.ts-section {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.ts-section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--yellow);
+    padding: 3px 10px;
+    text-align: center;
+    text-transform: uppercase;
+}
+.ts-home-label { background: var(--red); }
+.ts-away-label { background: var(--blue); }
+
+.team-choice-group { display: flex; gap: 6px; }
+
+/* Each race card */
+#screen-team-select .team-choice-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    min-width: 96px;
+    border: 1px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.1s;
+    font-family: inherit;
+    font-size: inherit;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-dim);
+}
+#screen-team-select .team-choice-btn:hover  { border-color: var(--text-dim); }
+
+/* Race-specific accent colours via CSS custom property */
+#screen-team-select .team-choice-btn[data-race="humans"] { --tcb-colour: rgb(200,30,30); }
+#screen-team-select .team-choice-btn[data-race="orcs"]   { --tcb-colour: rgb(30,80,180); }
+#screen-team-select .team-choice-btn[data-race="skaven"] { --tcb-colour: rgb(210,85,10); }
+
+/* Coloured top bar — visible only when selected */
+.tcb-bar {
+    height: 4px;
+    width: 100%;
+    background: transparent;
+    transition: background 0.15s;
+}
+#screen-team-select .team-choice-btn.selected           { border-color: var(--tcb-colour); }
+#screen-team-select .team-choice-btn.selected .tcb-bar  { background: var(--tcb-colour); }
+
+.tcb-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px 12px;
+}
+
+/* Logo — greyscale + dim when not selected */
+.tcb-logo {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    filter: grayscale(1) opacity(0.22);
+    transition: filter 0.15s;
+}
+#screen-team-select .team-choice-btn:hover .tcb-logo    { filter: grayscale(0.5) opacity(0.5); }
+#screen-team-select .team-choice-btn.selected .tcb-logo { filter: none; }
+
+.tcb-race {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 17px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    transition: color 0.1s;
+    line-height: 1;
+}
+#screen-team-select .team-choice-btn:hover .tcb-race    { color: var(--text); }
+#screen-team-select .team-choice-btn.selected .tcb-race { color: var(--tcb-colour); }
+
+.tcb-name {
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    opacity: 0.5;
+    transition: opacity 0.1s;
+    font-family: 'IBM Plex Mono', monospace;
+}
+#screen-team-select .team-choice-btn.selected .tcb-name { opacity: 0.85; }
+
+/* Kick off / back buttons */
+.ts-kickoff-btn {
+    padding: 11px 40px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--red);
+    color: var(--red);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.ts-kickoff-btn:hover { background: rgba(200,16,46,0.08); }
+
+.ts-back-btn {
+    background: none;
+    border: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 2px 0;
+    transition: color 0.1s;
+}
+.ts-back-btn:hover { color: var(--text); }
 #screen-online-setup h2,
 #screen-waiting h2  { font-size: 28px; }
 

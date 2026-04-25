@@ -15,6 +15,74 @@
   <button onclick="onClickLocalGame();">Local Game</button>
 </div>
 
+<!-- ── Team select screen ──────────────────────────────────── -->
+<div id="screen-team-select" class="screen hidden">
+  <h2>Local Game</h2>
+
+  <div class="ts-section">
+    <div class="ts-section-title ts-home-label">Home</div>
+    <div class="team-choice-group" id="tcg-home">
+      <button class="team-choice-btn selected" data-race="humans" onclick="selectTeam('home','humans')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Humans">
+          <span class="tcb-race">Humans</span>
+          <span class="tcb-name">Reavers</span>
+        </div>
+      </button>
+      <button class="team-choice-btn" data-race="orcs" onclick="selectTeam('home','orcs')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Orcs">
+          <span class="tcb-race">Orcs</span>
+          <span class="tcb-name">Warbosses</span>
+        </div>
+      </button>
+      <button class="team-choice-btn" data-race="skaven" onclick="selectTeam('home','skaven')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Skaven">
+          <span class="tcb-race">Skaven</span>
+          <span class="tcb-name">Vermintide</span>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <div class="ts-section">
+    <div class="ts-section-title ts-away-label">Away</div>
+    <div class="team-choice-group" id="tcg-away">
+      <button class="team-choice-btn" data-race="humans" onclick="selectTeam('away','humans')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Humans">
+          <span class="tcb-race">Humans</span>
+          <span class="tcb-name">Reavers</span>
+        </div>
+      </button>
+      <button class="team-choice-btn selected" data-race="orcs" onclick="selectTeam('away','orcs')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Orcs">
+          <span class="tcb-race">Orcs</span>
+          <span class="tcb-name">Warbosses</span>
+        </div>
+      </button>
+      <button class="team-choice-btn" data-race="skaven" onclick="selectTeam('away','skaven')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Skaven">
+          <span class="tcb-race">Skaven</span>
+          <span class="tcb-name">Vermintide</span>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <button class="ts-kickoff-btn" onclick="onClickStartLocalGame();">Kick Off</button>
+  <button class="ts-back-btn" onclick="showScreen('welcome');">← Back</button>
+</div>
+
 <!-- ── Lobby screen ────────────────────────────────────────── -->
 <div id="screen-lobby" class="screen hidden">
   <div id="lobby-inner">
@@ -183,7 +251,8 @@
   Promise.all([
       fetch('team-humans.json').then(r => r.json()),
       fetch('team-orcs.json').then(r => r.json()),
-  ]).then(([home, away]) => startApp(home, away));
+      fetch('team-skaven.json').then(r => r.json()),
+  ]).then(([humans, orcs, skaven]) => startApp({ humans, orcs, skaven }));
 </script>
 </body>
 </html>
