@@ -5,7 +5,7 @@
     "players": [
         { "name": "Aldric",     "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 9, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y":  0, "w": 25, "h": 26 }, "armour": { "x": 26, "y":  0, "w": 23, "h": 26 } } },
-        { "name": "Goliath",    "pos": "Ogre",    "ma": 5, "st": 5, "ag": 4, "pa": 5, "av": 10, "skills": ["Bone-head", "Loner", "Mighty Blow", "Thick Skull", "Throw Team-mate"],
+        { "name": "Goliath",    "pos": "Ogre",    "ma": 5, "st": 5, "ag": 4, "pa": 5, "av": 10, "skills": ["Bone Head", "Loner", "Mighty Blow", "Thick Skull", "Throw Team-Mate"],
           "sprite": { "sheet": "assets/sprites/ogre.gif", "base": { "x":  0, "y":  0, "w": 38, "h": 38 }, "armour": { "x": 36, "y":  0, "w": 34, "h": 38 }, "armourTrimLeft": 2 } },          
         { "name": "Brennan",    "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 9, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y": 27, "w": 25, "h": 26 }, "armour": { "x": 26, "y": 27, "w": 23, "h": 26 } } },
