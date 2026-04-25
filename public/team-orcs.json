@@ -5,7 +5,7 @@
     "players": [
         { "name": "Snikt",    "pos": "Goblin Lineman", "ma": 6, "st": 2, "ag": 3, "pa": 3, "av": 8, "skills": ["Dodge", "Right Stuff", "Stunty"],
           "sprite": { "sheet": "assets/sprites/goblin.gif", "base": { "x":  0, "y":   0, "w": 19, "h": 24 }, "armour": { "x": 39, "y":   0, "w": 19, "h": 22 } } },          
-        { "name": "Grotsnot", "pos": "Troll", "ma": 4, "st": 5, "ag": 5, "pa": 5, "av": 10, "skills": ["Always Hungry", "Loner", "Mighty Blow", "Projectile Vomit", "Really Stupid", "Regeneration", "Throw Team-mate"],
+        { "name": "Grotsnot", "pos": "Troll", "ma": 4, "st": 5, "ag": 5, "pa": 5, "av": 10, "skills": ["Always Hungry", "Loner", "Mighty Blow", "Projectile Vomit", "Really Stupid", "Regeneration", "Throw Team-Mate"],
           "sprite": { "sheet": "assets/sprites/goblin.gif", "base": { "x":  0, "y": 396, "w": 40, "h": 38 }, "armour": { "x": 38, "y": 396, "w": 40, "h": 38 }, "armourTrimLeft": 2 } },
         { "name": "Grix",     "pos": "Goblin Lineman", "ma": 6, "st": 2, "ag": 3, "pa": 3, "av": 8, "skills": ["Dodge", "Right Stuff", "Stunty"],
           "sprite": { "sheet": "assets/sprites/goblin.gif", "base": { "x":  0, "y":  24, "w": 20, "h": 26 }, "armour": { "x": 38, "y":  24, "w": 20, "h": 23 } } },          
