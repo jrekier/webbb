@@ -2,6 +2,7 @@
     "name": "Warbosses",
     "colour": [30, 80, 180],
     "awayColour": [110, 15, 40],
+    "rerolls": 3,
     "players": [
         { "name": "Snikt",    "pos": "Goblin Lineman", "ma": 6, "st": 2, "ag": 3, "pa": 3, "av": 8, "skills": ["Dodge", "Right Stuff", "Stunty"],
           "sprite": { "sheet": "assets/sprites/goblin.gif", "base": { "x":  0, "y":   0, "w": 19, "h": 24 }, "armour": { "x": 39, "y":   0, "w": 19, "h": 22 } } },          

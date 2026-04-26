@@ -86,6 +86,8 @@ function getGameContext(G, sel, NET) {
 
     const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
 
+    const canUseTeamReroll     = !!G.pendingReroll && (!NET.online || NET.side === G.active);
+
     const canConfirmSetup = (G.phase === 'setup') && (!NET.online || NET.side === G.setupSide);
 
     const inSetup   = G.phase === 'setup';
@@ -116,6 +118,7 @@ function getGameContext(G, sel, NET) {
         canUseStripBall,
         canChooseNoIntercept,
         canConfirmSetup,
+        canUseTeamReroll,
     };
 }
 

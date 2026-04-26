@@ -132,6 +132,10 @@
         <span id="score-sep">–</span>
         <span id="score-away" class="team-away">0</span>
       </div>
+      <div id="score-rerolls">
+        <span id="rr-home" class="team-home"></span>
+        <span id="rr-away" class="team-away"></span>
+      </div>
       <div id="score-teams">
         <span id="lbl-home-team" class="team-home">Home</span>
         <span class="score-teams-sep"> – </span>
@@ -164,7 +168,10 @@
   <div id="mobile-hud">
     <div id="mobile-top-bar">
       <button id="mobile-dugout-btn" onclick="toggleMobileDugout()" style="display:none"></button>
-      <span id="mobile-score-label"><span id="mobile-score-home" class="team-home">0</span><span style="color:var(--text-dim)"> – </span><span id="mobile-score-away" class="team-away">0</span></span>
+      <span id="mobile-score-label">
+        <span><span id="mobile-score-home" class="team-home">0</span><span style="color:var(--text-dim)"> – </span><span id="mobile-score-away" class="team-away">0</span></span>
+        <span id="mobile-score-rerolls"><span id="mobile-rr-home" class="team-home"></span><span id="mobile-rr-away" class="team-away"></span></span>
+      </span>
       <span id="mobile-active-label">HOME</span>
       <span id="mobile-turn-label">T1</span>
       <button id="mobile-log-btn" onclick="toggleMobileLog()">☰</button>

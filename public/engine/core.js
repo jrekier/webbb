@@ -28,6 +28,9 @@ function createInitialState() {
         sel:                null,
         block:              null,
         blitz:              null,
+        rerolls:            { home: 0, away: 0 },
+        startingRerolls:    { home: 0, away: 0 },
+        pendingReroll:      null,
         hasBlitzed:         false,
         hasPassed:          false,
         hasHandedOff:       false,
@@ -101,6 +104,7 @@ function cancelActivation(G) {
     G.hasPassReroll      = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
+    G.pendingReroll      = null;
     G.activated          = null;
     return `${name} — action cancelled`;
 }
@@ -125,6 +129,7 @@ function endActivation(G) {
     G.hasPassReroll      = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
+    G.pendingReroll      = null;
     return `${name} done`;
 }
 
@@ -161,6 +166,7 @@ function endTurn(G) {
     G.hasPassReroll      = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
+    G.pendingReroll      = null;
     // Turn increments when the receiver becomes active again (completing a full round).
     if (G.active === G.receiver) G.turn += 1;
 
@@ -231,6 +237,8 @@ function startHalfTime(G) {
     G.handingOff         = false;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
+    G.pendingReroll      = null;
+    G.rerolls            = { ...G.startingRerolls };
     G.ball               = { col: -1, row: -1, carrier: null };
     G.phase              = 'setup';
     G.setupSide          = G.kicker;
@@ -372,6 +380,7 @@ function resetAfterTouchdown(G, scoringSide) {
     G.argueCallPending   = null;
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
+    G.pendingReroll      = null;
 
     // Scoring team kicks off the next drive; both sides set up again
     G.kicker    = scoringSide;

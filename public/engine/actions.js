@@ -11,7 +11,7 @@ if (typeof module !== 'undefined') {
           markStunned } = require('./helpers.js');
     var { activatePlayer, endTurn, endActivation,
           resetAfterTouchdown } = require('./core.js');
-    var { rush, dodge, BLOCK_FACES, rollBlockDice,
+    var { d6, rush, dodge, BLOCK_FACES, rollBlockDice,
           rollArmourAndInjury, rollInjury, rollCrowdInjury } = require('./dice.js');
 }
 
@@ -854,11 +854,14 @@ function tryPickup(G, p) {
     const target = Math.min(p.ag + tzs, 6);
     let roll     = Math.floor(Math.random() * 6) + 1;
     let extra    = '';
+    // True once any reroll (skill or team) has been used/offered on this roll.
+    let rerolled = false;
 
     if (roll !== 6 && roll < target && p.skills?.includes('Sure Hands')) {
-        const reroll = Math.floor(Math.random() * 6) + 1;
-        extra = ` Uses Sure Hands, rerolls: ${reroll}.`;
-        roll  = reroll;
+        const reroll  = Math.floor(Math.random() * 6) + 1;
+        extra         = ` Uses Sure Hands, rerolls: ${reroll}.`;
+        roll          = reroll;
+        rerolled      = true;
     }
 
     if (roll >= target || roll === 6) {
@@ -866,9 +869,36 @@ function tryPickup(G, p) {
         G.ball.carrier = p;
         return `${pn(p)} [[skill:picks up]] the ball (rolled ${roll}, needed ${target}+).${extra}`;
     }
+
+    const failMsg = `${pn(p)} fails to pick up (rolled ${roll}, needed ${target}+).${extra}`;
+    if (!rerolled && (G.rerolls?.[p.side] ?? 0) > 0) {
+        rerolled = true;
+        // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
+        const r2 = d6();
+        const f2 = r2 !== 6 && r2 < target;
+        const msgAtFailure = failMsg + ' ';
+        G.pendingReroll = {
+            label: 'pickup',
+            side: p.side,
+            secondFailed: f2,
+            successMsg: `Team reroll: ${pn(p)} [[skill:picks up]] the ball (rolled ${r2}, needed ${target}+). `,
+            failMsg:    `Team reroll: ${pn(p)} fails to pick up again (rolled ${r2}, needed ${target}+). `,
+            onSuccess: (G, suffix) => {
+                p.hasBall      = true;
+                G.ball.carrier = p;
+                return msgAtFailure + suffix;
+            },
+            onFail: (G, suffix) => {
+                const scatterMsg = scatterBall(G);
+                endTurn(G);
+                return msgAtFailure + suffix + scatterMsg + ' TURNOVER';
+            },
+        };
+        return failMsg + ' Team reroll available.';
+    }
     const scatterMsg = scatterBall(G);
     endTurn(G);
-    return `${pn(p)} fails to pick up (rolled ${roll}, needed ${target}+).${extra} ${scatterMsg} TURNOVER`;
+    return failMsg + ' ' + scatterMsg + ' TURNOVER';
 }
 
 // ── checkTouchdown ────────────────────────────────────────────────
@@ -1376,6 +1406,94 @@ function touchbackGiveBall(G, playerId) {
     return `${pn(p)} receives the touchback.`;
 }
 
+// ── _moveTurnover / _finishMove / _checkDodge ────────────────────
+// Shared move helpers — factored out so movePlayer and the reroll
+// resume path share identical logic without duplication.
+
+// Confirmed rush or dodge failure: land the player and apply injury.
+// Player must be placed at the destination square for the knockdown.
+function _moveTurnover(G, p, col, row, msg) {
+    p.col = col;
+    p.row = row;
+    msg += knockDown(G, p);
+    if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
+    endTurn(G);
+    return msg + ' TURNOVER';
+}
+
+// Rush AND dodge (if any) succeeded — place the player and handle pickup/TD.
+function _finishMove(G, p, col, row, needsrush, msg) {
+    p.col = col;
+    p.row = row;
+    if (!needsrush) p.maLeft   -= 1;
+    else            p.rushLeft -= 1;
+    G.stoodUpFromProne = false;
+    G.sel = p;
+    // Don't auto-end if a declared action that costs no MA still needs resolving.
+    if (p.maLeft + p.rushLeft === 0 && !G.passing && !G.handingOff && !G.fouling) endActivation(G);
+
+    let pickupMsg;
+    if (G.securingBall && p.col === G.ball.col && p.row === G.ball.row) {
+        pickupMsg = doSecureRoll(G, p);
+    } else {
+        pickupMsg = tryPickup(G, p);
+    }
+    if (pickupMsg) {
+        msg += ' ' + pickupMsg;
+        // tryPickup may itself suspend into G.pendingReroll (team reroll on pickup).
+        if (pickupMsg.includes('TURNOVER') || G.pendingReroll) return msg;
+    }
+
+    const tdMsg = checkTouchdown(G, p);
+    if (tdMsg) return msg + ' ' + tdMsg;
+    return msg;
+}
+
+// Resolves one dodge roll including the Dodge-skill free reroll and a
+// possible team-reroll offer.  Returns { msg, done } where done=true
+// means the caller should return msg immediately (turnover or suspended).
+function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
+    const markedByTackle = G.players.some(e =>
+        e.side !== p.side && isStanding(e) && isAdjacent(p, e) && e.skills?.includes('Tackle'));
+
+    let { roll, target, failed } = dodge(dodgerolltarget);
+    // True once any reroll (skill or team) has been used/offered on this roll.
+    let rerolled = false;
+
+    if (!failed) {
+        return { msg: msg + `${pn(p)} [[move:dodges]] (rolled ${roll}, needed ${target}+). `, done: false };
+    }
+
+    if (p.skills?.includes('Dodge') && !G.hasDodged && !markedByTackle) {
+        msg += `${pn(p)} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
+        G.hasDodged = true;
+        rerolled    = true;
+        ({ roll, target, failed } = dodge(dodgerolltarget));
+        if (!failed) {
+            return { msg: msg + `${pn(p)} [[move:dodges]] on reroll (rolled ${roll}, needed ${target}+). `, done: false };
+        }
+    }
+
+    msg += `${pn(p)} fails dodge (rolled ${roll}, needed ${target}+). `;
+    if (!rerolled && (G.rerolls?.[p.side] ?? 0) > 0) {
+        rerolled = true;  // marks the roll's reroll slot as consumed
+        // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
+        const { roll: r2, target: t2, failed: f2 } = dodge(dodgerolltarget);
+        const msgAtFailure = msg;
+        G.pendingReroll = {
+            label: 'dodge',
+            side: p.side,
+            secondFailed: f2,
+            successMsg: `Team reroll: ${pn(p)} [[move:dodges]] (rolled ${r2}, needed ${t2}+). `,
+            failMsg:    `Team reroll: ${pn(p)} fails dodge again (rolled ${r2}, needed ${t2}+). `,
+            onSuccess: (G, suffix) => _finishMove(G, p, col, row, needsrush, msgAtFailure + suffix),
+            onFail:    (G, suffix) => _moveTurnover(G, p, col, row, msgAtFailure + suffix),
+        };
+        return { msg: msg + 'Team reroll available.', done: true };
+    }
+    return { msg: _moveTurnover(G, p, col, row, msg), done: true };
+}
+
 // ── movePlayer ────────────────────────────────────────────────────
 // Moves the activated player one square, handling stand-up, rush,
 // dodge, ball pickup/secure, and touchdown.
@@ -1416,73 +1534,47 @@ function movePlayer(G, col, row) {
         const { roll: rushroll, failed: rushFailed } = rush();
         if (rushFailed) {
             msg += `${pn(p)} fails rush (rolled ${rushroll}). `;
-            p.col = col;
-            p.row = row;
-            msg += knockDown(G, p);
-            if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
-            endTurn(G);
-            return msg;
+            // True once any reroll (skill or team) has been used/offered on this roll.
+            // No skill auto-rerolls rush yet, but the flag is ready for future skills (e.g. Sprint).
+            let rerolled = false;
+            if (!rerolled && (G.rerolls?.[p.side] ?? 0) > 0) {
+                rerolled = true;
+                // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
+                const { roll: r2, failed: f2 } = rush();
+                const msgBeforeReroll = msg;
+                G.pendingReroll = {
+                    label: 'rush',
+                    side: p.side,
+                    secondFailed: f2,
+                    successMsg: `Team reroll: ${pn(p)} [[move:rushes]] (rolled ${r2}). `,
+                    failMsg:    `Team reroll: ${pn(p)} fails rush again (rolled ${r2}). `,
+                    // If rush succeeds, still need to check dodge (if entering a tackle zone).
+                    onSuccess: (G, suffix) => {
+                        const m = msgBeforeReroll + suffix;
+                        if (dodgerolltarget !== 0) {
+                            const result = _checkDodge(G, p, col, row, needsrush, dodgerolltarget, m);
+                            if (result.done) return result.msg;
+                            return _finishMove(G, p, col, row, needsrush, result.msg);
+                        }
+                        return _finishMove(G, p, col, row, needsrush, m);
+                    },
+                    onFail: (G, suffix) => _moveTurnover(G, p, col, row, msgBeforeReroll + suffix),
+                };
+                return msg + 'Team reroll available.';
+            }
+            return _moveTurnover(G, p, col, row, msg);
         }
         msg += `${pn(p)} [[move:rushes]] (rolled ${rushroll}). `;
     }
 
-    // Dodge
+    // Dodge — delegate to _checkDodge which handles skill reroll and team-reroll offer.
     if (dodgerolltarget !== 0) {
-        const markedByTackle = G.players.some(enemy =>
-            enemy.side !== p.side && isStanding(enemy)
-            && isAdjacent(p, enemy) && enemy.skills?.includes('Tackle')
-        );
-
-        let { roll, target, failed } = dodge(dodgerolltarget);
-        if (!failed) {
-            msg += `${pn(p)} [[move:dodges]] (rolled ${roll}, needed ${target}+). `;
-        } else {
-            if (p.skills?.includes('Dodge') && !G.hasDodged && !markedByTackle) {
-                msg += `${pn(p)} fails dodge (rolled ${roll}, needed ${target}+). Uses Dodge skill. `;
-                G.hasDodged = true;
-                ({ roll, target, failed } = dodge(dodgerolltarget));
-                if (!failed) {
-                    msg += `${pn(p)} [[move:dodges]] on reroll (rolled ${roll}, needed ${target}+). `;
-                }
-            }
-            if (failed) {
-                msg += `${pn(p)} fails dodge (rolled ${roll}, needed ${target}+). `;
-                p.col = col;
-                p.row = row;
-                msg += knockDown(G, p);
-                if (!G.ball.carrier && G.ball.col === p.col && G.ball.row === p.row) msg += ' ' + scatterBall(G);
-                endTurn(G);
-                return msg + ' TURNOVER';
-            }
-        }
+        const result = _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg);
+        if (result.done) return result.msg;
+        msg = result.msg;
     }
 
-    p.col = col;
-    p.row = row;
-    if (!needsrush) p.maLeft   -= 1;
-    else            p.rushLeft -= 1;
-    G.stoodUpFromProne = false;
-    G.sel = p;
-    // Don't auto-end if a declared action that costs no MA still needs resolving
-    // (blitz is excluded: the block costs 1 MA, so MA=0 means no block possible)
-    if (p.maLeft + p.rushLeft === 0 && !G.passing && !G.handingOff && !G.fouling) endActivation(G);
-
-    // Ball pickup / secure
-    let pickupMsg;
-    if (G.securingBall && p.col === G.ball.col && p.row === G.ball.row) {
-        pickupMsg = doSecureRoll(G, p);
-    } else {
-        pickupMsg = tryPickup(G, p);
-    }
-    if (pickupMsg) {
-        msg += ' ' + pickupMsg;
-        if (pickupMsg.includes('TURNOVER')) return msg;
-    }
-
-    const tdMsg = checkTouchdown(G, p);
-    if (tdMsg) return msg + ' ' + tdMsg;
-
-    return msg;
+    return _finishMove(G, p, col, row, needsrush, msg);
 }
 
 // ── activateMover ─────────────────────────────────────────────────
@@ -1908,6 +2000,24 @@ function throwTeamMate(G, targetCol, targetRow) {
     return _landMissile(G, missile, lc, lr, msg, isSuperb ? 0 : 1, fc, fr);
 }
 
+// ── Team reroll resolution ────────────────────────────────────────
+// _resolveTeamReroll is generic: it dispatches entirely through the
+// closures stored in G.pendingReroll — no per-roll knowledge here.
+
+function _resolveTeamReroll(G, used) {
+    const pr = G.pendingReroll;
+    G.pendingReroll = null;
+    if (!pr) return '';
+    if (used) G.rerolls[pr.side] -= 1;
+    if (used && !pr.secondFailed) return pr.onSuccess(G, pr.successMsg);
+    // Decline: proceed with the original failure (no extra message).
+    // Use-and-fail: show the failure message then resolve as failure.
+    return pr.onFail(G, used ? pr.failMsg : '');
+}
+
+function useTeamReroll(G)     { return _resolveTeamReroll(G, true);  }
+function declineTeamReroll(G) { return _resolveTeamReroll(G, false); }
+
 if (typeof module !== 'undefined') {
     module.exports = {
         knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall,
@@ -1922,5 +2032,6 @@ if (typeof module !== 'undefined') {
         declarePV, executePV,
         declareTTM, pickTTMMissile, throwTeamMate,
         resolveASHit,
+        useTeamReroll, declineTeamReroll,
     };
 }

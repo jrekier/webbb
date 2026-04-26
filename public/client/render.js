@@ -100,6 +100,7 @@ function render() {
     }
     drawBall();
     drawPlayers();
+    flushHlLabels();
     drawPassTargetingOverlay();
     drawTTMTargetingOverlay();
     ctx.restore();
@@ -236,6 +237,15 @@ function updateSidebar() {
     const score = G.score || { home: 0, away: 0 };
     document.getElementById('score-home').textContent = score.home;
     document.getElementById('score-away').textContent = score.away;
+
+    // Rerolls — one dot per remaining reroll (desktop + mobile)
+    const rr = G.rerolls || { home: 0, away: 0 };
+    const rrHome = '●'.repeat(rr.home);
+    const rrAway = '●'.repeat(rr.away);
+    document.getElementById('rr-home').textContent        = rrHome;
+    document.getElementById('rr-away').textContent        = rrAway;
+    document.getElementById('mobile-rr-home').textContent = rrHome;
+    document.getElementById('mobile-rr-away').textContent = rrAway;
 
     updateTeams();
 }
@@ -743,10 +753,27 @@ function drawHighlights() {
     }
 }
 
-// ── hlCell ────────────────────────────────────────────────────────
+// ── hlCell / hlCellLabels ─────────────────────────────────────────
 // Draws a highlight on one cell: filled background + inset stroke rect.
 // dash=true draws a dashed border.
-// text is an optional string printed inside the cell
+// text is deferred into _hlLabels so it renders above ball and players.
+var _hlLabels = [];
+
+function flushHlLabels() {
+    if (!_hlLabels.length) return;
+    ctx.save();
+    ctx.font = `bold ${Math.round(CELL * 0.42)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 4;
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    for (const { x, y, text } of _hlLabels)
+        ctx.fillText(text, x, y);
+    ctx.restore();
+    _hlLabels = [];
+}
+
 function hlCell(c, r, fill, stroke, dash, text) {
     const x = c * CELL, y = r * CELL;
     ctx.fillStyle = fill;
@@ -758,17 +785,8 @@ function hlCell(c, r, fill, stroke, dash, text) {
         ctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
         if (dash) ctx.setLineDash([]);
     }
-    if (text !== undefined) {
-        ctx.save();
-        ctx.font = `bold ${Math.round(CELL * 0.42)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 4;
-        ctx.fillStyle = 'rgba(255,255,255,0.95)';
-        ctx.fillText(text, x + CELL / 2, y + CELL / 2);
-        ctx.restore();
-    }
+    if (text !== undefined)
+        _hlLabels.push({ x: x + CELL / 2, y: y + CELL / 2, text });
 }
 
 // ── drawKickZone ──────────────────────────────────────────────────

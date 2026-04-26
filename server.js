@@ -29,6 +29,7 @@ const {
     declareKick, touchbackGiveBall, secureBall,
     declarePV, executePV,
     declareTTM, pickTTMMissile, throwTeamMate,
+    useTeamReroll, declineTeamReroll,
 } = require('./public/engine/actions.js');
 const TM = require('./public/engine/teams.js');
 const { getGameContext } = require('./public/engine/truth.js');
@@ -293,7 +294,9 @@ function startGame(room) {
 
     const homePlayers = TM.buildRosterFromTeam(room.homeTeam, 'home', 0,   FORMATION_HOME);
     const awayPlayers = TM.buildRosterFromTeam(room.awayTeam, 'away', 100, FORMATION_AWAY);
-    room.G.players = [...homePlayers, ...awayPlayers];
+    room.G.players        = [...homePlayers, ...awayPlayers];
+    room.G.rerolls        = { home: room.homeTeam.rerolls || 0, away: room.awayTeam.rerolls || 0 };
+    room.G.startingRerolls = { ...room.G.rerolls };
     initToss(room.G);  // sets phase='toss', picks tossWinner
 
     console.log(`Room ${room.id}: game started — ${room.G.players.length} players`);
@@ -496,6 +499,8 @@ function handleAction(room, msg) {
         case 'PASS_DECLARE':        if (!gc.canPass)    return; room.lastLogMsg = declarePass(G, msg.playerId);          break;
         case 'THROW_BALL':          room.lastLogMsg = throwBall(G, msg.col, msg.row);        break;
         case 'PASS_REROLL':         room.lastLogMsg = resolvePassReroll(G, msg.use);         break;
+        case 'TEAM_REROLL':         room.lastLogMsg = useTeamReroll(G);                      break;
+        case 'DECLINE_TEAM_REROLL': room.lastLogMsg = declineTeamReroll(G);                  break;
         case 'CHOOSE_INTERCEPTOR':  room.lastLogMsg = chooseInterceptor(G, msg.playerId);    break;
         case 'BLITZ_DECLARE': if (!gc.canBlitz)   return; room.lastLogMsg = activateBlitz(G, msg.playerId);      break;
         case 'BLITZ_TARGET':  room.lastLogMsg = setBlitzTarget(G, msg.defId);        break;

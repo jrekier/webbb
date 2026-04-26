@@ -418,13 +418,23 @@ canvas {
     margin: -12px -14px 8px;
 }
 
+/* ── Score rerolls ────────────────────────────────────────────── */
+#score-rerolls {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    min-height: 10px;
+}
+
 /* ── Score teams ──────────────────────────────────────────────── */
 #score-teams {
     font-family: 'Bebas Neue', sans-serif;
     font-size: 11px;
     letter-spacing: 2px;
     text-align: center;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 .score-teams-sep { color: var(--text-dim); }
 
@@ -883,9 +893,22 @@ canvas {
     font-size: 20px;
     position: absolute;
     left: 50%;
-    transform: translateX(-50%);
+    top: 50%;
+    transform: translate(-50%, -50%);
     text-align: center;
     pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+}
+#mobile-score-rerolls {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    font-size: 7px;
+    letter-spacing: 1px;
+    margin-top: 2px;
 }
 
 #mobile-turn-label {

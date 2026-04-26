@@ -1014,6 +1014,22 @@ function updateButtons() {
         };
     }
 
+    // Team reroll — active coach decides whether to spend a team reroll on a failed roll.
+    if (G.pendingReroll && myTurnNow && !G.confirm) {
+        const label = G.pendingReroll.label ?? 'roll';
+        G.confirm = {
+            prompt: `Reroll ${label}? (${G.rerolls?.[G.pendingReroll.side] ?? 0} left)`,
+            onYes: () => {
+                if (NET.online) { G.pendingReroll = null; sendAction({ type: 'TEAM_REROLL' }); }
+                else { const m = useTeamReroll(G); if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) { G.pendingReroll = null; sendAction({ type: 'DECLINE_TEAM_REROLL' }); }
+                else { const m = declineTeamReroll(G); if (m) log(m); }
+            },
+        };
+    }
+
     const gc   = getGameContext(G, G.sel, NET);
     const play = !gc.inSetup && !gc.inSpecial;
 

@@ -2,6 +2,7 @@
     "name": "Vermintide",
     "colour": [210, 85, 10],
     "awayColour": [110, 15, 165],
+    "rerolls": 3,
     "players": [
         { "name": "Skritch",   "pos": "Skaven Clanrat", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
           "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y":  0, "w": 23, "h": 25 }, "armour": { "x": 34, "y":  0, "w": 24, "h": 25 } } },

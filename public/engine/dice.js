@@ -1,12 +1,14 @@
 // dice.js
 // Pure random rolls — no G, no side effects beyond returning results.
 
+function d6() { return Math.floor(Math.random() * 6) + 1; }
+
 // ── rush ─────────────────────────────────────────────────────────
 // One Go-For-It roll: needs 2+ to succeed.
 // Returns { roll, failed }.
 
 function rush() {
-    const roll   = Math.floor(Math.random() * 6) + 1;
+    const roll   = d6();
     const failed = roll === 1;
     return { roll, failed };
 }
@@ -16,7 +18,7 @@ function rush() {
 // Returns { roll, target, failed }.
 
 function dodge(target) {
-    const roll   = Math.floor(Math.random() * 6) + 1;
+    const roll   = d6();
     const failed = roll !== 6 && roll < target;
     return { roll, target, failed };
 }
@@ -48,8 +50,8 @@ function rollBlockDice(n) {
 // outcome: 'stunned' | 'ko' | 'casualty' | null (armor held).
 
 function rollArmourAndInjury(p, attacker) {
-    const d1a = Math.floor(Math.random() * 6) + 1;
-    const d2a = Math.floor(Math.random() * 6) + 1;
+    const d1a = d6();
+    const d2a = d6();
     const rawArmor   = d1a + d2a;
     const mightyBlow = attacker?.skills?.includes('Mighty Blow') ? 1 : 0;
 
@@ -62,8 +64,8 @@ function rollArmourAndInjury(p, attacker) {
         return { armorRoll, armorBroken: false, injuryRoll: null, outcome: null };
     }
 
-    const d1i        = Math.floor(Math.random() * 6) + 1;
-    const d2i        = Math.floor(Math.random() * 6) + 1;
+    const d1i        = d6();
+    const d2i        = d6();
     const injuryRoll = d1i + d2i + injuryBonus;
     const thickSkull = p.skills?.includes('Thick Skull');
     const stunty     = p.skills?.includes('Stunty');
@@ -87,8 +89,8 @@ function rollArmourAndInjury(p, attacker) {
 // Returns { injuryRoll, outcome }.
 
 function rollInjury(p) {
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
+    const d1 = d6();
+    const d2 = d6();
     const injuryRoll  = d1 + d2;
     const thickSkull  = p.skills?.includes('Thick Skull');
     const stunty      = p.skills?.includes('Stunty');
@@ -110,8 +112,8 @@ function rollInjury(p) {
 // Returns { injuryRoll, outcome }.
 
 function rollCrowdInjury(p) {
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
+    const d1 = d6();
+    const d2 = d6();
     const injuryRoll = d1 + d2;
     const thickSkull = p.skills?.includes('Thick Skull');
     const stunty     = p.skills?.includes('Stunty');
@@ -129,5 +131,5 @@ function rollCrowdInjury(p) {
 }
 
 if (typeof module !== 'undefined') {
-    module.exports = { rush, dodge, BLOCK_FACES, rollBlockDice, rollArmourAndInjury, rollInjury, rollCrowdInjury };
+    module.exports = { d6, rush, dodge, BLOCK_FACES, rollBlockDice, rollArmourAndInjury, rollInjury, rollCrowdInjury };
 }

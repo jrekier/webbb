@@ -27,6 +27,9 @@ function startGame(homeTeam, awayTeam) {
         awayTeamDef.colour = clash ? awayFb : awayPref;
     }
 
+    // Seed G with a full initial state so render() is safe during buildPitch.
+    Object.assign(G, createInitialState());
+
     showScreen('game');
     initFormations();
     buildPitch();
@@ -39,7 +42,9 @@ function startGame(homeTeam, awayTeam) {
         // Local: build the initial state here. Online: server sends it via UPDATE.
         const homePlayers = buildRosterFromTeam(homeTeamDef, 'home', 0,   FORMATION_HOME);
         const awayPlayers = buildRosterFromTeam(awayTeamDef, 'away', 100, FORMATION_AWAY);
-        G.players = [...homePlayers, ...awayPlayers];
+        G.players        = [...homePlayers, ...awayPlayers];
+        G.rerolls        = { home: homeTeamDef.rerolls || 0, away: awayTeamDef.rerolls || 0 };
+        G.startingRerolls = { ...G.rerolls };
         const winner = initToss(G);
         showTossOverlay(winner);
         render();

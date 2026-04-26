@@ -2,6 +2,7 @@
     "name": "Reavers",
     "colour": [200, 30, 30],
     "awayColour": [20, 110, 35],
+    "rerolls": 3,
     "players": [
         { "name": "Aldric",     "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 9, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y":  0, "w": 25, "h": 26 }, "armour": { "x": 26, "y":  0, "w": 23, "h": 26 } } },
