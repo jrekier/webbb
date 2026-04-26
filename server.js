@@ -22,7 +22,7 @@ const {
     activateBlitz, setBlitzTarget, blitzBlock,
     declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
     resolveFend, resolveStandFirm, resolveStripBall,
-    resolveASBlock,
+    resolveASHit,
     declareFoul, executeFoul, resolveArgueCall,
     declareHandoff, doHandoff,
     declarePass, throwBall, resolvePassReroll, chooseInterceptor,
@@ -477,7 +477,7 @@ function handleAction(room, msg) {
             if (!gc.canDeclare) return;
             const aMsg = activateMover(G, msg.playerId);
             if (aMsg) room.lastLogMsg = aMsg;
-            if (G.activated) {
+            if (G.activated && !G.animalSavagery) {
                 const mMsg = movePlayer(G, msg.col, msg.row);
                 if (mMsg) room.lastLogMsg = (room.lastLogMsg ? room.lastLogMsg + ' ' : '') + mMsg;
             }
@@ -529,7 +529,7 @@ function handleAction(room, msg) {
         case 'FEND':        room.lastLogMsg = resolveFend(G, msg.use);                break;
         case 'STAND_FIRM':  room.lastLogMsg = resolveStandFirm(G, msg.use);           break;
         case 'STRIP_BALL':  room.lastLogMsg = resolveStripBall(G, msg.use);           break;
-        case 'AS_PICK_TARGET': room.lastLogMsg = resolveASBlock(G, msg.targetId);     break;
+        case 'AS_PICK_TARGET': room.lastLogMsg = resolveASHit(G, msg.targetId);       break;
         case 'PV_DECLARE':  if (!gc.canDeclarePV)  return; room.lastLogMsg = declarePV(G, msg.playerId);       break;
         case 'PV_EXECUTE':  room.lastLogMsg = executePV(G, msg.targetId);             break;
         case 'TTM_DECLARE': if (!gc.canDeclareTTM) return; room.lastLogMsg = declareTTM(G, msg.playerId);      break;

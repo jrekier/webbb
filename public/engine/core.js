@@ -38,6 +38,7 @@ function createInitialState() {
         coachEjected:       { home: false, away: false },
         handingOff:         false,
         hasDodged:          false,
+        asRolled:           false,
         blitzFromProne:     false,
         securingBall:       false,
         stoodUpFromProne:   false,
@@ -112,6 +113,7 @@ function endActivation(G) {
     G.blitz              = null;
     G.stoodUpFromProne   = false;
     G.hasDodged          = false;
+    G.asRolled           = false;
     G.fouling            = false;
     G.pvTargeting        = false;
     G.throwTeamMate      = null;
@@ -132,7 +134,7 @@ function endTurn(G) {
         if (p.side === G.active) {
             p.usedAction = false;
             p.maLeft     = p.ma;
-            p.rushLeft   = 2;
+            p.rushLeft     = 2;
             if (p.status === 'stunned' && !p.stunnedThisTurn) p.status = 'prone';
         }
         p.stunnedThisTurn = false;
@@ -147,6 +149,7 @@ function endTurn(G) {
     G.hasFouled      = false;
     G.hasThrownMate  = false;
     G.hasDodged      = false;
+    G.asRolled       = false;
     G.blitzFromProne = false;
     G.securingBall       = false;
     G.fouling            = false;
@@ -216,6 +219,7 @@ function startHalfTime(G) {
     G.hasFouled          = false;
     G.hasThrownMate      = false;
     G.hasDodged          = false;
+    G.asRolled           = false;
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;
@@ -357,6 +361,7 @@ function resetAfterTouchdown(G, scoringSide) {
     G.hasFouled          = false;
     G.hasThrownMate      = false;
     G.hasDodged          = false;
+    G.asRolled           = false;
     G.blitzFromProne     = false;
     G.stoodUpFromProne   = false;
     G.securingBall       = false;

@@ -670,7 +670,7 @@ function clickPlayer(player) {
         if (asPlayer && player.side === G.active && player.id !== asPlayer.id
                 && isStanding(player) && isAdjacent(asPlayer, player)) {
             if (NET.online) sendAction({ type: 'AS_PICK_TARGET', targetId: player.id });
-            else { const msg = resolveASBlock(G, player.id); if (msg) log(msg); }
+            else { const msg = resolveASHit(G, player.id); if (msg) log(msg); }
             render();
             return;
         }
@@ -798,7 +798,7 @@ function clickCell(col, row) {
         } else {
             const activateMsg = activateMover(G, G.sel.id);
             if (activateMsg) log(activateMsg);
-            if (G.activated) {
+            if (G.activated && !G.animalSavagery) {
                 const moveMsg = movePlayer(G, col, row);
                 if (moveMsg) log(moveMsg);
             }

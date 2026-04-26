@@ -38,14 +38,14 @@ function isAdjacent(a, b) {
 // ── inTackleZoneOf ───────────────────────────────────────────────
 
 function inTackleZoneOf(p, threat) {
-    return isStanding(threat) && !threat.bonedHead && isAdjacent(p, threat);
+    return isStanding(threat) && !threat.bonedHead && !threat.reallyStupid && !threat.animalSavage && isAdjacent(p, threat);
 }
 
 // ── countTackleZones ─────────────────────────────────────────────
 
 function countTackleZones(G, side, col, row) {
     return G.players.filter(e =>
-        e.side !== side && isStanding(e) && !e.bonedHead
+        e.side !== side && isStanding(e) && !e.bonedHead && !e.reallyStupid && !e.animalSavage
         && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
         && !(e.col === col && e.row === row)
     ).length;
@@ -63,6 +63,7 @@ function hasMovedYet(G) {
 
 function canStillCancel(G) {
     if (!G.activated) return false;
+    if (G.asRolled) return false;
     return !hasMovedYet(G) || G.blitzFromProne || G.stoodUpFromProne;
 }
 

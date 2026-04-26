@@ -52,9 +52,9 @@ function knockDown(G, p, { attacker } = {}) {
     return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: CASUALTY!`;
 }
 
-// ── _boneHeadCheck / _reallyStupidCheck / _preActivate ────────────
+// ── _boneHeadCheck / _reallyStupidCheck / _animalSavageryCheck ────
 // Pre-activation trait checks. Each returns { msg, abort } when the
-// trait is present, null when absent. _preActivate combines both.
+// trait fires, null when absent.
 
 function _boneHeadCheck(G, p) {
     if (!p.skills?.includes('Bone Head')) return null;
@@ -100,15 +100,11 @@ function _animalSavageryCheck(G, p, isBlockOrBlitz) {
     if (!p.skills?.includes('Animal Savagery')) return null;
     const target = isBlockOrBlitz ? 2 : 4;
     const roll   = Math.floor(Math.random() * 6) + 1;
+    G.asRolled = true;
     if (roll >= target) {
+        p.animalSavage = false;
         return { msg: `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}/${target}+) — OK!`, abort: false };
     }
-
-    p.usedAction = true;
-    G.activated  = null;
-    G.block      = null;
-    G.blitz      = null;
-    G.throwTeamMate = null;
 
     const base = `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}/${target}+) — goes berserk!`;
     const adjacentFriends = G.players.filter(f =>
@@ -116,15 +112,21 @@ function _animalSavageryCheck(G, p, isBlockOrBlitz) {
     );
 
     if (adjacentFriends.length === 0) {
+        p.animalSavage = true;
+        p.usedAction   = true;
+        G.activated    = null;
+        G.block        = null;
+        G.blitz        = null;
+        G.throwTeamMate = null;
         return { msg: base + ' No adjacent teammate — activation lost.', abort: true };
     }
 
     G.animalSavagery = { phase: 'pick-target', playerId: p.id };
     G.targeting      = true;
-    return { msg: base + ' Pick an adjacent teammate to attack.', abort: true };
+    return { msg: base + ' Pick an adjacent teammate to attack.', abort: false };
 }
 
-function resolveASBlock(G, targetId) {
+function resolveASHit(G, targetId) {
     if (!G.animalSavagery || G.animalSavagery.phase !== 'pick-target') return null;
     const p      = G.players.find(pl => pl.id === G.animalSavagery.playerId);
     const target = G.players.find(pl => pl.id === targetId);
@@ -141,16 +143,6 @@ function resolveASBlock(G, targetId) {
     return msg.trimEnd();
 }
 
-function _preActivate(G, p, isBlockOrBlitz = false) {
-    const bh = _boneHeadCheck(G, p);
-    if (bh?.abort) return bh;
-    const rs = _reallyStupidCheck(G, p);
-    if (rs?.abort) return { msg: (bh ? bh.msg + ' ' : '') + rs.msg, abort: true };
-    const as = _animalSavageryCheck(G, p, isBlockOrBlitz);
-    if (as?.abort) return { msg: [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' '), abort: true };
-    const msg = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
-    return msg ? { msg, abort: false } : null;
-}
 
 // ── declareBlock ─────────────────────────────────────────────────
 // Rolls block dice and sets G.block with phase 'pick-face'.
@@ -160,9 +152,13 @@ function _preActivate(G, p, isBlockOrBlitz = false) {
 // trigger Frenzy)" from "second block (Frenzy already spent)".
 
 function declareBlock(G, att, def) {
-    const pre = _preActivate(G, att, true);
-    if (pre?.abort) return pre.msg;
-    const preMsg = pre ? pre.msg + ' ' : '';
+    const bh = att.skills?.includes('Bone Head')      ? _boneHeadCheck(G, att)             : null;
+    if (bh?.abort) return bh.msg;
+    const rs = att.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, att)         : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = att.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, att, true) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
     const { attStr, defStr } = countAssists(G, att, def);
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
@@ -175,7 +171,8 @@ function declareBlock(G, att, def) {
         pushSquares: null,
     };
 
-    return preMsg + `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d`;
 }
 
 // ── pickBlockFace ─────────────────────────────────────────────────
@@ -584,13 +581,18 @@ function resolveStandFirm(G, use) {
 function declareFoul(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p);
-    if (pre?.abort) return pre.msg;
-    const preMsg = pre ? pre.msg + ' ' : '';
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
     G.activated = p;
     G.sel       = p;
     G.fouling   = true;
-    return preMsg + `${pn(p)} [[foul:declares Foul]] — move adjacent to a prone/stunned enemy.`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[foul:declares Foul]] — move adjacent to a prone/stunned enemy.`;
 }
 
 function executeFoul(G, targetId) {
@@ -693,9 +695,13 @@ function activateBlitz(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
     G.hasBlitzed = true;
-    const pre = _preActivate(G, p, true);
-    if (pre?.abort) return pre.msg;
-    const preMsg = pre ? pre.msg + ' ' : '';
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)             : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)         : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, true) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
     G.activated  = p;
     G.blitz      = 'targeting';
@@ -705,7 +711,8 @@ function activateBlitz(G, playerId) {
         p.maLeft         = Math.max(0, p.maLeft - 3);
         G.blitzFromProne = true;
     }
-    return preMsg + `${pn(p)} [[block:declares blitz]] — click a target`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[block:declares blitz]] — click a target`;
 }
 
 // ── setBlitzTarget ────────────────────────────────────────────────
@@ -899,11 +906,19 @@ function doSecureRoll(G, p) {
 function secureBall(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
     G.activated    = p;
     G.sel          = p;
     G.securingBall = true;
-    return `${pn(p)} [[skill:declares Secure Ball]] — move to the ball.`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[skill:declares Secure Ball]] — move to the ball.`;
 }
 
 // ── Pass Action ───────────────────────────────────────────────────
@@ -1000,15 +1015,20 @@ function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
 function declarePass(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p);
-    if (pre?.abort) return pre.msg;
-    const preMsg = pre ? pre.msg + ' ' : '';
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
     G.activated     = p;
     G.sel           = p;
     G.passing       = true;
     G.hasPassReroll = false;
-    return preMsg + `${pn(p)} [[skill:declares Pass]] — move to the ball if needed, then press Throw.`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[skill:declares Pass]] — move to the ball if needed, then press Throw.`;
 }
 
 // ── getInterceptors ───────────────────────────────────────────────
@@ -1238,14 +1258,19 @@ function chooseInterceptor(G, interceptorId) {
 function declareHandoff(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p);
-    if (pre?.abort) return pre.msg;
-    const preMsg = pre ? pre.msg + ' ' : '';
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
     G.activated  = p;
     G.sel        = p;
     G.handingOff = true;
-    return preMsg + `${pn(p)} [[skill:declares Handoff]] — move to a teammate and hand off.`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[skill:declares Handoff]] — move to a teammate and hand off.`;
 }
 
 // Execute the handoff to an adjacent standing teammate.
@@ -1462,13 +1487,20 @@ function activateMover(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
 
-    const pre = _preActivate(G, p);
-    if (pre?.abort) return pre.msg;
-    const preMsg = pre ? pre.msg + ' ' : '';
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const preMsg  = prefix ? prefix + ' ' : '';
 
     if (p.status !== 'prone') {
         const r = activatePlayer(G, playerId);
-        return r != null ? preMsg + r : null;
+        if (r == null) return null;
+        if (G.animalSavagery) return prefix;
+        return preMsg + r;
     }
 
     // Prone: need at least 3 total MA+rush to stand
@@ -1497,6 +1529,7 @@ function activateMover(G, playerId) {
 
     const rollStr = rolls.length ? ` (rushed: ${rolls.join(', ')})` : '';
     const maStr   = p.maLeft > 0 ? ` · ${p.maLeft} MA left` : '';
+    if (G.animalSavagery) return prefix;
     return preMsg + `${pn(p)} [[move:stands up]]${rollStr}${maStr}`;
 }
 
@@ -1507,12 +1540,21 @@ function activateMover(G, playerId) {
 function declarePV(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+
     G.activated   = p;
     G.sel         = p;
     G.blitz       = null;
     G.pvTargeting = true;
     G.targeting   = true;
-    return `${pn(p)} [[skill:Projectile Vomit]] — select an adjacent standing enemy.`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[skill:Projectile Vomit]] — select an adjacent standing enemy.`;
 }
 
 // ── executePV ─────────────────────────────────────────────────────
@@ -1575,15 +1617,20 @@ function executePV(G, targetId) {
 function declareTTM(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const pre = _preActivate(G, p);
-    if (pre?.abort) return pre.msg;
-    const preMsg = pre ? pre.msg + ' ' : '';
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
     G.activated = p;
     G.sel       = p;
     G.throwTeamMate = { phase: 'pick-missile' };
     G.targeting     = true;
-    return preMsg + `${pn(p)} [[skill:declares Throw Team-Mate]] — pick an adjacent teammate with Right Stuff.`;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[skill:declares Throw Team-Mate]] — pick an adjacent teammate with Right Stuff.`;
 }
 
 // ── pickTTMMissile ──────────────────────────────────────────────────
@@ -1867,6 +1914,6 @@ if (typeof module !== 'undefined') {
         movePlayer, activateMover,
         declarePV, executePV,
         declareTTM, pickTTMMissile, throwTeamMate,
-        resolveASBlock,
+        resolveASHit,
     };
 }
