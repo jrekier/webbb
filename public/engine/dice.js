@@ -53,12 +53,12 @@ function rollArmourAndInjury(p, attacker) {
     const rawArmor   = d1a + d2a;
     const mightyBlow = attacker?.skills?.includes('Mighty Blow') ? 1 : 0;
 
-    const wouldBreakWithBonus = rawArmor + mightyBlow > p.av;
-    const applyBonusToArmor  = mightyBlow > 0 && rawArmor <= p.av && wouldBreakWithBonus;
+    const wouldBreakWithBonus = rawArmor + mightyBlow >= p.av;
+    const applyBonusToArmor  = mightyBlow > 0 && rawArmor < p.av && wouldBreakWithBonus;
     const armorRoll          = applyBonusToArmor ? rawArmor + mightyBlow : rawArmor;
     const injuryBonus        = mightyBlow > 0 && !applyBonusToArmor ? mightyBlow : 0;
 
-    if (armorRoll <= p.av) {
+    if (armorRoll < p.av) {
         return { armorRoll, armorBroken: false, injuryRoll: null, outcome: null };
     }
 

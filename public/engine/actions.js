@@ -617,7 +617,7 @@ function executeFoul(G, targetId) {
 
     const defCol = def.col, defRow = def.row;
 
-    if (roll > def.av) {
+    if (roll >= def.av) {
         const { d1: di1, d2: di2, injuryRoll, outcome } = rollInjury(def);
         if (di1 === di2) spotted = true;
         msg += `AV broken! Inj ${injuryRoll}: `;
