@@ -74,11 +74,12 @@ function _boneHeadCheck(G, p) {
 
 function _reallyStupidCheck(G, p) {
     if (!p.skills?.includes('Really Stupid')) return null;
+    // +2 modifier if a non-Distracted, non-RS teammate is adjacent (BB2020 rule)
     const hasFriend = G.players.some(f =>
         f.id !== p.id && f.side === p.side && isStanding(f)
-        && !f.usedAction && f.col >= 0
-        && !f.skills?.includes('Bone Head') && !f.skills?.includes('Really Stupid')
-        && Math.abs(f.col - p.col) <= 3 && Math.abs(f.row - p.row) <= 3
+        && !f.bonedHead && !f.reallyStupid
+        && !f.skills?.includes('Really Stupid')
+        && isAdjacent(p, f)
     );
     const target = hasFriend ? 2 : 4;
     const roll   = Math.floor(Math.random() * 6) + 1;
@@ -728,9 +729,15 @@ function setBlitzTarget(G, defId) {
 // ── blitzBlock ───────────────────────────────────────────────────
 // Step 3: attacker is adjacent — execute the block (costs 1 MA).
 
+// Executes the block at the end of a blitz move.
+// Trait checks (BH/RS/AS) already ran in activateBlitz — they must not fire again here.
 function blitzBlock(G, att, target) {
     att.maLeft = Math.max(0, att.maLeft - 1);
-    return declareBlock(G, att, target);
+    const { attStr, defStr } = countAssists(G, att, target);
+    const { dice, chooser }  = blockDiceCount(attStr, defStr);
+    const rolls = rollBlockDice(dice);
+    G.block = { att, def: target, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null };
+    return `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(target)} (ST${defStr}) · ${dice}d`;
 }
 
 // ── throwIn ──────────────────────────────────────────────────────

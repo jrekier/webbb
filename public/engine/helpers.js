@@ -189,9 +189,7 @@ function canMoveTo(G, player, col, row) {
         ? player.maLeft < 3
         : player.maLeft === 0;
 
-    const needsDodge = G.players.some(enemy =>
-        enemy.side !== player.side && isStanding(enemy) && !enemy.bonedHead && isAdjacent(player, enemy)
-    );
+    const needsDodge = countTackleZones(G, player.side, player.col, player.row) > 0;
 
     let dodgerolltarget = 0;
     if (needsDodge) {

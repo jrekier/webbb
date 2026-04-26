@@ -923,6 +923,17 @@ function drawPlayer(p) {
         ctx.lineWidth   = 1;
         ctx.stroke();
     }
+
+    // Lost-tackle-zone indicator: faint "?" above the token for BH / RS / AS failures
+    if (p.bonedHead || p.reallyStupid || p.animalSavage) {
+        ctx.save();
+        ctx.font         = `bold ${Math.round(CELL * 0.28)}px sans-serif`;
+        ctx.fillStyle    = 'rgba(255,255,255,0.45)';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', cx, cy - r * 1.15);
+        ctx.restore();
+    }
 }
 
 // ── drawPlayerSprite ─────────────────────────────────────────────
