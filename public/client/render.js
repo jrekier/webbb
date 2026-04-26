@@ -635,16 +635,13 @@ function drawHighlights() {
             for (let c = 0; c < COLS; c++) {
                 const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, mover, c, r);
                 if (allowed) {
+                    const num = dodgerolltarget > 0 ? `${dodgerolltarget}+` : undefined;
                     if (needsrush) {
-                        hlCell(c, r, 'rgba(220,130,30,0.22)', 'rgba(255,160,40,0.6)', false);
-                    }                    
-                    if (dodgerolltarget>0){
-                        hlCell(c, r, 'rgba(192, 49, 232, 0.22)', 'rgba(244, 40, 255, 0.6)', false, dodgerolltarget);
+                        hlCell(c, r, 'rgba(220,130,30,0.22)', 'rgba(255,160,40,0.6)', false, num);
+                    } else {
+                        hlCell(c, r, 'rgba(100,180,100,0.20)', 'rgba(100,200,100,0.4)', false, num);
                     }
-                    else {
-                        hlCell(c, r, 'rgba(100,180,100,0.20)', 'rgba(100,200,100,0.4)', false);
-                    }
-                } 
+                }
             }
         }
     }
@@ -755,16 +752,22 @@ function hlCell(c, r, fill, stroke, dash, text) {
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, CELL, CELL);
     if (stroke) {
-        // ctx.strokeStyle = stroke;
-        ctx.lineWidth   = 1;
-        if (text !== undefined) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
-            ctx.strokeText(text, x + CELL/2, y + CELL/2);
-        }
+        ctx.lineWidth = 1;
         ctx.strokeStyle = stroke;
         if (dash) ctx.setLineDash([4, 3]);
         ctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
         if (dash) ctx.setLineDash([]);
+    }
+    if (text !== undefined) {
+        ctx.save();
+        ctx.font = `bold ${Math.round(CELL * 0.42)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 4;
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fillText(text, x + CELL / 2, y + CELL / 2);
+        ctx.restore();
     }
 }
 
