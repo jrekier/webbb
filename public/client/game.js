@@ -100,6 +100,7 @@ function addSkillToSelected() {
     if (!skill) return;
     if (!p.skills) p.skills = [];
     if (!p.skills.includes(skill)) p.skills.push(skill);
+    if (NET.online) sendAction({ type: 'DEBUG_SET_SKILLS', playerId: p.id, skills: p.skills });
     render();
 }
 
@@ -107,6 +108,7 @@ function removeSkillFromSelected(skill) {
     const p = G.sel;
     if (!p || !p.skills) return;
     p.skills = p.skills.filter(s => s !== skill);
+    if (NET.online) sendAction({ type: 'DEBUG_SET_SKILLS', playerId: p.id, skills: p.skills });
     render();
 }
 

@@ -261,11 +261,13 @@ function _onPointerUp(e) {
                     newCarrier.hasBall = true;
                     G.ball.col = newCarrier.col;
                     G.ball.row = newCarrier.row;
+                    if (NET.online) sendAction({ type: 'DEBUG_MOVE_BALL', carrierId: newCarrier.id });
                 } else {
                     if (G.ball.carrier) G.ball.carrier.hasBall = false;
                     G.ball.carrier = null;
                     G.ball.col     = col;
                     G.ball.row     = row;
+                    if (NET.online) sendAction({ type: 'DEBUG_MOVE_BALL', col, row });
                 }
             }
         } else if (outsidePitch && drag.player.col >= 0
@@ -285,6 +287,7 @@ function _onPointerUp(e) {
                     drag.player.row = row;
                 }
                 if (drag.player.hasBall) { G.ball.col = drag.player.col; G.ball.row = drag.player.row; }
+                if (NET.online) sendAction({ type: 'DEBUG_MOVE_PLAYER', playerId: drag.player.id, col: drag.player.col, row: drag.player.row });
             } else if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
                 swapSetupPlayers(G, drag.player.id, occupant.id);
                 if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });

@@ -119,7 +119,9 @@ function netReceive(msg) {
             if (msg.logMsg) log(msg.logMsg);
             const prevActive    = G.active;
             const prevSetupSide = G.setupSide;
+            const testMode      = G.testMode;
             Object.assign(G, msg.G);
+            G.testMode = testMode;
             fixReferences(G);
             if (G.phase !== 'setup') {
                 setupErrors = null;

@@ -33,6 +33,7 @@ const {
 } = require('./public/engine/actions.js');
 const TM = require('./public/engine/teams.js');
 const { getGameContext } = require('./public/engine/truth.js');
+const { COLS, ROWS, playerAt } = require('./public/engine/helpers.js');
 
 // ── Static file server ───────────────────────────────────────────
 
@@ -363,6 +364,10 @@ wss.on('connection', (ws) => {
         if (msg.type === 'KICK_AIM')      { handleKickAim(room, side, msg);           return; }
         if (msg.type === 'TOUCHBACK')     { handleTouchback(room, side, msg);         return; }
 
+        if (msg.type === 'DEBUG_MOVE_PLAYER') { handleDebugMovePlayer(room, msg); return; }
+        if (msg.type === 'DEBUG_MOVE_BALL')   { handleDebugMoveBall(room, msg);   return; }
+        if (msg.type === 'DEBUG_SET_SKILLS')  { handleDebugSetSkills(room, msg);  return; }
+
         const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP', 'CHOOSE_INTERCEPTOR'].includes(msg.type);
         if (!turnFree && side !== room.G.active) {
             ws.send(JSON.stringify({ type: 'ERROR', msg: 'Not your turn' }));
@@ -466,6 +471,50 @@ function handleConfirmSetup(room, side) {
     } else {
         broadcast(room, { type: 'UPDATE', G, logMsg, setupError });
     }
+}
+
+// ── Debug action handlers ─────────────────────────────────────────
+
+function handleDebugMovePlayer(room, msg) {
+    const G = room.G;
+    const p = G.players.find(p => p.id === msg.playerId);
+    if (!p || msg.col < 0 || msg.col >= COLS || msg.row < 0 || msg.row >= ROWS) return;
+    const occupant = playerAt(G, msg.col, msg.row);
+    if (occupant && occupant.id !== p.id) {
+        const c = occupant.col, r = occupant.row;
+        occupant.col = p.col; occupant.row = p.row;
+        p.col = c;            p.row = r;
+    } else if (!occupant) {
+        p.col = msg.col; p.row = msg.row;
+    }
+    if (p.hasBall) { G.ball.col = p.col; G.ball.row = p.row; }
+    broadcast(room, { type: 'UPDATE', G });
+}
+
+function handleDebugMoveBall(room, msg) {
+    const G = room.G;
+    if (G.ball.carrier) { G.ball.carrier.hasBall = false; G.ball.carrier = null; }
+    if (msg.carrierId !== undefined) {
+        const carrier = G.players.find(p => p.id === msg.carrierId);
+        if (!carrier) return;
+        G.ball.carrier = carrier;
+        carrier.hasBall = true;
+        G.ball.col = carrier.col;
+        G.ball.row = carrier.row;
+    } else {
+        if (msg.col < 0 || msg.col >= COLS || msg.row < 0 || msg.row >= ROWS) return;
+        G.ball.col = msg.col;
+        G.ball.row = msg.row;
+    }
+    broadcast(room, { type: 'UPDATE', G });
+}
+
+function handleDebugSetSkills(room, msg) {
+    const G = room.G;
+    const p = G.players.find(p => p.id === msg.playerId);
+    if (!p) return;
+    p.skills = msg.skills;
+    broadcast(room, { type: 'UPDATE', G });
 }
 
 // ── Action handler ────────────────────────────────────────────────
