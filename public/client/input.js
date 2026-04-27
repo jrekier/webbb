@@ -593,14 +593,38 @@ function handleClick(event) {
         return;
     }
 
-    if (G.phase !== 'play') { render(); return; }
+    if (G.phase !== 'play') { render(); _debugState(); return; }
 
     const player = playerAt(G, col, row);
     if (player) clickPlayer(player);
     else        clickCell(col, row);
     render();
+    _debugState();
 }
 
+// ── _debugState ───────────────────────────────────────────────────
+// Logs post-click game state — only truthy keys to keep output terse.
+function _debugState() {
+    const dbg = {
+        phase: G.phase, active: G.active,
+        sel:       G.sel?.name,
+        activated: G.activated?.name,
+        targeting: G.targeting  || undefined,
+        blitz:     G.blitz  ? (G.blitz.phase  ?? G.blitz)  : undefined,
+        block:     G.block  ? (G.block.phase  ?? G.block)  : undefined,
+        confirm:   G.confirm?.prompt,
+        pendingReroll:  G.pendingReroll?.label ?? (G.pendingReroll ? '(set)' : undefined),
+        passReroll:     G.passRerollChoice   ? true : undefined,
+        interception:   G.interceptionChoice ? true : undefined,
+        animalSavagery: G.animalSavagery?.phase,
+        passing:    G.passing    || undefined,
+        fouling:    G.fouling    || undefined,
+        handingOff: G.handingOff || undefined,
+        hasPassed:  G.hasPassed  || undefined,
+        hasBlitzed: G.hasBlitzed || undefined,
+    };
+    console.log('[state]', Object.fromEntries(Object.entries(dbg).filter(([, v]) => v !== undefined)));
+}
 
 // ── _confirmBlock ─────────────────────────────────────────────────
 // Opens the confirm overlay showing block odds before committing.
