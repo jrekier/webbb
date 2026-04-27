@@ -143,6 +143,17 @@
       </div>
     </div>
 
+    <div class="section" id="section-player-editor" style="display:none;">
+      <div class="section-title">Player Editor</div>
+      <div id="player-editor-name"></div>
+      <div id="player-editor-stats"></div>
+      <div class="skill-chips" id="skill-chips"></div>
+      <div id="player-editor-add">
+        <select id="skill-select"></select>
+        <button id="btn-add-skill" onclick="addSkillToSelected()">+ Add</button>
+      </div>
+    </div>
+
     <div class="section" id="section-teams" hidden>
       <div class="section-title">Dugout</div>
       <div id="teams-list"></div>
@@ -160,6 +171,7 @@
       <button id="btn-stop"          class="action-btn success"  onclick="onClickStop();"        style="display:none;">Stop</button>
       <button id="btn-confirm-setup" class="action-btn success"  onclick="onClickConfirmSetup();" style="display:none;">Confirm Setup</button>
       <button id="btn-end-turn"      class="action-btn end-turn" onclick="onClickEndTurn();">End Turn</button>
+      <button id="btn-debug"         class="action-btn debug-btn" onclick="toggleDebugMode();">Debug</button>
     </div>
 
   </div>

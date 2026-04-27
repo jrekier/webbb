@@ -101,15 +101,18 @@ function _onPointerDown(e) {
         dragCandidate: null,
     };
 
-    // During setup, note which player (if any) sits under the contact so we
-    // can promote to a drag if the pointer moves enough.
-    if (G.phase === 'setup') {
+    // During setup (or test mode), note which player (if any) sits under the
+    // contact so we can promote to a drag if the pointer moves enough.
+    if ((G.phase === 'setup' || G.testMode) && !wheelState) {
         const col = Math.floor(px / CELL);
         const row = Math.floor((py + cameraY) / CELL);
         const p   = playerAt(G, col, row);
         if (p) { G.sel = p; render(); }
-        if (p && p.side === G.setupSide && (!NET.online || NET.side === G.setupSide)) {
+        if (p && (G.testMode || (p.side === G.setupSide && (!NET.online || NET.side === G.setupSide)))) {
             _gesture.dragCandidate = p;
+        } else if (G.testMode && !p && G.ball.carrier === null
+                && G.ball.col === col && G.ball.row === row) {
+            _gesture.dragCandidate = { isBall: true };
         }
     }
 
@@ -117,7 +120,9 @@ function _onPointerDown(e) {
         // Mouse: begin drag immediately on mousedown — feels natural because
         // cursor feedback is instant. Touch waits for a movement threshold.
         if (_gesture.dragCandidate) {
-            setupDrag      = { player: _gesture.dragCandidate, pixelX: px, pixelY: py };
+            setupDrag      = _gesture.dragCandidate.isBall
+                           ? { isBall: true, pixelX: px, pixelY: py }
+                           : { player: _gesture.dragCandidate, pixelX: px, pixelY: py };
             _dragMoved     = false;
             _gesture.phase = 'dragging';
         }
@@ -169,10 +174,11 @@ function _onPointerMove(e) {
                 _clearLongPress();
 
                 if (_gesture.dragCandidate) {
-                    // Promote to a player drag (touch and mouse both land here
-                    // for touch; mouse already becomes 'dragging' in pointerdown).
+                    // Promote to a player (or ball) drag.
                     _gesture.phase = 'dragging';
-                    setupDrag      = { player: _gesture.dragCandidate, pixelX: px, pixelY: py };
+                    setupDrag      = _gesture.dragCandidate.isBall
+                                   ? { isBall: true, pixelX: px, pixelY: py }
+                                   : { player: _gesture.dragCandidate, pixelX: px, pixelY: py };
                     _dragMoved     = false;
                 } else if (e.pointerType !== 'mouse') {
                     // Touch / pen without a drag target: pan the camera.
@@ -243,14 +249,43 @@ function _onPointerUp(e) {
         const outsidePitch = e.clientX < rect.left || e.clientX > rect.right
                           || e.clientY < rect.top  || e.clientY > rect.bottom;
 
-        if (outsidePitch && drag.player.col >= 0
+        const inBounds = col >= 0 && col < COLS && row >= 0 && row < ROWS;
+
+        if (drag.isBall) {
+            // Ball drag (test mode only) — place ball or give it to a player.
+            if (inBounds) {
+                const newCarrier = playerAt(G, col, row);
+                if (newCarrier) {
+                    if (G.ball.carrier) G.ball.carrier.hasBall = false;
+                    G.ball.carrier     = newCarrier;
+                    newCarrier.hasBall = true;
+                    G.ball.col = newCarrier.col;
+                    G.ball.row = newCarrier.row;
+                } else {
+                    if (G.ball.carrier) G.ball.carrier.hasBall = false;
+                    G.ball.carrier = null;
+                    G.ball.col     = col;
+                    G.ball.row     = row;
+                }
+            }
+        } else if (outsidePitch && drag.player.col >= 0
                 && G.phase === 'setup' && (!NET.online || NET.side === G.setupSide)) {
             // Drag released beyond the pitch boundary → demote to reserve.
             _applyDemote(drag.player);
-        } else {
-            // Dropped on the pitch — swap with occupant or move to empty cell.
+        } else if (inBounds) {
             const occupant = playerAt(G, col, row);
-            if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
+            if (G.testMode) {
+                // Free rearrangement: swap or place any player, either side.
+                if (occupant && occupant.id !== drag.player.id) {
+                    const c = occupant.col, r = occupant.row;
+                    occupant.col = drag.player.col; occupant.row = drag.player.row;
+                    drag.player.col = c;            drag.player.row = r;
+                } else if (!occupant) {
+                    drag.player.col = col;
+                    drag.player.row = row;
+                }
+                if (drag.player.hasBall) { G.ball.col = drag.player.col; G.ball.row = drag.player.row; }
+            } else if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
                 swapSetupPlayers(G, drag.player.id, occupant.id);
                 if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
             } else {

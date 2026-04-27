@@ -7,6 +7,13 @@ var COLS  = 11;
 var ROWS  = 20;
 var TURNS = 6;
 
+var ALL_SKILLS = [
+    'Animal Savagery', 'Block', 'Bone Head', 'Catch', 'Dodge',
+    'Fend', 'Frenzy', 'Guard', 'Juggernaut', 'Pass', 'Really Stupid',
+    'Right Stuff', 'Stand Firm', 'Strip Ball', 'Stunty', 'Sure Hands',
+    'Tackle', 'Throw Team-Mate',
+];
+
 // ── sqLabel ───────────────────────────────────────────────────────
 // Human-readable square label: col → letter (A–K), row → 1-based number.
 // e.g. sqLabel(0, 0) → "A1",  sqLabel(10, 19) → "K20"

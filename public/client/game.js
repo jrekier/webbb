@@ -83,6 +83,33 @@ function showTurnToast(side) {
     }, 2500);
 }
 
+// ── Debug mode ────────────────────────────────────────────────────
+
+function toggleDebugMode() {
+    G.testMode = !G.testMode;
+    const btn = document.getElementById('btn-debug');
+    if (btn) btn.classList.toggle('debug-active', !!G.testMode);
+    render();
+}
+
+function addSkillToSelected() {
+    const p = G.sel;
+    if (!p) return;
+    const sel   = document.getElementById('skill-select');
+    const skill = sel.value;
+    if (!skill) return;
+    if (!p.skills) p.skills = [];
+    if (!p.skills.includes(skill)) p.skills.push(skill);
+    render();
+}
+
+function removeSkillFromSelected(skill) {
+    const p = G.sel;
+    if (!p || !p.skills) return;
+    p.skills = p.skills.filter(s => s !== skill);
+    render();
+}
+
 // ── Toss overlay ─────────────────────────────────────────────────
 
 function showTossOverlay(winner, canChoose = true) {

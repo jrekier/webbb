@@ -97,6 +97,7 @@ function render() {
     } else {
         drawHighlights();
         if (G.phase === 'touchback') drawTouchbackHighlights();
+        if (G.testMode && setupDrag) _drawTestDragTarget();
     }
     drawBall();
     drawPlayers();
@@ -106,7 +107,7 @@ function render() {
     ctx.restore();
 
     // Overlays in screen space
-    if (G.phase === 'setup' && setupDrag) drawSetupDragGhost();
+    if ((G.phase === 'setup' || G.testMode) && setupDrag) drawSetupDragGhost();
     if (G.phase === 'setup' && setupErrors && setupErrors.length) drawSetupErrorBanner();
     if (G.phase === 'touchback') drawTouchbackMessage();
     updateSidebar();
@@ -168,23 +169,45 @@ function drawSetupZones() {
     }
 }
 
+// ── _drawTestDragTarget ───────────────────────────────────────────
+// Highlights the target cell while dragging in test mode (world space).
+
+function _drawTestDragTarget() {
+    const col      = Math.floor(setupDrag.pixelX / CELL);
+    const row      = Math.floor((setupDrag.pixelY + cameraY) / CELL);
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+    const occupant = G.players.find(o => (!setupDrag.player || o.id !== setupDrag.player.id) && o.col === col && o.row === row);
+    ctx.strokeStyle = occupant ? 'rgba(80,180,255,0.9)' : 'rgba(80,220,80,0.9)';
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(col * CELL + 1, row * CELL + 1, CELL - 2, CELL - 2);
+}
+
 // ── drawSetupDragGhost ────────────────────────────────────────────
 // Draws the dragged player as a ghost at the cursor (screen space).
 
 function drawSetupDragGhost() {
-    const { player, pixelX, pixelY } = setupDrag;
-    const [r, g, b] = player.colour || [180, 180, 180];
-    const radius    = CELL * 0.38;
-
+    const { isBall, player, pixelX, pixelY } = setupDrag;
     ctx.save();
     ctx.globalAlpha = 0.65;
-    ctx.beginPath();
-    ctx.ellipse(pixelX, pixelY, radius, radius * 0.75, 0, 0, Math.PI * 2);
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
+    if (isBall) {
+        ctx.beginPath();
+        ctx.arc(pixelX, pixelY, CELL * 0.22, 0, Math.PI * 2);
+        ctx.fillStyle   = '#e07020';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+    } else {
+        const [r, g, b] = player.colour || [180, 180, 180];
+        const radius    = CELL * 0.38;
+        ctx.beginPath();
+        ctx.ellipse(pixelX, pixelY, radius, radius * 0.75, 0, 0, Math.PI * 2);
+        ctx.fillStyle   = `rgb(${r},${g},${b})`;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+    }
     ctx.globalAlpha = 1;
     ctx.restore();
 }
@@ -248,6 +271,49 @@ function updateSidebar() {
     document.getElementById('mobile-rr-away').textContent = rrAway;
 
     updateTeams();
+    updatePlayerEditor();
+}
+
+// ── updatePlayerEditor ────────────────────────────────────────────
+// Syncs the Debug player-editor panel with the currently selected player.
+
+function updatePlayerEditor() {
+    const section = document.getElementById('section-player-editor');
+    if (!section) return;
+    const p = G.testMode ? G.sel : null;
+    if (!p) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    document.getElementById('player-editor-name').textContent =
+        `${p.name} (${p.side.toUpperCase()})`;
+    document.getElementById('player-editor-stats').textContent =
+        `MA${p.ma}  ST${p.st}  AG${p.ag}  AV${p.av}`;
+
+    const chips = document.getElementById('skill-chips');
+    chips.innerHTML = '';
+    (p.skills || []).forEach(skill => {
+        const chip = document.createElement('span');
+        chip.className   = 'skill-chip';
+        chip.textContent = skill;
+        const btn        = document.createElement('button');
+        btn.className    = 'skill-chip-remove';
+        btn.textContent  = '×';
+        btn.title        = `Remove ${skill}`;
+        btn.onclick      = () => removeSkillFromSelected(skill);
+        chip.appendChild(btn);
+        chips.appendChild(chip);
+    });
+
+    const sel  = document.getElementById('skill-select');
+    const have = new Set(p.skills || []);
+    sel.innerHTML = '';
+    ALL_SKILLS.filter(s => !have.has(s)).forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = opt.textContent = s;
+        sel.appendChild(opt);
+    });
+    document.getElementById('player-editor-add').style.display =
+        sel.options.length ? '' : 'none';
 }
 
 // ── chip tooltip ─────────────────────────────────────────────────
@@ -856,6 +922,7 @@ function drawTouchbackMessage() {
 function drawBall() {
     if (G.ball.carrier !== null) return;
     if (G.ball.col < 0) return;  // off-pitch during kick phase
+    if (setupDrag && setupDrag.isBall) return;  // drawn as ghost
     const x = G.ball.col * CELL + CELL / 2;
     const y = G.ball.row * CELL + CELL / 2;
     ctx.fillStyle = '#e07020';
@@ -876,7 +943,7 @@ function drawPlayers() {
     const sorted = G.players.slice().sort((a, b) => zRow(a) - zRow(b));
     sorted.forEach(p => {
         if (p.col < 0) return;
-        if (setupDrag && setupDrag.player.id === p.id) return; // drawn as ghost
+        if (setupDrag && setupDrag.player && setupDrag.player.id === p.id) return; // drawn as ghost
         drawPlayer(p);
     });
 }

@@ -723,6 +723,29 @@ canvas {
 #btn-no-intercept,
 #mobile-btn-no-intercept     { letter-spacing: 0.5px; min-width: 82px; }
 
+/* ── Debug mode ───────────────────────────────────────────────── */
+.action-btn.debug-btn        { color: var(--text-dim); opacity: 0.4; flex-basis: 100%; }
+.action-btn.debug-btn:hover  { opacity: 0.7; }
+.action-btn.debug-active     { color: #c8a000; border-color: #c8a000; opacity: 1; }
+.action-btn.debug-active:hover { background: rgba(200,160,0,0.08); }
+
+#player-editor-name  { font-weight: bold; margin-bottom: 4px; font-size: 13px; }
+#player-editor-stats { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; letter-spacing: 0.03em; }
+.skill-chips         { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; min-height: 24px; }
+.skill-chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 2px 7px 2px 8px; font-size: 11px;
+}
+.skill-chip-remove {
+    cursor: pointer; color: var(--text-dim); font-size: 13px; line-height: 1;
+    padding: 0 1px; border: none; background: none;
+}
+.skill-chip-remove:hover { color: #e55; }
+#player-editor-add         { display: flex; gap: 4px; }
+#player-editor-add select  { flex: 1; font-size: 12px; }
+#btn-add-skill             { font-size: 12px; padding: 2px 8px; white-space: nowrap; }
+
 /* ── Online strip ─────────────────────────────────────────────── */
 #online-strip {
     padding: 8px 14px;
