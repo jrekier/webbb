@@ -424,7 +424,8 @@ function resolveFollowUp(G, followUp) {
 
     // Normal end of activation
     if (G.blitz) {
-        G.blitz = null;
+        G.blitz     = null;
+        G.targeting = null;
         const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
         if (att.maLeft === 0) {
             att.usedAction = true;
@@ -435,6 +436,7 @@ function resolveFollowUp(G, followUp) {
 
     att.usedAction = true;
     G.activated    = null;
+    G.targeting    = null;
     return followMsg + scatterMsg;
 }
 
@@ -492,7 +494,8 @@ function resolveStripBall(G, use) {
     }
 
     if (G.blitz) {
-        G.blitz = null;
+        G.blitz     = null;
+        G.targeting = null;
         const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
         if (att.maLeft === 0) {
             att.usedAction = true;
@@ -503,6 +506,7 @@ function resolveStripBall(G, use) {
 
     att.usedAction = true;
     G.activated    = null;
+    G.targeting    = null;
     return msg + scatterMsg;
 }
 
