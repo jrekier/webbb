@@ -553,26 +553,30 @@ function resolveStandFirm(G, use) {
         msg += ` Neither player moves.${scatterMsg}`;
         G.block = null;
         if (G.blitz) {
-            G.blitz = null;
+            G.blitz     = null;
+            G.targeting = null;
             const maMsg = realAtt.maLeft > 0 ? ` · ${realAtt.maLeft} MA left` : '';
             if (realAtt.maLeft === 0) { realAtt.usedAction = true; G.activated = null; }
             return msg + maMsg;
         }
         realAtt.usedAction = true;
         G.activated = null;
+        G.targeting = null;
         return msg;
     }
 
     // Direct push: defender didn't vacate so no follow-up is possible.
     G.block = null;
     if (G.blitz) {
-        G.blitz = null;
+        G.blitz     = null;
+        G.targeting = null;
         const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
         if (att.maLeft === 0) { att.usedAction = true; G.activated = null; }
         return msg + maMsg;
     }
     att.usedAction = true;
     G.activated    = null;
+    G.targeting    = null;
     return msg;
 }
 
