@@ -660,10 +660,13 @@ function executeFoul(G, targetId) {
     if (spotted) {
         msg += ' Ref spots the foul!';
         if (G.coachEjected[att.side]) {
-            // Coach already gone — eject immediately, no argue
             att.status = 'casualty'; att.col = -1; att.row = -1;
             endTurn(G);
             return msg + ` ${pn(att)} ejected (coach already sent off). TURNOVER`;
+        }
+        if ((G.bribes?.[att.side] || 0) > 0) {
+            G.bribePending = { attId: att.id, side: att.side };
+            return msg + ' Use a bribe?';
         }
         G.argueCallPending = { attId: att.id, side: att.side };
         return msg + ' Argue the call?';
@@ -700,6 +703,34 @@ function resolveArgueCall(G, use) {
     att.status = 'casualty'; att.col = -1; att.row = -1;
     endTurn(G);
     return `${pn(att)} ejected. TURNOVER`;
+}
+
+// ── resolveBribe ──────────────────────────────────────────────────
+// use=true: spend a bribe and roll 2+. Success: player stays. Fail (1):
+//   bribe wasted, then fall through to argue the call.
+// use=false: decline the bribe, go straight to argue the call.
+
+function resolveBribe(G, use) {
+    if (!G.bribePending) return null;
+    const { attId, side } = G.bribePending;
+    G.bribePending = null;
+    const att = G.players.find(p => p.id === attId);
+    if (!att) return null;
+
+    if (use) {
+        G.bribes[side] = Math.max(0, (G.bribes[side] || 0) - 1);
+        const roll = Math.floor(Math.random() * 6) + 1;
+        if (roll >= 2) {
+            return `Bribe accepted — rolled ${roll}! ${pn(att)} stays on the pitch.`;
+        }
+        // Bribe wasted — fall through to argue
+        G.argueCallPending = { attId, side };
+        return `Bribe wasted — rolled ${roll}! Argue the call?`;
+    }
+
+    // Declined — go straight to argue
+    G.argueCallPending = { attId, side };
+    return 'Bribe declined. Argue the call?';
 }
 
 // ── activateBlitz ─────────────────────────────────────────────────
@@ -1427,8 +1458,9 @@ function _applyKickoffEvent(G, aimCol, aimRow) {
             break;
 
         case 'Cheering Fans': {
-            const hr = d6(), ar = d6();
-            msg += ` — HOME ${hr} vs AWAY ${ar}.`;
+            const hc = G.cheerleaders?.home || 0, ac = G.cheerleaders?.away || 0;
+            const hr = d6() + hc, ar = d6() + ac;
+            msg += ` — HOME ${hr} (${hc} cheerleaders) vs AWAY ${ar} (${ac} cheerleaders).`;
             if (hr > ar) {
                 G.cheeringFansBonus = 'home';
                 msg += ` HOME fans cheer loudest — HOME's next block gets +1 assist!`;
@@ -1443,8 +1475,9 @@ function _applyKickoffEvent(G, aimCol, aimRow) {
         }
 
         case 'Brilliant Coaching': {
-            const hr = d6(), ar = d6();
-            msg += ` — HOME ${hr} vs AWAY ${ar}.`;
+            const ha = G.assistantCoaches?.home || 0, aa = G.assistantCoaches?.away || 0;
+            const hr = d6() + ha, ar = d6() + aa;
+            msg += ` — HOME ${hr} (${ha} asst. coaches) vs AWAY ${ar} (${aa} asst. coaches).`;
             if (hr > ar) {
                 G.rerolls.home += 1;
                 msg += ` HOME coach inspired — HOME gains 1 reroll!`;
@@ -1520,8 +1553,9 @@ function _applyKickoffEvent(G, aimCol, aimRow) {
         }
 
         case 'Pitch Invasion': {
-            const hr = d6(), ar = d6();
-            msg += ` — HOME ${hr} vs AWAY ${ar}.`;
+            const hf = G.fanFactor?.home || 0, af = G.fanFactor?.away || 0;
+            const hr = d6() + hf, ar = d6() + af;
+            msg += ` — HOME ${hr} (FF ${hf}) vs AWAY ${ar} (FF ${af}).`;
             const sides = hr === ar ? ['home', 'away'] : (hr < ar ? ['home'] : ['away']);
             for (const side of sides) {
                 const onPitch = G.players.filter(p => p.side === side && p.col >= 0 && p.status === 'active');
@@ -2353,7 +2387,7 @@ if (typeof module !== 'undefined') {
     module.exports = {
         knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall,
         activateBlitz, setBlitzTarget, blitzBlock,
-        declareFoul, executeFoul, resolveArgueCall,
+        declareFoul, executeFoul, resolveArgueCall, resolveBribe,
         scatterBall, throwIn, tryPickup, checkTouchdown,
         doSecureRoll, secureBall,
         declarePass, throwBall, resolvePassReroll, getInterceptors, chooseInterceptor,

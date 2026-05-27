@@ -291,6 +291,15 @@ function updateSidebar() {
     document.getElementById('mobile-rr-home').textContent = rrHome;
     document.getElementById('mobile-rr-away').textContent = rrAway;
 
+    // Bribes — one $ per remaining bribe (desktop + mobile)
+    const br = G.bribes || { home: 0, away: 0 };
+    const brHome = '$'.repeat(br.home);
+    const brAway = '$'.repeat(br.away);
+    document.getElementById('br-home').textContent        = brHome;
+    document.getElementById('br-away').textContent        = brAway;
+    document.getElementById('mobile-br-home').textContent = brHome;
+    document.getElementById('mobile-br-away').textContent = brAway;
+
     updateTeams();
     updatePlayerEditor();
 }

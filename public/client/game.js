@@ -43,8 +43,13 @@ function startGame(homeTeam, awayTeam) {
         const homePlayers = buildRosterFromTeam(homeTeamDef, 'home', 0,   FORMATION_HOME);
         const awayPlayers = buildRosterFromTeam(awayTeamDef, 'away', 100, FORMATION_AWAY);
         G.players        = [...homePlayers, ...awayPlayers];
-        G.rerolls        = { home: homeTeamDef.rerolls || 0, away: awayTeamDef.rerolls || 0 };
+        G.rerolls         = { home: homeTeamDef.rerolls || 0, away: awayTeamDef.rerolls || 0 };
         G.startingRerolls = { ...G.rerolls };
+        G.bribes          = { home: homeTeamDef.bribes  || 0, away: awayTeamDef.bribes  || 0 };
+        G.cheerleaders    = { home: homeTeamDef.cheerleaders    || 0, away: awayTeamDef.cheerleaders    || 0 };
+        G.assistantCoaches = { home: homeTeamDef.assistantCoaches || 0, away: awayTeamDef.assistantCoaches || 0 };
+        G.fanFactor       = { home: homeTeamDef.fanFactor       || 0, away: awayTeamDef.fanFactor       || 0 };
+        G.apothecary      = { home: !!homeTeamDef.apothecary,         away: !!awayTeamDef.apothecary         };
         const winner = initToss(G);
         showTossOverlay(winner);
         render();

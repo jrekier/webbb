@@ -1172,8 +1172,25 @@ function onClickEndTurn() {
 // ── updateButtons ────────────────────────────────────────────────
 
 function updateButtons() {
-    // Argue the call — fouling team decides whether to challenge the referee.
+    // Bribe — fouling team may spend a bribe before the argue-call step.
     const myTurnNow = !NET.online || NET.side === G.active;
+    if (G.bribePending && !G.confirm
+            && (!NET.online || NET.side === G.bribePending.side)) {
+        const left = G.bribes?.[G.bribePending.side] || 0;
+        G.confirm = {
+            prompt: `Spend a bribe? (${left} left — roll 2+ to avoid ejection)`,
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'BRIBE', use: true });
+                else { const m = resolveBribe(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'BRIBE', use: false });
+                else { const m = resolveBribe(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Argue the call — fouling team decides whether to challenge the referee.
     if (G.argueCallPending && !G.confirm
             && (!NET.online || NET.side === G.argueCallPending.side)) {
         G.confirm = {

@@ -92,6 +92,9 @@ function getGameContext(G, sel, NET) {
 
     const canUseTeamReroll     = !!G.pendingReroll && (!NET.online || NET.side === G.active);
 
+    const canUseBribe          = !!G.bribePending
+        && (!NET.online || NET.side === G.bribePending?.side);
+
     const canConfirmSetup = (G.phase === 'setup') && (!NET.online || NET.side === G.setupSide);
 
     // Kickoff event phase flags
@@ -140,6 +143,7 @@ function getGameContext(G, sel, NET) {
         canChooseNoIntercept,
         canConfirmSetup,
         canUseTeamReroll,
+        canUseBribe,
         isKickoffSolidDefence, isKickoffQuickSnap, isKickoffCharge, isKickoffHighKick,
         canConfirmSolidDefence, canConfirmQuickSnap, canConfirmCharge, canSkipHighKick,
     };

@@ -33,6 +33,7 @@ const {
     declarePV, executePV,
     declareTTM, pickTTMMissile, throwTeamMate,
     useTeamReroll, declineTeamReroll,
+    resolveBribe,
 } = require('./public/engine/actions.js');
 const TM = require('./public/engine/teams.js');
 const { getGameContext } = require('./public/engine/truth.js');
@@ -299,8 +300,13 @@ function startGame(room) {
     const homePlayers = TM.buildRosterFromTeam(room.homeTeam, 'home', 0,   FORMATION_HOME);
     const awayPlayers = TM.buildRosterFromTeam(room.awayTeam, 'away', 100, FORMATION_AWAY);
     room.G.players        = [...homePlayers, ...awayPlayers];
-    room.G.rerolls        = { home: room.homeTeam.rerolls || 0, away: room.awayTeam.rerolls || 0 };
+    room.G.rerolls         = { home: room.homeTeam.rerolls || 0, away: room.awayTeam.rerolls || 0 };
     room.G.startingRerolls = { ...room.G.rerolls };
+    room.G.bribes          = { home: room.homeTeam.bribes  || 0, away: room.awayTeam.bribes  || 0 };
+    room.G.cheerleaders    = { home: room.homeTeam.cheerleaders    || 0, away: room.awayTeam.cheerleaders    || 0 };
+    room.G.assistantCoaches = { home: room.homeTeam.assistantCoaches || 0, away: room.awayTeam.assistantCoaches || 0 };
+    room.G.fanFactor       = { home: room.homeTeam.fanFactor       || 0, away: room.awayTeam.fanFactor       || 0 };
+    room.G.apothecary      = { home: !!room.homeTeam.apothecary,         away: !!room.awayTeam.apothecary         };
     initToss(room.G);  // sets phase='toss', picks tossWinner
 
     console.log(`Room ${room.id}: game started — ${room.G.players.length} players`);
@@ -638,6 +644,7 @@ function handleAction(room, msg) {
         case 'FOUL_DECLARE':        if (!gc.canFoul)    return; room.lastLogMsg = declareFoul(G, msg.playerId);           break;
         case 'DO_FOUL':             room.lastLogMsg = executeFoul(G, msg.targetId);           break;
         case 'ARGUE_CALL':          room.lastLogMsg = resolveArgueCall(G, msg.use);           break;
+        case 'BRIBE':               room.lastLogMsg = resolveBribe(G, msg.use);              break;
         case 'HANDOFF_DECLARE':     if (!gc.canHandoff) return; room.lastLogMsg = declareHandoff(G, msg.playerId);       break;
         case 'DO_HANDOFF':          room.lastLogMsg = doHandoff(G, msg.receiverId);          break;
         case 'PASS_DECLARE':        if (!gc.canPass)    return; room.lastLogMsg = declarePass(G, msg.playerId);          break;
