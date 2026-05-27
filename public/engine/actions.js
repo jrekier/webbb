@@ -296,11 +296,12 @@ function pickPushSquare(G, col, row) {
         const injMsg = knockDown(G, def, { attacker: att });
         msg += ` ${pn(def)} is knocked down! ${injMsg}`;
     }
+    const scatterPending = ballDropped || looseBallAt(G, col, row);
 
     if (chainVictim) {
         // Preserve the original follow-up data so we can restore it after all
         // chain pushes resolve. For nested chains, pendingFollowUp already holds it.
-        const pendingFollowUp = G.block.pendingFollowUp || { att, def, vacCol, vacRow, ballDropped, frenzy };
+        const pendingFollowUp = G.block.pendingFollowUp || { att, def, vacCol, vacRow, scatterPending, frenzy };
         // The chain direction is away from def's old square.
         const fakeAtt = { col: vacCol, row: vacRow };
         const chainSquares = getPushSquares(G, fakeAtt, chainVictim);
@@ -325,8 +326,8 @@ function pickPushSquare(G, col, row) {
         return msg + ` Chain push — choose where ${chainVictim.name} goes.`;
     }
 
-    const followUp = G.block.pendingFollowUp || { att, def, vacCol, vacRow, ballDropped, frenzy };
-    G.block = { phase: 'follow-up', att: followUp.att, def: followUp.def, vacCol: followUp.vacCol, vacRow: followUp.vacRow, ballDropped: followUp.ballDropped, frenzy: followUp.frenzy };
+    const followUp = G.block.pendingFollowUp || { att, def, vacCol, vacRow, scatterPending, frenzy };
+    G.block = { phase: 'follow-up', att: followUp.att, def: followUp.def, vacCol: followUp.vacCol, vacRow: followUp.vacRow, scatterPending: followUp.scatterPending, frenzy: followUp.frenzy };
     if (_fendEligible(followUp.def, followUp.att, G)) { G.block.phase = 'fend-choice'; return msg + ` ${pn(followUp.def)} may use [[skill:Fend]] — deny follow-up?`; }
     if (followUp.att.skills?.includes('Frenzy')) return msg + ' ' + resolveFollowUp(G, true);
     return msg + ' Follow up?';
@@ -361,7 +362,7 @@ function resolveFend(G, use) {
 
 function resolveFollowUp(G, followUp) {
     if (!G.block || G.block.phase !== 'follow-up') return null;
-    const { att, def, vacCol, vacRow, ballDropped, frenzy, fendUsed } = G.block;
+    const { att, def, vacCol, vacRow, scatterPending, frenzy, fendUsed } = G.block;
 
     // Fend overrides Frenzy's mandatory follow-up — checked first.
     if (fendUsed)                         followUp = false;
@@ -378,13 +379,13 @@ function resolveFollowUp(G, followUp) {
     // Only meaningful on a plain PUSH (def still standing, hasBall still set).
     // For knockdown results, hasBall was already cleared by knockDown in pickPushSquare.
     if (att.skills?.includes('Strip Ball') && def?.hasBall && def.col >= 0) {
-        G.block = { phase: 'strip-ball-choice', att, def, frenzy, ballDropped };
+        G.block = { phase: 'strip-ball-choice', att, def, frenzy, scatterPending };
         return `${followMsg} — use [[skill:Strip Ball]] against ${pn(def)}?`;
     }
 
     G.block = null;
 
-    const scatterMsg = ballDropped ? ' ' + scatterBall(G) : '';
+    const scatterMsg = scatterPending ? ' ' + scatterBall(G) : '';
 
     // Frenzy second block: only on the first block, def still standing and adjacent
     // (if Fend denied the follow-up, att didn't move and is no longer adjacent — naturally blocked).
@@ -447,7 +448,7 @@ function resolveFollowUp(G, followUp) {
 
 function resolveStripBall(G, use) {
     if (!G.block || G.block.phase !== 'strip-ball-choice') return null;
-    const { att, def, frenzy, ballDropped } = G.block;
+    const { att, def, frenzy, scatterPending } = G.block;
     G.block = null;
 
     let msg = '';
@@ -459,7 +460,7 @@ function resolveStripBall(G, use) {
         msg = `[[skill:Strip Ball]]! ${pn(def)} drops the ball! ` + scatterBall(G) + ' ';
     }
 
-    const scatterMsg = ballDropped ? ' ' + scatterBall(G) : '';
+    const scatterMsg = scatterPending ? ' ' + scatterBall(G) : '';
 
     // Frenzy second block (same conditions as resolveFollowUp).
     if (!frenzy && att.skills?.includes('Frenzy') && def && def.col >= 0 && isStanding(def) && isAdjacent(att, def)) {
@@ -549,7 +550,7 @@ function resolveStandFirm(G, use) {
     if (pendingFollowUp) {
         if (pushedPlayer) { pushedPlayer.col = att.col; pushedPlayer.row = att.row; }
         const realAtt    = pendingFollowUp.att;
-        const scatterMsg = pendingFollowUp.ballDropped ? ' ' + scatterBall(G) : '';
+        const scatterMsg = pendingFollowUp.scatterPending ? ' ' + scatterBall(G) : '';
         msg += ` Neither player moves.${scatterMsg}`;
         G.block = null;
         if (G.blitz) {

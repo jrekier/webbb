@@ -209,6 +209,13 @@ function canMoveTo(G, player, col, row) {
     return { allowed, needsrush, dodgerolltarget };
 }
 
+// ── looseBallAt ───────────────────────────────────────────────────
+// True when the ball is on the ground (no carrier) at the given square.
+
+function looseBallAt(G, col, row) {
+    return !G.ball.carrier && G.ball.col === col && G.ball.row === row;
+}
+
 // ── markStunned ───────────────────────────────────────────────────
 // Sets a player to stunned and marks the token so endTurn knows not
 // to flip them to prone until the *next* turn their team is active.
@@ -228,6 +235,7 @@ if (typeof module !== 'undefined') {
         countAssists, blockDiceCount, getBlockTargets, getPushSquares,
         isInKickerHalf, isValidKickTarget,
         canMoveTo,
+        looseBallAt,
         markStunned,
     };
 }
