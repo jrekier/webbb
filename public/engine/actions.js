@@ -1756,6 +1756,44 @@ function pickTTMMissile(G, missileId) {
     if (!isStanding(missile)) return null;
     if (!isAdjacent(p, missile)) return null;
 
+    if (p.skills?.includes('Always Hungry')) {
+        const ahRoll = Math.floor(Math.random() * 6) + 1;
+        let prefix = `${pn(p)} [[skill:Always Hungry]] — rolled ${ahRoll}: `;
+        if (ahRoll === 1) {
+            const eatRoll = Math.floor(Math.random() * 6) + 1;
+            prefix += `tries to eat ${pn(missile)}! Rolled ${eatRoll}: `;
+            if (eatRoll === 1) {
+                // Eaten — no apothecary or regeneration may be used
+                const hadBall = missile.hasBall;
+                if (hadBall) {
+                    missile.hasBall = false;
+                    G.ball.carrier  = null;
+                    G.ball.col      = missile.col;
+                    G.ball.row      = missile.row;
+                }
+                missile.col    = -1;
+                missile.row    = -1;
+                missile.status = 'casualty';
+                missile.eaten  = true;
+                G.throwTeamMate = null;
+                const ballMsg = hadBall ? scatterBall(G) + ' ' : '';
+                endTurn(G);
+                return prefix + `${pn(missile)} is eaten! ${ballMsg}TURNOVER`;
+            }
+            // 2+: squirms free → automatic Fumbled Throw
+            prefix += `${pn(missile)} squirms free! FUMBLE! `;
+            G.throwTeamMate = null;
+            G.hasThrownMate = true;
+            const throwerCol = p.col;
+            const throwerRow = p.row;
+            endActivation(G);
+            return _ttmResolveFumble(G, missile, throwerCol, throwerRow, prefix);
+        }
+        // 2+: proceed with throw as normal
+        G.throwTeamMate = { phase: 'targeting', missileId };
+        return prefix + `${pn(p)} picks up ${pn(missile)} — click target square to throw.`;
+    }
+
     G.throwTeamMate = { phase: 'targeting', missileId };
     return `${pn(p)} picks up ${pn(missile)} — click target square to throw.`;
 }
@@ -1960,6 +1998,16 @@ function _landMissile(G, missile, col, row, msg, landMod, fromCol, fromRow) {
     return msg + failMsg;
 }
 
+// ── _ttmResolveFumble ────────────────────────────────────────────────
+// Shared fumble resolution: bounce missile ×1 from thrower's square, then land.
+// Caller is responsible for calling endActivation before invoking this.
+
+function _ttmResolveFumble(G, missile, throwerCol, throwerRow, msg) {
+    const { col: bc, row: br, fromCol: fc, fromRow: fr, msg: bMsg, offPitch } = _ttmScatterNTimes(throwerCol, throwerRow, 1);
+    msg += `${pn(missile)} bounces ${bMsg}${offPitch ? ' (off pitch)' : ' to ' + sqLabel(bc, br)}. `;
+    return _landMissile(G, missile, bc, br, msg, 1, fc, fr);
+}
+
 // ── throwTeamMate ────────────────────────────────────────────────────
 // Resolves the throw and landing after a target square is chosen.
 // Superb: scatter ×3 from target, landing roll (no penalty).
@@ -1998,9 +2046,7 @@ function throwTeamMate(G, targetCol, targetRow) {
 
     if (isFumble) {
         msg += 'FUMBLE! ';
-        const { col: bc, row: br, fromCol: fc, fromRow: fr, msg: bMsg, offPitch } = _ttmScatterNTimes(throwerCol, throwerRow, 1);
-        msg += `${pn(missile)} bounces ${bMsg}${offPitch ? ' (off pitch)' : ' to ' + sqLabel(bc, br)}. `;
-        return _landMissile(G, missile, bc, br, msg, 1, fc, fr);
+        return _ttmResolveFumble(G, missile, throwerCol, throwerRow, msg);
     }
 
     const throwLabel = isSuperb ? 'Superb' : 'Subpar';

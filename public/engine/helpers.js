@@ -8,7 +8,7 @@ var ROWS  = 20;
 var TURNS = 6;
 
 var ALL_SKILLS = [
-    'Animal Savagery', 'Block', 'Bone Head', 'Catch', 'Dodge',
+    'Always Hungry', 'Animal Savagery', 'Block', 'Bone Head', 'Catch', 'Dodge',
     'Fend', 'Frenzy', 'Guard', 'Juggernaut', 'Pass', 'Really Stupid',
     'Right Stuff', 'Stand Firm', 'Strip Ball', 'Stunty', 'Sure Hands',
     'Tackle', 'Throw Team-Mate',
