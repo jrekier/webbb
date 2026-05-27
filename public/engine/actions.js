@@ -1615,7 +1615,7 @@ function _resolveKickCatch(G, nc, nr) {
     }
     G.phase  = 'play';
     G.active = G.receiver;
-    return msg + ` Turn ${G.turn} · ${G.active.toUpperCase()}`;
+    return msg;
 }
 
 // ── Kick mechanics ────────────────────────────────────────────────
@@ -1665,7 +1665,7 @@ function touchbackGiveBall(G, playerId) {
 
     G.phase  = 'play';
     G.active = G.receiver;
-    return `${pn(p)} receives the touchback. Turn ${G.turn} · ${G.active.toUpperCase()}`;
+    return `${pn(p)} receives the touchback.`;
 }
 
 // ── High Kick resolution ──────────────────────────────────────────

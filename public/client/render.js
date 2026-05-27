@@ -79,10 +79,7 @@ function render() {
     if (G.phase === 'play') {
         const enteredPlay = _renderPrevPhase !== 'play';
         const sideChanged = !enteredPlay && _renderPrevActive !== null && G.active !== _renderPrevActive;
-        // Skip the turn marker when entering play via a kickoff touchback — the
-        // "X receives the touchback" message already identifies the active team.
-        const fromKickoffTouchback = _renderPrevPhase === 'kickoff_touchback';
-        if ((enteredPlay && !fromKickoffTouchback) || sideChanged) {
+        if (enteredPlay || sideChanged) {
             log(`Turn ${G.turn} · ${G.active.toUpperCase()}`, 'turn-marker-' + G.active);
         }
         _renderPrevActive = G.active;
