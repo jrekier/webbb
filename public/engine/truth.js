@@ -68,7 +68,8 @@ function getGameContext(G, sel, NET) {
     const canStop = myTurn && G.activated && (!canStillCancel(G) || G.stoodUpFromProne) && !G.block
         && G.passing !== 'targeting' && G.throwTeamMate?.phase !== 'targeting';
 
-    const canDeclarePV = !!sel?.specialSkills?.includes('Projectile Vomit')
+    const hasPV = !!(sel?.specialSkills?.includes('Projectile Vomit') || sel?.skills?.includes('Projectile Vomit'));
+    const canDeclarePV = hasPV
         && ((canDeclare && !selProne)
             || (myTurn && G.activated?.id === sel?.id && G.blitz?.phase === 'moving'));
 

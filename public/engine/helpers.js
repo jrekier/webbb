@@ -9,7 +9,7 @@ var TURNS = 6;
 
 var ALL_SKILLS = [
     'Always Hungry', 'Animal Savagery', 'Block', 'Bone Head', 'Catch', 'Dodge',
-    'Fend', 'Frenzy', 'Guard', 'Juggernaut', 'Pass', 'Really Stupid',
+    'Fend', 'Frenzy', 'Guard', 'Juggernaut', 'Pass', 'Projectile Vomit', 'Really Stupid',
     'Right Stuff', 'Stand Firm', 'Strip Ball', 'Stunty', 'Sure Hands',
     'Tackle', 'Throw Team-Mate',
 ];
