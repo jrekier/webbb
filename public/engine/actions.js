@@ -4,11 +4,11 @@
 // No DOM, no canvas. Works identically in browser and Node.js.
 
 if (typeof module !== 'undefined') {
-    var { COLS, ROWS, sqLabel,
+    var { COLS, ROWS, TURNS, sqLabel,
           playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
           countAssists, blockDiceCount, getBlockTargets, getPushSquares,
           isInKickerHalf, isValidKickTarget, canMoveTo,
-          markStunned } = require('./helpers.js');
+          markStunned, rollWeather } = require('./helpers.js');
     var { activatePlayer, endTurn, endActivation,
           resetAfterTouchdown } = require('./core.js');
     var { d6, rush, dodge, BLOCK_FACES, rollBlockDice,
@@ -161,7 +161,11 @@ function declareBlock(G, att, def) {
     if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
     const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
-    const { attStr, defStr } = countAssists(G, att, def);
+    let { attStr, defStr } = countAssists(G, att, def);
+    if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') {
+        attStr += 1;
+        G.cheeringFansBonus = null;
+    }
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
 
@@ -742,7 +746,11 @@ function setBlitzTarget(G, defId) {
 // Trait checks (BH/RS/AS) already ran in activateBlitz — they must not fire again here.
 function blitzBlock(G, att, target) {
     att.maLeft = Math.max(0, att.maLeft - 1);
-    const { attStr, defStr } = countAssists(G, att, target);
+    let { attStr, defStr } = countAssists(G, att, target);
+    if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') {
+        attStr += 1;
+        G.cheeringFansBonus = null;
+    }
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
     G.block = { att, def: target, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null };
@@ -821,7 +829,7 @@ function throwIn(G, lastCol, lastRow, nc, nr) {
 // Prone/stunned players let the ball bounce (re-scatter).
 // Returns a log string.
 
-function scatterBall(G) {
+function scatterBall(G, isKickoff = false) {
     const DC = [ 0, 1, 1, 1, 0,-1,-1,-1];
     const DR = [-1,-1, 0, 1, 1, 1, 0,-1];
     const dir = Math.floor(Math.random() * 8);
@@ -829,6 +837,11 @@ function scatterBall(G) {
     const nr  = G.ball.row + DR[dir];
 
     if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) {
+        if (isKickoff) {
+            G.ball  = { col: -1, row: -1, carrier: null };
+            G.phase = 'kickoff_touchback';
+            return `Ball scattered out of play — TOUCHBACK!`;
+        }
         return `Ball scattered out of bounds. ` + throwIn(G, G.ball.col, G.ball.row, nc, nr);
     }
 
@@ -1345,62 +1358,302 @@ function doHandoff(G, receiverId) {
     return _checkPassTurnover(G, passerSide, msg + _catchAtSquare(G, receiver.col, receiver.row, false));
 }
 
-// ── Kick mechanics ────────────────────────────────────────────────
+// ── Kickoff event table ───────────────────────────────────────────
 
-// Kicker picks an aim square; 2d6 (take min) scatter distance + d8 direction.
-// Touchback if the ball leaves the pitch or lands in the kicker's half.
-function declareKick(G, col, row) {
-    if (G.phase !== 'kick') return null;
-    if (!isValidKickTarget(G.kicker, col, row)) return null;
+var KICKOFF_EVENTS = [
+    null, null,                // 0–1 unused
+    'Get the Ref',             // 2
+    'Time-Out',                // 3
+    'Solid Defence',           // 4
+    'High Kick',               // 5
+    'Cheering Fans',           // 6
+    'Brilliant Coaching',      // 7
+    'Changing Weather',        // 8
+    'Quick Snap',              // 9
+    'Charge!',                 // 10
+    'Dodgy Snack',             // 11
+    'Pitch Invasion',          // 12
+];
+
+// Rolls 2d6, applies the kickoff event to G, returns a log message.
+// For interactive events (Solid Defence, Quick Snap, Charge!) the phase
+// is changed and G.pendingKick is set; the caller must call resolveKickScatter
+// once the interactive phase confirms. For all other events, the phase is
+// left as 'kick' and the scatter resolves immediately.
+function _applyKickoffEvent(G, aimCol, aimRow) {
+    const die1 = d6();
+    const die2 = d6();
+    const roll = die1 + die2;
+    const name = KICKOFF_EVENTS[roll] || 'Brilliant Coaching';
+    G.kickoffEvent = name;
+
+    let msg = `[[skill:Kickoff Event]] (${die1}+${die2}=${roll}): [[skill:${name}]]`;
+
+    if (!G.weather) G.weather = rollWeather();
+
+    switch (name) {
+
+        case 'Get the Ref':
+            G.rerolls.home += 1;
+            G.rerolls.away += 1;
+            msg += ` — Each team gains 1 reroll from the bribed officials!`;
+            break;
+
+        case 'Time-Out': {
+            const turnInHalf = G.half === 1 ? G.turn : G.turn - TURNS;
+            if (turnInHalf >= 4) {
+                G.turn -= 1;
+                msg += ` — Late in the half! Both teams gain an extra turn.`;
+            } else {
+                G.turn += 1;
+                msg += ` — Early squabble! Both teams lose a turn.`;
+            }
+            break;
+        }
+
+        case 'Solid Defence': {
+            const d3 = Math.ceil(d6() / 2);
+            G.solidDefenceMovesLeft = d3 + 1;
+            G.pendingKick = { col: aimCol, row: aimRow };
+            G.phase     = 'kickoff_soliddefence';
+            G.setupSide = G.kicker;  // reuse setup drag UI
+            msg += ` — ${G.kicker.toUpperCase()} may remove up to ${G.solidDefenceMovesLeft} players and re-set them up.`;
+            break;
+        }
+
+        case 'High Kick':
+            G.highKick = true;
+            msg += ` — After the ball lands, one ${G.receiver.toUpperCase()} player may move to that square.`;
+            break;
+
+        case 'Cheering Fans': {
+            const hr = d6(), ar = d6();
+            msg += ` — HOME ${hr} vs AWAY ${ar}.`;
+            if (hr > ar) {
+                G.cheeringFansBonus = 'home';
+                msg += ` HOME fans cheer loudest — HOME's next block gets +1 assist!`;
+            } else if (ar > hr) {
+                G.cheeringFansBonus = 'away';
+                msg += ` AWAY fans cheer loudest — AWAY's next block gets +1 assist!`;
+            } else {
+                G.cheeringFansBonus = 'both';
+                msg += ` Both sets of fans equally loud — both teams' next block gets +1 assist!`;
+            }
+            break;
+        }
+
+        case 'Brilliant Coaching': {
+            const hr = d6(), ar = d6();
+            msg += ` — HOME ${hr} vs AWAY ${ar}.`;
+            if (hr > ar) {
+                G.rerolls.home += 1;
+                msg += ` HOME coach inspired — HOME gains 1 reroll!`;
+            } else if (ar > hr) {
+                G.rerolls.away += 1;
+                msg += ` AWAY coach inspired — AWAY gains 1 reroll!`;
+            } else {
+                G.rerolls.home += 1;
+                G.rerolls.away += 1;
+                msg += ` Both coaches equally brilliant — each team gains 1 reroll!`;
+            }
+            break;
+        }
+
+        case 'Changing Weather': {
+            const prev = G.weather;
+            G.weather = rollWeather();
+            msg += ` — Weather changes from ${prev} to ${G.weather}!`;
+            if (G.weather === 'Perfect Conditions') {
+                G.tripleScatterKick = true;
+                msg += ` Clear skies — the ball will scatter 3 times in the air!`;
+            }
+            break;
+        }
+
+        case 'Quick Snap': {
+            const d3 = Math.ceil(d6() / 2);
+            G.quickSnapMovesLeft = d3 + 1;
+            G.quickSnapMoved     = [];
+            // Record each receiver's starting position so moves can be undone
+            G.quickSnapOrigins   = {};
+            G.players.filter(p => p.side === G.receiver && p.col >= 0).forEach(p => {
+                G.quickSnapOrigins[p.id] = { col: p.col, row: p.row };
+            });
+            G.pendingKick = { col: aimCol, row: aimRow };
+            G.phase = 'kickoff_quicksnap';
+            msg += ` — ${G.receiver.toUpperCase()} may move up to ${G.quickSnapMovesLeft} players 1 square each.`;
+            break;
+        }
+
+        case 'Charge!': {
+            const d3 = Math.ceil(d6() / 2);
+            G.chargeMovesLeft = d3 + 1;
+            G.pendingKick = { col: aimCol, row: aimRow };
+            G.phase  = 'kickoff_charge';
+            G.active = G.kicker;
+            msg += ` — ${G.kicker.toUpperCase()} may activate up to ${G.chargeMovesLeft} players for a free Move or Blitz!`;
+            break;
+        }
+
+        case 'Dodgy Snack': {
+            const hr = d6(), ar = d6();
+            msg += ` — HOME ${hr} vs AWAY ${ar}.`;
+            const affected = hr <= ar ? ['home'] : [];
+            if (ar <= hr) affected.push('away');
+            // Avoid duplicates when tied
+            const sides = hr === ar ? ['home', 'away'] : (hr < ar ? ['home'] : ['away']);
+            for (const side of sides) {
+                const onPitch = G.players.filter(p => p.side === side && p.col >= 0 && p.status === 'active');
+                if (!onPitch.length) continue;
+                const target = onPitch[Math.floor(Math.random() * onPitch.length)];
+                const snackRoll = d6();
+                if (snackRoll === 1) {
+                    target.col = -1; target.row = -1;
+                    msg += ` ${pn(target)} violently ill — sent to reserves for the drive! (rolled 1)`;
+                } else {
+                    target.ma = Math.max(1, target.ma - 1);
+                    target.av = Math.max(1, target.av - 1);
+                    msg += ` ${pn(target)} feeling off — MA/AV reduced by 1 for this drive. (rolled ${snackRoll})`;
+                }
+            }
+            break;
+        }
+
+        case 'Pitch Invasion': {
+            const hr = d6(), ar = d6();
+            msg += ` — HOME ${hr} vs AWAY ${ar}.`;
+            const sides = hr === ar ? ['home', 'away'] : (hr < ar ? ['home'] : ['away']);
+            for (const side of sides) {
+                const onPitch = G.players.filter(p => p.side === side && p.col >= 0 && p.status === 'active');
+                if (!onPitch.length) continue;
+                const target = onPitch[Math.floor(Math.random() * onPitch.length)];
+                target.status = 'stunned';
+                target.stunnedThisTurn = true;
+                msg += ` ${pn(target)} is knocked over by invading fans — Prone and Stunned!`;
+            }
+            break;
+        }
+    }
+
+    return msg;
+}
+
+// ── resolveKickScatter ────────────────────────────────────────────
+// Lands the ball after a kick. nc/nr is the already-scattered position
+// (from declareKick or stored in G.pendingKick for interactive events).
+// Only handles Changing Weather extra air scatter, then lands.
+// Exported so server.js / input.js can call it after interactive phases.
+
+function resolveKickScatter(G, nc, nr) {
+    const col = nc ?? G.pendingKick?.col;
+    const row = nr ?? G.pendingKick?.row;
+    G.pendingKick  = null;
+    G.kickoffEvent = null;
 
     const DC   = [ 0, 1, 1, 1, 0,-1,-1,-1];
     const DR   = [-1,-1, 0, 1, 1, 1, 0,-1];
     const DIRS = ['N','NE','E','SE','S','SW','W','NW'];
 
-    const d6a  = Math.floor(Math.random() * 6) + 1;
-    const d6b  = Math.floor(Math.random() * 6) + 1;
-    const dist = Math.min(d6a, d6b);
-    const dir  = Math.floor(Math.random() * 8);
+    let finalCol = col, finalRow = row;
+    const parts = [];
 
-    const nc = col + DC[dir] * dist;
-    const nr = row + DR[dir] * dist;
+    if (G.tripleScatterKick) {
+        // Changing Weather → Perfect: 3 extra air scatters after main scatter
+        G.tripleScatterKick = false;
+        let extraDesc = '';
+        for (let i = 0; i < 3; i++) {
+            const d = Math.floor(Math.random() * 8);
+            finalCol += DC[d]; finalRow += DR[d];
+            extraDesc += ` +${DIRS[d]}`;
+        }
+        parts.push(`Ball scatters further in the air (${extraDesc.trim()}).`);
+    }
 
-    let msg = `Kick aimed ${sqLabel(col,row)}: ${d6a}+${d6b} → ${dist} sq ${DIRS[dir]}.`;
-
-    const outOfBounds  = nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS;
-    const inKickerHalf = !outOfBounds && isInKickerHalf(G.kicker, nr);
+    const outOfBounds  = finalCol < 0 || finalCol >= COLS || finalRow < 0 || finalRow >= ROWS;
+    const inKickerHalf = !outOfBounds && isInKickerHalf(G.kicker, finalRow);
 
     if (outOfBounds || inKickerHalf) {
         G.ball  = { col: -1, row: -1, carrier: null };
-        G.phase = 'touchback';
-        return msg + ` Ball out of play — TOUCHBACK! ${G.receiver.toUpperCase()} picks a player.`;
+        G.phase = 'kickoff_touchback';
+        parts.push('Ball out of play — TOUCHBACK!');
+        return parts.join(' ');
     }
 
-    G.ball = { col: nc, row: nr, carrier: null };
-    msg   += ` Lands at ${sqLabel(nc,nr)}.`;
+    G.ball = { col: finalCol, row: finalRow, carrier: null };
+    parts.push(`Lands at ${sqLabel(finalCol, finalRow)}.`);
 
+    if (G.highKick) {
+        G.highKick = false;
+        G.phase    = 'kickoff_highkick';
+        parts.push(`[[skill:High Kick!]] ${G.receiver.toUpperCase()} may place a player here before the catch.`);
+        return parts.join(' ');
+    }
+
+    const catchMsg = _resolveKickCatch(G, finalCol, finalRow);
+    if (catchMsg) parts.push(catchMsg.trim());
+    return parts.join(' ');
+}
+
+// Try to catch the ball at (nc, nr) and transition to play.
+// Always called from kickoff context — if scatter goes OOB it's a touchback,
+// not a throw-in.
+function _resolveKickCatch(G, nc, nr) {
+    let msg = '';
     const lander = playerAt(G, nc, nr);
     if (lander && isStanding(lander)) {
         const tzs    = countTackleZones(G, lander.side, nc, nr);
         const target = Math.min(lander.ag + tzs, 6);
-        const roll   = Math.floor(Math.random() * 6) + 1;
+        const roll   = d6();
         if (roll >= target || roll === 6) {
             lander.hasBall = true;
             G.ball.carrier = lander;
             msg += ` ${pn(lander)} catches the kick! (${roll} vs ${target}+)`;
         } else {
-            msg += ` ${pn(lander)} fails to catch (${roll} vs ${target}+). ` + scatterBall(G);
+            msg += ` ${pn(lander)} fails to catch (${roll} vs ${target}+). ` + scatterBall(G, true);
+            if (G.phase === 'kickoff_touchback') return msg;
         }
     }
-
     G.phase  = 'play';
     G.active = G.receiver;
-    return msg;
+    return msg + ` Turn ${G.turn} · ${G.active.toUpperCase()}`;
+}
+
+// ── Kick mechanics ────────────────────────────────────────────────
+
+// Kicker picks an aim square.
+// Step 1: main scatter dice rolled (ball launched).
+// Step 2: kickoff event rolled while ball is in the air.
+// Step 3: ball lands (may be deferred for interactive events).
+function declareKick(G, col, row) {
+    if (G.phase !== 'kick') return null;
+    if (!isValidKickTarget(G.kicker, col, row)) return null;
+
+    // Step 1: roll main scatter
+    const DC   = [ 0, 1, 1, 1, 0,-1,-1,-1];
+    const DR   = [-1,-1, 0, 1, 1, 1, 0,-1];
+    const DIRS = ['N','NE','E','SE','S','SW','W','NW'];
+    const d6a  = d6(), d6b = d6();
+    const dist = Math.min(d6a, d6b);
+    const dir  = Math.floor(Math.random() * 8);
+    const sc   = col + DC[dir] * dist;
+    const sr   = row + DR[dir] * dist;
+    const parts = [`Kick aimed ${sqLabel(col, row)}: ${d6a}+${d6b} → ${dist} sq ${DIRS[dir]}.`];
+
+    // Step 2: kickoff event (pendingKick stores the scattered position)
+    parts.push(_applyKickoffEvent(G, sc, sr));
+
+    // Interactive events: landing is deferred
+    if (G.phase !== 'kick') return parts.join(' ');
+
+    // Step 3: land the ball
+    const landMsg = resolveKickScatter(G, sc, sr);
+    if (landMsg) parts.push(landMsg);
+    return parts.join(' ');
 }
 
 // Receiver nominates a player to receive a touchback.
 function touchbackGiveBall(G, playerId) {
-    if (G.phase !== 'touchback') return null;
+    if (G.phase !== 'touchback' && G.phase !== 'kickoff_touchback') return null;
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.receiver) return null;
     if (p.status === 'ko' || p.status === 'casualty' || p.col < 0) return null;
@@ -1412,7 +1665,30 @@ function touchbackGiveBall(G, playerId) {
 
     G.phase  = 'play';
     G.active = G.receiver;
-    return `${pn(p)} receives the touchback.`;
+    return `${pn(p)} receives the touchback. Turn ${G.turn} · ${G.active.toUpperCase()}`;
+}
+
+// ── High Kick resolution ──────────────────────────────────────────
+
+// Receiver places one standing player at the ball's landing square,
+// then the catch attempt is made.
+function highKickPlace(G, playerId) {
+    if (G.phase !== 'kickoff_highkick') return null;
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.receiver) return null;
+    if (p.status !== 'active' || p.col < 0) return null;
+
+    p.col = G.ball.col;
+    p.row = G.ball.row;
+
+    return `${pn(p)} leaps to ${sqLabel(p.col, p.row)}.` + _resolveKickCatch(G, p.col, p.row);
+}
+
+// Receiver declines the High Kick — normal catch attempt for whoever
+// is already at the ball square (if any).
+function skipHighKick(G) {
+    if (G.phase !== 'kickoff_highkick') return null;
+    return `${G.receiver.toUpperCase()} declines High Kick.` + _resolveKickCatch(G, G.ball.col, G.ball.row);
 }
 
 // ── _moveTurnover / _finishMove / _checkDodge ────────────────────
@@ -2082,7 +2358,10 @@ if (typeof module !== 'undefined') {
         doSecureRoll, secureBall,
         declarePass, throwBall, resolvePassReroll, getInterceptors, chooseInterceptor,
         declareHandoff, doHandoff,
+        KICKOFF_EVENTS,
+        resolveKickScatter,
         declareKick, touchbackGiveBall,
+        highKickPlace, skipHighKick,
         movePlayer, activateMover,
         declarePV, executePV,
         declareTTM, pickTTMMissile, throwTeamMate,

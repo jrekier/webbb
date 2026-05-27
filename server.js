@@ -14,8 +14,10 @@ const crypto = require('node:crypto');
 const {
     createInitialState, initFormations, FORMATION_HOME, FORMATION_AWAY,
     initToss, chooseTossResult,
-    moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, confirmSetup,
+    moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, confirmSetup, validateSetup,
     cancelActivation, endActivation, endTurn,
+    moveSolidDefencePlayer, demoteSolidDefencePlayer,
+    kickoffQuickSnapMove,
 } = require('./public/engine/core.js');
 const {
     activateMover, movePlayer,
@@ -27,6 +29,7 @@ const {
     declareHandoff, doHandoff,
     declarePass, throwBall, resolvePassReroll, chooseInterceptor,
     declareKick, touchbackGiveBall, secureBall,
+    resolveKickScatter, highKickPlace, skipHighKick,
     declarePV, executePV,
     declareTTM, pickTTMMissile, throwTeamMate,
     useTeamReroll, declineTeamReroll,
@@ -361,8 +364,16 @@ wss.on('connection', (ws) => {
         if (msg.type === 'SETUP_PLAYER_SWAP')  { handleSetupPlayerSwap(room, side, msg);   return; }
         if (msg.type === 'SETUP_DEMOTE')       { handleSetupDemote(room, side, msg);        return; }
         if (msg.type === 'CONFIRM_SETUP') { handleConfirmSetup(room, side);           return; }
-        if (msg.type === 'KICK_AIM')      { handleKickAim(room, side, msg);           return; }
-        if (msg.type === 'TOUCHBACK')     { handleTouchback(room, side, msg);         return; }
+        if (msg.type === 'KICK_AIM')                { handleKickAim(room, side, msg);                return; }
+        if (msg.type === 'TOUCHBACK')               { handleTouchback(room, side, msg);              return; }
+        if (msg.type === 'SOLID_DEFENCE_MOVE')      { handleSolidDefenceMove(room, side, msg);       return; }
+        if (msg.type === 'SOLID_DEFENCE_DEMOTE')    { handleSolidDefenceDemote(room, side, msg);     return; }
+        if (msg.type === 'SOLID_DEFENCE_CONFIRM')   { handleSolidDefenceConfirm(room, side);         return; }
+        if (msg.type === 'QUICKSNAP_MOVE')          { handleQuickSnapMove(room, side, msg);          return; }
+        if (msg.type === 'QUICKSNAP_CONFIRM')       { handleQuickSnapConfirm(room, side);            return; }
+        if (msg.type === 'CHARGE_CONFIRM')          { handleChargeConfirm(room, side);               return; }
+        if (msg.type === 'HIGHKICK_PLACE')          { handleHighKickPlace(room, side, msg);          return; }
+        if (msg.type === 'HIGHKICK_SKIP')           { handleHighKickSkip(room, side);                return; }
 
         if (msg.type === 'DEBUG_MOVE_PLAYER') { handleDebugMovePlayer(room, msg); return; }
         if (msg.type === 'DEBUG_MOVE_BALL')   { handleDebugMoveBall(room, msg);   return; }
@@ -376,6 +387,18 @@ wss.on('connection', (ws) => {
 
         console.log(`Room ${room.id} · ${side}: ${msg.type}`);
         handleAction(room, msg);
+        // Turnover during Charge! — auto-resolve the kick in the same broadcast
+        {
+            const G = room.G;
+            if (G.phase === 'kickoff_charge' && G.chargeMovesLeft === 0 && !G.activated) {
+                G.players.forEach(p => { if (p.side === G.kicker) { p.usedAction = false; p.maLeft = p.ma; p.rushLeft = 2; } });
+                const col = G.pendingKick?.col;
+                const row = G.pendingKick?.row;
+                G.phase = 'kick';
+                const scatterMsg = resolveKickScatter(G, col, row);
+                if (scatterMsg) room.lastLogMsg = (room.lastLogMsg ? room.lastLogMsg + ' ' : '') + scatterMsg;
+            }
+        }
         broadcast(room, { type: 'UPDATE', G: room.G, logMsg: room.lastLogMsg });
         room.lastLogMsg  = null;
     });
@@ -453,8 +476,80 @@ function handleKickAim(room, side, msg) {
 
 function handleTouchback(room, side, msg) {
     const G = room.G;
-    if (G.phase !== 'touchback' || side !== G.receiver) return;
+    if (G.phase !== 'touchback' && G.phase !== 'kickoff_touchback') return;
+    if (side !== G.receiver) return;
     const logMsg = touchbackGiveBall(G, msg.playerId);
+    if (logMsg) broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
+// ── Kickoff event handlers ────────────────────────────────────────
+
+function handleSolidDefenceMove(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_soliddefence' || side !== G.kicker) return;
+    moveSolidDefencePlayer(G, msg.playerId, msg.col, msg.row);
+    broadcast(room, { type: 'UPDATE', G, logMsg: null });
+}
+
+function handleSolidDefenceDemote(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_soliddefence' || side !== G.kicker) return;
+    demoteSolidDefencePlayer(G, msg.playerId);
+    broadcast(room, { type: 'UPDATE', G, logMsg: null });
+}
+
+function handleSolidDefenceConfirm(room, side) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_soliddefence' || side !== G.kicker) return;
+    const errors = validateSetup(G, G.kicker);
+    if (errors.length) {
+        const ws = room[side];
+        if (ws) ws.send(JSON.stringify({ type: 'UPDATE', G, logMsg: errors[0], setupError: true }));
+        return;
+    }
+    G.setupSide = null;
+    G.phase = 'kick';
+    const logMsg = resolveKickScatter(G);
+    broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
+function handleQuickSnapMove(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_quicksnap' || side !== G.receiver) return;
+    kickoffQuickSnapMove(G, msg.playerId, msg.col, msg.row);
+    broadcast(room, { type: 'UPDATE', G, logMsg: null });
+}
+
+function handleQuickSnapConfirm(room, side) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_quicksnap' || side !== G.receiver) return;
+    G.phase = 'kick';
+    const logMsg = resolveKickScatter(G);
+    broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
+function handleChargeConfirm(room, side) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_charge' || side !== G.kicker) return;
+    if (G.activated) { G.activated.usedAction = true; G.activated = null; }
+    G.blitz = null; G.hasBlitzed = false; G.chargeMovesLeft = 0;
+    G.players.forEach(p => { if (p.side === G.kicker) { p.usedAction = false; p.maLeft = p.ma; p.rushLeft = 2; } });
+    G.phase = 'kick';
+    const logMsg = resolveKickScatter(G);
+    broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
+function handleHighKickPlace(room, side, msg) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_highkick' || side !== G.receiver) return;
+    const logMsg = highKickPlace(G, msg.playerId);
+    if (logMsg) broadcast(room, { type: 'UPDATE', G, logMsg });
+}
+
+function handleHighKickSkip(room, side) {
+    const G = room.G;
+    if (G.phase !== 'kickoff_highkick' || side !== G.receiver) return;
+    const logMsg = skipHighKick(G);
     if (logMsg) broadcast(room, { type: 'UPDATE', G, logMsg });
 }
 

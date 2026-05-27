@@ -7,7 +7,9 @@ if (typeof module !== 'undefined') {
     var { COLS, ROWS, TURNS,
           playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
           hasMovedYet, canStillCancel,
-          isValidSetupSquare } = require('./helpers.js');
+          isValidSetupSquare,
+          rollWeather,
+          isValidPerfectDefenseSquare } = require('./helpers.js');
 }
 
 // ── createInitialState ────────────────────────────────────────────
@@ -54,6 +56,16 @@ function createInitialState() {
         targeting:          null,
         ball:               { col: 5, row: 10, carrier: null },
         players:            [],
+        // ── Kickoff event state ───────────────────────────────────
+        weather:               null,   // string from WEATHER_TABLE
+        kickoffEvent:          null,   // name of current kickoff event (for UI)
+        highKick:              false,  // High Kick event: receiver places player after kick
+        tripleScatterKick:     false,  // Changing Weather → Perfect: 3 extra air scatters
+        cheeringFansBonus:     null,   // 'home' | 'away' | 'both': +1 assist on next block
+        quickSnapMovesLeft:    0,      // Quick Snap: moves remaining
+        quickSnapMoved:        [],     // player ids moved this Quick Snap
+        solidDefenceMovesLeft: 0,      // Solid Defence: removals remaining
+        chargeMovesLeft:       0,      // Charge!: activations remaining
     };
 }
 
@@ -130,10 +142,26 @@ function endActivation(G) {
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.pendingReroll      = null;
+
+    if (G.phase === 'kickoff_charge') {
+        G.hasBlitzed = false;  // each charge activation gets its own blitz allowance
+        G.chargeMovesLeft -= 1;
+        const remaining = G.chargeMovesLeft;
+        return `${name} done${remaining > 0 ? ` — ${remaining} Charge! move(s) left` : ' — Charge! complete'}`;
+    }
+
     return `${name} done`;
 }
 
 function endTurn(G) {
+    if (G.phase === 'kickoff_charge') {
+        // Turnover during Charge! — end the charge immediately
+        if (G.activated) { G.activated.usedAction = true; G.activated = null; }
+        G.blitz = null; G.targeting = null; G.hasBlitzed = false; G.chargeMovesLeft = 0;
+        G.sel = null;
+        return `Turnover! [[skill:Charge!]] ended — kick proceeds.`;
+    }
+
     if (G.activated) endActivation(G);
     for (const p of G.players) {
         if (p.side === G.active) {
@@ -531,6 +559,72 @@ function swapReservePlayer(G, reserveId, pitchId) {
     return 'ok';
 }
 
+// ── Kickoff event — position helpers ─────────────────────────────
+// These modify player positions during interactive kickoff events.
+// The actual scatter/resolution lives in actions.js (resolveKickScatter).
+
+// ── moveSolidDefencePlayer ────────────────────────────────────────
+// Move a kicker's on-pitch player within their own half during Solid Defence.
+
+function moveSolidDefencePlayer(G, playerId, col, row) {
+    if (G.phase !== 'kickoff_soliddefence') return null;
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.kicker) return null;
+    if (!isValidPerfectDefenseSquare(G.kicker, col, row)) return null;
+    if (G.players.some(o => o.id !== playerId && o.col === col && o.row === row)) return null;
+    p.col = col;
+    p.row = row;
+    return 'ok';
+}
+
+// ── demoteSolidDefencePlayer ──────────────────────────────────────
+// Move a kicker's on-pitch player to reserve during Solid Defence.
+
+function demoteSolidDefencePlayer(G, playerId) {
+    if (G.phase !== 'kickoff_soliddefence') return null;
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.kicker || p.col < 0) return null;
+    if (G.solidDefenceMovesLeft <= 0) return null;
+    p.col = -1; p.row = -1;
+    G.solidDefenceMovesLeft -= 1;
+    return 'ok';
+}
+
+// ── kickoffQuickSnapMove ──────────────────────────────────────────
+// Move a receiver player 1 square (no dodge rolls) during Quick Snap.
+
+function kickoffQuickSnapMove(G, playerId, col, row) {
+    if (G.phase !== 'kickoff_quicksnap') return null;
+    const p = G.players.find(p => p.id === playerId);
+    if (!p || p.side !== G.receiver) return null;
+    if (p.col < 0 || p.status !== 'active') return null;
+    const dc = Math.abs(p.col - col);
+    const dr = Math.abs(p.row - row);
+    if (dc > 1 || dr > 1 || (dc === 0 && dr === 0)) return null;
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+    if (G.players.some(o => o.id !== playerId && o.col === col && o.row === row)) return null;
+
+    const alreadyMoved     = (G.quickSnapMoved || []).includes(playerId);
+    const origin           = G.quickSnapOrigins?.[playerId];
+    const returningToOrigin = origin && col === origin.col && row === origin.row;
+
+    if (!alreadyMoved) {
+        if (G.quickSnapMovesLeft <= 0) return null;
+        G.quickSnapMoved.push(playerId);
+        G.quickSnapMovesLeft -= 1;
+    } else if (returningToOrigin) {
+        // Undo: refund the budget slot
+        G.quickSnapMoved     = G.quickSnapMoved.filter(id => id !== playerId);
+        G.quickSnapMovesLeft += 1;
+    } else {
+        return null; // already moved — only option is undo back to origin
+    }
+
+    p.col = col;
+    p.row = row;
+    return null;
+}
+
 if (typeof module !== 'undefined') {
     module.exports = {
         createInitialState,
@@ -540,5 +634,7 @@ if (typeof module !== 'undefined') {
         resetAfterTouchdown, startHalfTime, startGameOver,
         initToss, chooseTossResult,
         moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, validateSetup, confirmSetup,
+        moveSolidDefencePlayer, demoteSolidDefencePlayer,
+        kickoffQuickSnapMove,
     };
 }

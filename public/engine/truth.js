@@ -13,6 +13,8 @@ function getGameContext(G, sel, NET) {
     const selProne   = sel && sel.status === 'prone';
     const selStunned = sel && sel.status === 'stunned';
 
+    const chargeOk = G.phase !== 'kickoff_charge' || G.chargeMovesLeft > 0;
+
     const canDeclare = myTurn && sel
         && sel.side === G.active
         && !sel.usedAction
@@ -21,7 +23,8 @@ function getGameContext(G, sel, NET) {
         && !selStunned
         && sel.status !== 'ko'
         && sel.status !== 'casualty'
-        && (!selProne || sel.maLeft + sel.rushLeft >= 3);
+        && (!selProne || sel.maLeft + sel.rushLeft >= 3)
+        && chargeOk;
 
     const canBlitz = myTurn && sel
         && sel.side === G.active
@@ -29,7 +32,8 @@ function getGameContext(G, sel, NET) {
         && noAction
         && !selStunned
         && !G.hasBlitzed
-        && G.players.some(p => p.side !== G.active && isStanding(p));
+        && G.players.some(p => p.side !== G.active && isStanding(p))
+        && chargeOk;
 
     const hasTargets = canDeclare && sel
         && getBlockTargets(G, sel).length > 0;
@@ -90,8 +94,25 @@ function getGameContext(G, sel, NET) {
 
     const canConfirmSetup = (G.phase === 'setup') && (!NET.online || NET.side === G.setupSide);
 
+    // Kickoff event phase flags
+    const isKickoffSolidDefence = G.phase === 'kickoff_soliddefence';
+    const isKickoffQuickSnap    = G.phase === 'kickoff_quicksnap';
+    const isKickoffCharge       = G.phase === 'kickoff_charge';
+    const isKickoffHighKick     = G.phase === 'kickoff_highkick';
+
+    const canConfirmSolidDefence = isKickoffSolidDefence && (!NET.online || NET.side === G.kicker);
+    const canConfirmQuickSnap    = isKickoffQuickSnap    && (!NET.online || NET.side === G.receiver);
+    const canConfirmCharge       = isKickoffCharge       && (!NET.online || NET.side === G.kicker);
+    const canSkipHighKick        = isKickoffHighKick     && (!NET.online || NET.side === G.receiver);
+
     const inSetup   = G.phase === 'setup';
-    const inSpecial = G.phase === 'kick' || G.phase === 'touchback' || G.phase === 'gameover';
+    const inSpecial = G.phase === 'kick'
+        || G.phase === 'touchback'
+        || G.phase === 'kickoff_touchback'
+        || G.phase === 'gameover'
+        || isKickoffSolidDefence
+        || isKickoffQuickSnap
+        || isKickoffHighKick;
 
     return {
         myTurn,
@@ -119,6 +140,8 @@ function getGameContext(G, sel, NET) {
         canChooseNoIntercept,
         canConfirmSetup,
         canUseTeamReroll,
+        isKickoffSolidDefence, isKickoffQuickSnap, isKickoffCharge, isKickoffHighKick,
+        canConfirmSolidDefence, canConfirmQuickSnap, canConfirmCharge, canSkipHighKick,
     };
 }
 

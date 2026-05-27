@@ -216,6 +216,39 @@ function looseBallAt(G, col, row) {
     return !G.ball.carrier && G.ball.col === col && G.ball.row === row;
 }
 
+// ── Weather ───────────────────────────────────────────────────────
+// 2d6 table matching Blood Bowl weather rules.
+
+var WEATHER_TABLE = [
+    null, null,              // 0–1 unused
+    'Sweltering Heat',       // 2
+    'Very Sunny',            // 3
+    'Perfect Conditions',    // 4
+    'Perfect Conditions',    // 5
+    'Perfect Conditions',    // 6
+    'Perfect Conditions',    // 7
+    'Perfect Conditions',    // 8
+    'Perfect Conditions',    // 9
+    'Perfect Conditions',    // 10
+    'Pouring Rain',          // 11
+    'Blizzard',              // 12
+];
+
+function rollWeather() {
+    const roll = Math.floor(Math.random() * 6) + 1
+               + Math.floor(Math.random() * 6) + 1;
+    return WEATHER_TABLE[roll];
+}
+
+// ── isValidPerfectDefenseSquare ───────────────────────────────────
+// True when the given square is in the kicking team's own half.
+// Used during the Perfect Defense kickoff event.
+
+function isValidPerfectDefenseSquare(kicker, col, row) {
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
+    return isInKickerHalf(kicker, row);
+}
+
 // ── markStunned ───────────────────────────────────────────────────
 // Sets a player to stunned and marks the token so endTurn knows not
 // to flip them to prone until the *next* turn their team is active.
@@ -237,5 +270,7 @@ if (typeof module !== 'undefined') {
         canMoveTo,
         looseBallAt,
         markStunned,
+        WEATHER_TABLE, rollWeather,
+        isValidPerfectDefenseSquare,
     };
 }

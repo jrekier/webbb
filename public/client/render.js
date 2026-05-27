@@ -79,7 +79,10 @@ function render() {
     if (G.phase === 'play') {
         const enteredPlay = _renderPrevPhase !== 'play';
         const sideChanged = !enteredPlay && _renderPrevActive !== null && G.active !== _renderPrevActive;
-        if (enteredPlay || sideChanged) {
+        // Skip the turn marker when entering play via a kickoff touchback — the
+        // "X receives the touchback" message already identifies the active team.
+        const fromKickoffTouchback = _renderPrevPhase === 'kickoff_touchback';
+        if ((enteredPlay && !fromKickoffTouchback) || sideChanged) {
             log(`Turn ${G.turn} · ${G.active.toUpperCase()}`, 'turn-marker-' + G.active);
         }
         _renderPrevActive = G.active;
@@ -87,17 +90,21 @@ function render() {
     _renderPrevPhase = G.phase;
     const cam = cameraY;
 
+    const _isSetupLikePhase = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+
     ctx.save();
     ctx.translate(0, -cam);
     drawPitch();
-    if (G.phase === 'setup') {
+    if (_isSetupLikePhase) {
         drawSetupZones();
     } else if (G.phase === 'kick') {
         drawKickZone();
     } else {
         drawHighlights();
-        if (G.phase === 'touchback') drawTouchbackHighlights();
-        if (G.testMode && setupDrag) _drawTestDragTarget();
+        if (G.phase === 'touchback' || G.phase === 'kickoff_touchback') drawTouchbackHighlights();
+        if (G.phase === 'kickoff_quicksnap')  drawQuickSnapHighlights();
+        if (G.phase === 'kickoff_highkick')   drawHighKickHighlight();
+        if (G.testMode && setupDrag)          _drawTestDragTarget();
     }
     drawBall();
     drawPlayers();
@@ -107,9 +114,10 @@ function render() {
     ctx.restore();
 
     // Overlays in screen space
-    if ((G.phase === 'setup' || G.testMode) && setupDrag) drawSetupDragGhost();
-    if (G.phase === 'setup' && setupErrors && setupErrors.length) drawSetupErrorBanner();
-    if (G.phase === 'touchback') drawTouchbackMessage();
+    if ((_isSetupLikePhase || G.testMode) && setupDrag) drawSetupDragGhost();
+    if (_isSetupLikePhase && setupErrors && setupErrors.length) drawSetupErrorBanner();
+    if (G.phase === 'touchback' || G.phase === 'kickoff_touchback') drawTouchbackMessage();
+    if (G.kickoffEvent)          drawKickoffEventBanner();
     updateSidebar();
     updateButtons();
     drawDiceOverlay();
@@ -241,8 +249,24 @@ function updateSidebar() {
         lbl.textContent = `${(G.kicker || '').toUpperCase()} KICKS`;
         lbl.className   = G.kicker === 'home' ? 'team-home' : 'team-away';
         document.getElementById('lbl-turn').textContent = '';
-    } else if (G.phase === 'touchback') {
+    } else if (G.phase === 'touchback' || G.phase === 'kickoff_touchback') {
         lbl.textContent = 'TOUCHBACK';
+        lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = '';
+    } else if (G.phase === 'kickoff_soliddefence') {
+        lbl.textContent = `${(G.kicker || '').toUpperCase()} SOLID DEFENCE`;
+        lbl.className   = G.kicker === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = '';
+    } else if (G.phase === 'kickoff_quicksnap') {
+        lbl.textContent = `${(G.receiver || '').toUpperCase()} QUICK SNAP`;
+        lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = '';
+    } else if (G.phase === 'kickoff_charge') {
+        lbl.textContent = `${(G.kicker || '').toUpperCase()} CHARGE!`;
+        lbl.className   = G.kicker === 'home' ? 'team-home' : 'team-away';
+        document.getElementById('lbl-turn').textContent = '';
+    } else if (G.phase === 'kickoff_highkick') {
+        lbl.textContent = `${(G.receiver || '').toUpperCase()} HIGH KICK`;
         lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
         document.getElementById('lbl-turn').textContent = '';
     } else if (G.phase === 'gameover') {
@@ -492,7 +516,7 @@ function updateTeams() {
         if (!el) return;
         el.innerHTML = '';
 
-        const isSetup = G.phase === 'setup';
+        const isSetup = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
 
         ['home', 'away'].forEach(side => {
             // Dugout shows only off-pitch players: reserves, KO'd, and casualties.
@@ -918,8 +942,104 @@ function drawTouchbackMessage() {
     ctx.fillText(txt, canvas.width / 2, bh / 2);
 }
 
+// ── drawKickoffEventBanner ────────────────────────────────────────
+// Screen-space banner shown during interactive kickoff events.
+
+function drawKickoffEventBanner() {
+    if (!G.kickoffEvent) return;
+    const fh = Math.max(10, Math.min(16, Math.floor(CELL * 0.38)));
+    const bh = fh * 2.2;
+    ctx.fillStyle = 'rgba(10,6,0,0.75)';
+    ctx.fillRect(0, 0, canvas.width, bh);
+    ctx.fillStyle    = '#ffcc00';
+    ctx.font         = `bold ${fh}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`KICKOFF: ${G.kickoffEvent}`, canvas.width / 2, bh / 2);
+}
+
+// ── drawQuickSnapHighlights ───────────────────────────────────────
+// During kickoff_quicksnap:
+//   Blue  — unmoved receiver players (budget available)
+//   Teal  — already-moved players (can reposition or undo)
+//   Green — valid target squares for the selected player
+//   Dashed gold — origin of a moved player (clicking it undoes & refunds)
+
+function drawQuickSnapHighlights() {
+    const isReceiver = !NET.online || NET.side === G.receiver;
+    if (!isReceiver) return;
+    const moved   = G.quickSnapMoved  || [];
+    const origins = G.quickSnapOrigins || {};
+
+    // Unmoved players — only highlight if budget remains
+    if (G.quickSnapMovesLeft > 0) {
+        G.players
+            .filter(p => p.side === G.receiver && p.col >= 0 && isStanding(p) && !moved.includes(p.id))
+            .forEach(p => hlCell(p.col, p.row, 'rgba(80,180,255,0.18)', 'rgba(80,180,255,0.7)', false));
+    }
+
+    // Already-moved players — teal, always re-selectable
+    G.players
+        .filter(p => p.side === G.receiver && p.col >= 0 && isStanding(p) && moved.includes(p.id))
+        .forEach(p => hlCell(p.col, p.row, 'rgba(80,220,180,0.18)', 'rgba(80,220,180,0.8)', false));
+
+    if (G.sel && G.sel.side === G.receiver && G.sel.col >= 0) {
+        const selMoved = moved.includes(G.sel.id);
+        const origin   = origins[G.sel.id];
+
+        if (selMoved) {
+            // Already moved — only the origin square is available (undo)
+            if (origin) hlCell(origin.col, origin.row, 'rgba(255,200,0,0.18)', 'rgba(255,200,0,0.85)', true);
+        } else if (G.quickSnapMovesLeft > 0) {
+            // Not yet moved — show all adjacent empty squares
+            for (let dc = -1; dc <= 1; dc++) {
+                for (let dr = -1; dr <= 1; dr++) {
+                    if (dc === 0 && dr === 0) continue;
+                    const nc = G.sel.col + dc;
+                    const nr = G.sel.row + dr;
+                    if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) continue;
+                    if (!playerAt(G, nc, nr))
+                        hlCell(nc, nr, 'rgba(80,220,80,0.20)', 'rgba(80,220,80,0.6)', false);
+                }
+            }
+        }
+    }
+}
+
+// ── drawHighKickHighlight ─────────────────────────────────────────
+// During kickoff_highkick: gold halo on ball square + eligible receiver players.
+
+function drawHighKickHighlight() {
+    if (G.ball.col >= 0)
+        hlCell(G.ball.col, G.ball.row, 'rgba(255,200,0,0.28)', 'rgba(255,200,0,0.9)', false);
+    const isReceiver = !NET.online || NET.side === G.receiver;
+    if (isReceiver) {
+        G.players
+            .filter(p => p.side === G.receiver && p.col >= 0 && isStanding(p))
+            .forEach(p => hlCell(p.col, p.row, 'rgba(255,200,0,0.18)', 'rgba(255,200,0,0.6)', false));
+    }
+}
+
 // ── Ball ──────────────────────────────────────────────────────────
 function drawBall() {
+    // Ghost ball: in-flight landing target during interactive kickoff events
+    if (G.pendingKick && G.pendingKick.col >= 0) {
+        const px = G.pendingKick.col * CELL + CELL / 2;
+        const py = G.pendingKick.row * CELL + CELL / 2;
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle   = '#e07020';
+        ctx.beginPath();
+        ctx.arc(px, py, CELL * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth   = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+
     if (G.ball.carrier !== null) return;
     if (G.ball.col < 0) return;  // off-pitch during kick phase
     if (setupDrag && setupDrag.isBall) return;  // drawn as ghost

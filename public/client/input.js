@@ -50,6 +50,14 @@ var _lastTapRow  = -1;
 var _pendingTap  = null;  // { timer } — delayed single-tap in targeting states
 
 
+// ── _isSetupLike ──────────────────────────────────────────────────
+// True in any phase that uses the setup drag machinery (normal setup
+// and the Solid Defence kickoff event where the kicker rearranges).
+function _isSetupLike() {
+    return G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+}
+
+
 // ── setupInput ────────────────────────────────────────────────────
 // Wires up all canvas listeners. Called once from game.js after the
 // canvas element exists.
@@ -103,7 +111,7 @@ function _onPointerDown(e) {
 
     // During setup (or test mode), note which player (if any) sits under the
     // contact so we can promote to a drag if the pointer moves enough.
-    if ((G.phase === 'setup' || G.testMode) && !wheelState) {
+    if ((_isSetupLike() || G.testMode) && !wheelState) {
         const col = Math.floor(px / CELL);
         const row = Math.floor((py + cameraY) / CELL);
         const p   = playerAt(G, col, row);
@@ -271,7 +279,7 @@ function _onPointerUp(e) {
                 }
             }
         } else if (outsidePitch && drag.player.col >= 0
-                && G.phase === 'setup' && (!NET.online || NET.side === G.setupSide)) {
+                && _isSetupLike() && (!NET.online || NET.side === G.setupSide)) {
             // Drag released beyond the pitch boundary → demote to reserve.
             _applyDemote(drag.player);
         } else if (inBounds) {
@@ -288,14 +296,19 @@ function _onPointerUp(e) {
                 }
                 if (drag.player.hasBall) { G.ball.col = drag.player.col; G.ball.row = drag.player.row; }
                 if (NET.online) sendAction({ type: 'DEBUG_MOVE_PLAYER', playerId: drag.player.id, col: drag.player.col, row: drag.player.row });
+            } else if (G.phase === 'kickoff_soliddefence') {
+                moveSolidDefencePlayer(G, drag.player.id, col, row);
+                if (NET.online) sendAction({ type: 'SOLID_DEFENCE_MOVE', playerId: drag.player.id, col, row });
+                setupErrors = null;
             } else if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
                 swapSetupPlayers(G, drag.player.id, occupant.id);
                 if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
+                setupErrors = null;
             } else {
                 moveSetupPlayer(G, drag.player.id, col, row);
                 if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
+                setupErrors = null;
             }
-            setupErrors = null;
         }
         render();
         return;
@@ -468,8 +481,13 @@ function _onContextMenu(e) {
 // Called whenever any drag (canvas or panel) is released off the pitch.
 
 function _applyDemote(player) {
-    demoteToReserve(G, player.id);
-    if (NET.online) sendAction({ type: 'SETUP_DEMOTE', playerId: player.id });
+    if (G.phase === 'kickoff_soliddefence') {
+        const ok = demoteSolidDefencePlayer(G, player.id);
+        if (ok && NET.online) sendAction({ type: 'SOLID_DEFENCE_DEMOTE', playerId: player.id });
+    } else {
+        demoteToReserve(G, player.id);
+        if (NET.online) sendAction({ type: 'SETUP_DEMOTE', playerId: player.id });
+    }
     setupErrors = null;
     const dp = document.getElementById('mobile-dugout-panel');
     if (dp) dp.classList.add('hidden');
@@ -482,7 +500,7 @@ function _applyDemote(player) {
 // This is an entirely separate event channel from Pointer Events.
 
 function _onCanvasDragOver(e) {
-    if (G.phase !== 'setup') return;
+    if (!_isSetupLike()) return;
     const rect = canvas.getBoundingClientRect();
     const col  = Math.floor((e.clientX - rect.left) / CELL);
     const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
@@ -504,14 +522,21 @@ function _onCanvasDragLeave() {
 function _onCanvasDrop(e) {
     e.preventDefault();
     dragHover = null;
-    if (G.phase !== 'setup') { render(); return; }
+    if (!_isSetupLike()) { render(); return; }
     const playerId = Number(e.dataTransfer.getData('text/plain'));
     const p = G.players.find(pl => pl.id === playerId);
     if (!p || p.side !== G.setupSide)              { render(); return; }
     if (NET.online && NET.side !== G.setupSide)    { render(); return; }
-    const rect     = canvas.getBoundingClientRect();
-    const col      = Math.floor((e.clientX - rect.left) / CELL);
-    const row      = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+    const rect = canvas.getBoundingClientRect();
+    const col  = Math.floor((e.clientX - rect.left) / CELL);
+    const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
+    if (G.phase === 'kickoff_soliddefence') {
+        moveSolidDefencePlayer(G, p.id, col, row);
+        if (NET.online) sendAction({ type: 'SOLID_DEFENCE_MOVE', playerId: p.id, col, row });
+        setupErrors = null;
+        render();
+        return;
+    }
     const occupant = playerAt(G, col, row);
     if (occupant && occupant.id !== p.id) {
         swapSetupPlayers(G, p.id, occupant.id);
@@ -537,7 +562,7 @@ function handleClick(event) {
     if (G.phase === 'toss' || G.phase === 'gameover') return;
 
     // Setup drag/drop is handled in _onPointerUp; only selection happens here.
-    if (G.phase === 'setup') return;
+    if (G.phase === 'setup' || G.phase === 'kickoff_soliddefence') return;
 
     const rect = canvas.getBoundingClientRect();
     const px   = event.clientX - rect.left;
@@ -568,12 +593,12 @@ function handleClick(event) {
             const inRect = (r) => px >= r.x && px <= r.x+r.w && py >= r.y && py <= r.y+r.h;
             if (inRect(G.block._yesRect)) {
                 if (NET.online) sendAction({ type:'FOLLOW_UP', choice:true });
-                else { const msg = resolveFollowUp(G, true);  if (msg) log(msg); }
+                else { const msg = resolveFollowUp(G, true);  if (msg) log(msg); _chargeAutoResolve(); }
                 render(); return;
             }
             if (inRect(G.block._noRect)) {
                 if (NET.online) sendAction({ type:'FOLLOW_UP', choice:false });
-                else { const msg = resolveFollowUp(G, false); if (msg) log(msg); }
+                else { const msg = resolveFollowUp(G, false); if (msg) log(msg); _chargeAutoResolve(); }
                 render(); return;
             }
         }
@@ -594,7 +619,7 @@ function handleClick(event) {
             );
             if (idx >= 0) {
                 if (NET.online) sendAction({ type: 'BLOCK_FACE', faceIdx: idx });
-                else { const msg = pickBlockFace(G, G.block.rolls[idx]); if (msg) log(msg); }
+                else { const msg = pickBlockFace(G, G.block.rolls[idx]); if (msg) log(msg); _chargeAutoResolve(); }
                 render();
                 return;
             }
@@ -618,7 +643,7 @@ function handleClick(event) {
     }
 
     // ── Touchback phase — receiver taps a player ─────────────────
-    if (G.phase === 'touchback') {
+    if (G.phase === 'touchback' || G.phase === 'kickoff_touchback') {
         const isReceiver = !NET.online || NET.side === G.receiver;
         if (isReceiver) {
             const player = playerAt(G, col, row);
@@ -631,14 +656,68 @@ function handleClick(event) {
         return;
     }
 
-    if (G.phase !== 'play') { render(); _debugState(); return; }
+    // ── Quick Snap — receiver moves each player one step ────────────
+    if (G.phase === 'kickoff_quicksnap') {
+        const isReceiver = !NET.online || NET.side === G.receiver;
+        if (!isReceiver) { render(); return; }
+        const player = playerAt(G, col, row);
+        if (player && player.side === G.receiver) {
+            G.sel = player;
+        } else if (G.sel && G.sel.side === G.receiver && !player) {
+            const dx = Math.abs(col - G.sel.col);
+            const dy = Math.abs(row - G.sel.row);
+            if (dx <= 1 && dy <= 1 && (dx + dy > 0)) {
+                if (NET.online) sendAction({ type: 'QUICKSNAP_MOVE', playerId: G.sel.id, col, row });
+                else kickoffQuickSnapMove(G, G.sel.id, col, row);
+                G.sel = null;
+            }
+        }
+        render();
+        return;
+    }
+
+    // ── High Kick — receiver taps a player to place at the ball ─────
+    if (G.phase === 'kickoff_highkick') {
+        const isReceiver = !NET.online || NET.side === G.receiver;
+        if (isReceiver) {
+            const player = playerAt(G, col, row);
+            if (player && player.side === G.receiver && isStanding(player)) {
+                if (NET.online) sendAction({ type: 'HIGHKICK_PLACE', playerId: player.id });
+                else { const msg = highKickPlace(G, player.id); if (msg) log(msg); }
+            }
+        }
+        render();
+        return;
+    }
+
+    if (G.phase !== 'play' && G.phase !== 'kickoff_charge') { render(); _debugState(); return; }
 
     const player = playerAt(G, col, row);
     if (player) clickPlayer(player);
     else        clickCell(col, row);
+
+    _chargeAutoResolve();
+
     render();
     _debugState();
 }
+
+// ── _chargeAutoResolve ────────────────────────────────────────────
+// After any action during kickoff_charge, check if the phase should
+// auto-advance (all budget used and no active player). Called from
+// every code path that can cause a turnover or end an activation.
+
+function _chargeAutoResolve() {
+    if (G.phase !== 'kickoff_charge') return;
+    if (G.activated || G.chargeMovesLeft > 0) return;
+    G.players.forEach(p => { if (p.side === G.kicker) { p.usedAction = false; p.maLeft = p.ma; p.rushLeft = 2; } });
+    const pendingCol = G.pendingKick?.col;
+    const pendingRow = G.pendingKick?.row;
+    G.phase = 'kick';
+    const scatterMsg = resolveKickScatter(G, pendingCol, pendingRow);
+    if (scatterMsg) log(scatterMsg);
+}
+
 
 // ── _debugState ───────────────────────────────────────────────────
 // Logs post-click game state — only truthy keys to keep output terse.
@@ -1010,7 +1089,7 @@ function onClickCancel() {
 
 function onClickStop() {
     if (NET.online) sendAction({ type: 'STOP' });
-    else { const msg = endActivation(G); if (msg) log(msg); render(); }
+    else { const msg = endActivation(G); if (msg) log(msg); _chargeAutoResolve(); render(); }
 }
 
 function onClickConfirmSetup() {
@@ -1025,6 +1104,56 @@ function onClickConfirmSetup() {
         log(result.msg);
         scrollToSetupSide();
     }
+    render();
+}
+
+function onClickSolidDefenceConfirm() {
+    if (NET.online) { sendAction({ type: 'SOLID_DEFENCE_CONFIRM' }); return; }
+    const errors = validateSetup(G, G.kicker);
+    if (errors.length) {
+        setupErrors = errors;
+        errors.forEach(e => log(e, 'error'));
+        render();
+        return;
+    }
+    setupErrors = null;
+    const pendingCol = G.pendingKick?.col;
+    const pendingRow = G.pendingKick?.row;
+    G.setupSide = null;
+    G.phase = 'kick';
+    const msg = resolveKickScatter(G, pendingCol, pendingRow);
+    if (msg) log(msg);
+    render();
+}
+
+function onClickQuickSnapConfirm() {
+    if (NET.online) { sendAction({ type: 'QUICKSNAP_CONFIRM' }); return; }
+    const pendingCol = G.pendingKick?.col;
+    const pendingRow = G.pendingKick?.row;
+    G.phase = 'kick';
+    const msg = resolveKickScatter(G, pendingCol, pendingRow);
+    if (msg) log(msg);
+    render();
+}
+
+function onClickChargeConfirm() {
+    if (NET.online) { sendAction({ type: 'CHARGE_CONFIRM' }); return; }
+    if (G.activated) { G.activated.usedAction = true; G.activated = null; }
+    G.blitz = null; G.hasBlitzed = false; G.chargeMovesLeft = 0;
+    G.sel = null;
+    G.players.forEach(p => { if (p.side === G.kicker) { p.usedAction = false; p.maLeft = p.ma; p.rushLeft = 2; } });
+    const pendingCol = G.pendingKick?.col;
+    const pendingRow = G.pendingKick?.row;
+    G.phase = 'kick';
+    const msg = resolveKickScatter(G, pendingCol, pendingRow);
+    if (msg) log(msg);
+    render();
+}
+
+function onClickHighKickSkip() {
+    if (NET.online) { sendAction({ type: 'HIGHKICK_SKIP' }); return; }
+    const msg = skipHighKick(G);
+    if (msg) log(msg);
     render();
 }
 
@@ -1142,12 +1271,16 @@ function updateButtons() {
 
     // ── Button visibility — desktop + mobile in one pass ──────────
     const btnDefs = [
-        ['btn-throw',         'mobile-btn-throw',         play && gc.canThrow],
-        ['btn-no-intercept',  'mobile-btn-no-intercept',  play && gc.canChooseNoIntercept],
-        ['btn-cancel',        'mobile-btn-cancel',        play && gc.canCancel],
-        ['btn-stop',          'mobile-btn-stop',          play && gc.canStop],
-        ['btn-end-turn',      'mobile-btn-end-turn',      play && gc.myTurn && !G.block],
-        ['btn-confirm-setup', 'mobile-btn-confirm-setup', gc.canConfirmSetup],
+        ['btn-throw',                      'mobile-btn-throw',                      play && gc.canThrow],
+        ['btn-no-intercept',               'mobile-btn-no-intercept',               play && gc.canChooseNoIntercept],
+        ['btn-cancel',                     'mobile-btn-cancel',                     play && gc.canCancel],
+        ['btn-stop',                       'mobile-btn-stop',                       play && gc.canStop],
+        ['btn-end-turn',                   'mobile-btn-end-turn',                   play && gc.myTurn && !G.block],
+        ['btn-confirm-setup',              'mobile-btn-confirm-setup',              gc.canConfirmSetup],
+        ['btn-solid-defence-confirm',      'mobile-btn-solid-defence-confirm',      gc.canConfirmSolidDefence],
+        ['btn-quicksnap-confirm',          'mobile-btn-quicksnap-confirm',          gc.canConfirmQuickSnap],
+        ['btn-charge-confirm',             'mobile-btn-charge-confirm',             gc.canConfirmCharge],
+        ['btn-highkick-skip',              'mobile-btn-highkick-skip',              gc.canSkipHighKick],
     ];
     btnDefs.forEach(([desk, mob, vis]) => { show(desk, vis); show(mob, vis); });
 
@@ -1162,13 +1295,23 @@ function updateButtons() {
     // ── Mobile status labels ──────────────────────────────────────
     const activeEl = document.getElementById('mobile-active-label');
     if (activeEl) {
-        const side = G.phase === 'setup'     ? G.setupSide
-                   : G.phase === 'kick'      ? G.kicker
-                   : G.phase === 'touchback' ? G.receiver
-                   :                           G.active;
-        activeEl.textContent = G.phase === 'touchback' ? 'TOUCHBACK'
-                             : G.phase === 'kick'      ? `${(G.kicker || '').toUpperCase()} KICK`
-                             :                           (side || '').toUpperCase();
+        const side = G.phase === 'setup'                   ? G.setupSide
+                   : G.phase === 'kick'                    ? G.kicker
+                   : G.phase === 'touchback'               ? G.receiver
+                   : G.phase === 'kickoff_touchback'       ? G.receiver
+                   : G.phase === 'kickoff_soliddefence'    ? G.kicker
+                   : G.phase === 'kickoff_quicksnap'       ? G.receiver
+                   : G.phase === 'kickoff_charge'          ? G.kicker
+                   : G.phase === 'kickoff_highkick'        ? G.receiver
+                   :                                         G.active;
+        activeEl.textContent = G.phase === 'touchback'            ? 'TOUCHBACK'
+                             : G.phase === 'kickoff_touchback'    ? 'TOUCHBACK'
+                             : G.phase === 'kick'                 ? `${(G.kicker || '').toUpperCase()} KICK`
+                             : G.phase === 'kickoff_soliddefence' ? 'SOLID DEFENCE'
+                             : G.phase === 'kickoff_quicksnap'    ? 'QUICK SNAP'
+                             : G.phase === 'kickoff_charge'       ? 'CHARGE!'
+                             : G.phase === 'kickoff_highkick'     ? 'HIGH KICK'
+                             :                                       (side || '').toUpperCase();
         activeEl.className   = side === 'home' ? 'team-home' : 'team-away';
     }
     const turnEl = document.getElementById('mobile-turn-label');
