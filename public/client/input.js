@@ -57,6 +57,24 @@ function _isSetupLike() {
     return G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
 }
 
+function _applySetupDrop(drag, col, row) {
+    if (!_isSetupLike() || (NET.online && NET.side !== G.setupSide)) return;
+    if (G.phase === 'kickoff_soliddefence') {
+        moveSolidDefencePlayer(G, drag.player.id, col, row);
+        if (NET.online) sendAction({ type: 'SOLID_DEFENCE_MOVE', playerId: drag.player.id, col, row });
+    } else {
+        const occupant = playerAt(G, col, row);
+        if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
+            swapSetupPlayers(G, drag.player.id, occupant.id);
+            if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
+        } else {
+            moveSetupPlayer(G, drag.player.id, col, row);
+            if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
+        }
+    }
+    setupErrors = null;
+}
+
 
 // ── setupInput ────────────────────────────────────────────────────
 // Wires up all canvas listeners. Called once from game.js after the
@@ -296,18 +314,8 @@ function _onPointerUp(e) {
                 }
                 if (drag.player.hasBall) { G.ball.col = drag.player.col; G.ball.row = drag.player.row; }
                 if (NET.online) sendAction({ type: 'DEBUG_MOVE_PLAYER', playerId: drag.player.id, col: drag.player.col, row: drag.player.row });
-            } else if (G.phase === 'kickoff_soliddefence') {
-                moveSolidDefencePlayer(G, drag.player.id, col, row);
-                if (NET.online) sendAction({ type: 'SOLID_DEFENCE_MOVE', playerId: drag.player.id, col, row });
-                setupErrors = null;
-            } else if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
-                swapSetupPlayers(G, drag.player.id, occupant.id);
-                if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
-                setupErrors = null;
             } else {
-                moveSetupPlayer(G, drag.player.id, col, row);
-                if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
-                setupErrors = null;
+                _applySetupDrop(drag, col, row);
             }
         }
         render();

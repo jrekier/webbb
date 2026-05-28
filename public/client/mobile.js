@@ -145,17 +145,7 @@ function _onPanelPointerUp(e) {
     const rect = canvas.getBoundingClientRect();
     const col  = Math.floor((e.clientX - rect.left) / CELL);
     const row  = Math.floor((e.clientY - rect.top + cameraY) / CELL);
-    if (G.phase === 'setup' && (!NET.online || NET.side === G.setupSide)) {
-        const occupant = playerAt(G, col, row);
-        if (occupant && occupant.id !== drag.player.id && occupant.side === drag.player.side) {
-            swapSetupPlayers(G, drag.player.id, occupant.id);
-            if (NET.online) sendAction({ type: 'SETUP_PLAYER_SWAP', id1: drag.player.id, id2: occupant.id });
-        } else if (isValidSetupSquare(G.setupSide, col, row)) {
-            moveSetupPlayer(G, drag.player.id, col, row);
-            if (NET.online) sendAction({ type: 'SETUP_MOVE', playerId: drag.player.id, col, row });
-        }
-        setupErrors = null;
-    }
+    _applySetupDrop(drag, col, row);
     render();
 }
 
