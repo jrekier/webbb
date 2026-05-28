@@ -98,11 +98,14 @@ function openRosterPanel(side) {
     // Reserves cannot be brought in during soliddefence (movement only).
     if (G.phase === 'kickoff_soliddefence') classes.push('demote-only');
     panel.className = classes.join(' ');
+    panel.dataset.viewSide = side || '';
     const title = document.getElementById('roster-title');
     if (title) {
         const label = G.phase === 'kickoff_soliddefence' ? 'SOLID DEFENCE' : 'DUGOUT';
         title.textContent = side ? `${side.toUpperCase()} ${label}` : label;
     }
+    // Re-render so the list rebuilds for the (possibly new) view side.
+    if (typeof render === 'function') render();
     requestAnimationFrame(_applyRosterPitchPadding);
 }
 
@@ -110,19 +113,22 @@ function closeRosterPanel() {
     const panel = document.getElementById('roster-panel');
     if (!panel) return;
     panel.classList.remove('visible');
+    panel.dataset.viewSide = '';
     _applyRosterPitchPadding();
 }
 
-// Adjusts #pitch-wrap padding so the canvas never extends behind the roster panel.
-// sizePitch() reads the padding via getComputedStyle, so this automatically
-// resizes the canvas to the available area.
+// Mobile only: shrink the canvas so it doesn't extend behind the roster panel.
+// On desktop the pitch is already smaller than the available space, so we let
+// the panel overlay it without resizing.
 function _applyRosterPitchPadding() {
     const pw    = document.getElementById('pitch-wrap');
     const panel = document.getElementById('roster-panel');
     if (!pw) return;
 
-    const visible = panel && panel.classList.contains('visible');
-    if (!visible) {
+    const isMobile = window.innerWidth <= 500;
+    const visible  = panel && panel.classList.contains('visible');
+
+    if (!visible || !isMobile) {
         pw.style.paddingTop    = '';
         pw.style.paddingBottom = '';
         sizePitch();
@@ -136,24 +142,32 @@ function _applyRosterPitchPadding() {
         pw.style.paddingTop    = panelH + 'px';
         pw.style.paddingBottom = '';
     } else {
-        // Panel already includes action-bar clearance in its own padding-bottom,
-        // so its measured height covers both the visible roster and the action bar gap.
         pw.style.paddingTop    = '';
         pw.style.paddingBottom = panelH + 'px';
     }
     sizePitch();
 }
 
-function toggleRosterPanel() {
-    const isSetupLike = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
-    if (!isSetupLike) return;  // roster panel only used during setup
+// Tap on a team chip:
+//   • Setup phases — toggles the auto-managed panel for the active setup side.
+//   • Non-setup    — opens a read-only view of THIS team's dugout; tapping the
+//                    same chip again closes it; tapping the other chip switches.
+function toggleRosterPanel(side) {
     const panel = document.getElementById('roster-panel');
     if (!panel) return;
-    if (panel.classList.contains('visible')) {
+    const isSetupLike = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+
+    if (isSetupLike) {
+        if (panel.classList.contains('visible')) closeRosterPanel();
+        else openRosterPanel(side || G.setupSide || G.kicker || 'home');
+        return;
+    }
+
+    const currentSide = panel.dataset.viewSide;
+    if (panel.classList.contains('visible') && currentSide === side) {
         closeRosterPanel();
     } else {
-        const side = G.setupSide || G.kicker || 'home';
-        openRosterPanel(side);
+        openRosterPanel(side || 'home');
     }
 }
 

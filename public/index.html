@@ -114,21 +114,21 @@
 
   <!-- Status strip — always visible on both mobile and desktop -->
   <div id="status-strip">
-    <div class="ss-team ss-home" onclick="toggleRosterPanel()">
-      <span class="ss-name team-home" id="ss-name-home">HOME</span>
+    <div class="ss-team ss-home" onclick="toggleRosterPanel('home')" title="HOME">
       <span class="ss-rerolls team-home" id="ss-rr-home"></span>
       <span class="ss-bribes team-home" id="ss-br-home"></span>
+      <span class="ss-logo" id="ss-logo-home"></span>
       <span class="ss-score team-home" id="ss-score-home">0</span>
     </div>
     <div class="ss-center">
       <span id="ss-phase-label"></span>
       <span id="ss-turn-label"></span>
     </div>
-    <div class="ss-team ss-away" onclick="toggleRosterPanel()">
+    <div class="ss-team ss-away" onclick="toggleRosterPanel('away')" title="AWAY">
       <span class="ss-score team-away" id="ss-score-away">0</span>
+      <span class="ss-logo" id="ss-logo-away"></span>
       <span class="ss-bribes team-away" id="ss-br-away"></span>
       <span class="ss-rerolls team-away" id="ss-rr-away"></span>
-      <span class="ss-name team-away" id="ss-name-away">AWAY</span>
     </div>
     <button class="ss-log-btn" onclick="toggleMobileLog()">☰</button>
   </div>

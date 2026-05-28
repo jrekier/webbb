@@ -440,26 +440,31 @@ canvas {
     flex: 1;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     padding: 6px 12px;
     cursor: pointer;
     min-width: 0;
     transition: background 0.1s;
 }
 .ss-team:hover { background: rgba(0,0,0,0.04); }
-.ss-away { flex-direction: row-reverse; }
+/* Pack each team's items toward the center label */
+.ss-home { justify-content: flex-end; }
+.ss-away { justify-content: flex-start; }
 
-.ss-name {
-    flex: 1;
-    min-width: 0;
-    font-size: 11px;
-    letter-spacing: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.ss-logo {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: contain;
+            mask-size: contain;
 }
-.ss-home .ss-name { text-align: left; }
-.ss-away .ss-name { text-align: right; }
+#ss-logo-home { color: var(--home); }
+#ss-logo-away { color: var(--away); }
 
 .ss-score {
     font-size: 24px;

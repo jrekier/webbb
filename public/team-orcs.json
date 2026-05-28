@@ -1,5 +1,6 @@
 {
     "name": "Warbosses",
+    "race": "orcs",
     "colour": [30, 80, 180],
     "awayColour": [110, 15, 40],
     "rerolls": 1,

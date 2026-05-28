@@ -1,5 +1,6 @@
 {
     "name": "Vermintide",
+    "race": "skaven",
     "colour": [210, 85, 10],
     "awayColour": [110, 15, 165],
     "rerolls": 1,

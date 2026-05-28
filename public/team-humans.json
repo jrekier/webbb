@@ -1,5 +1,6 @@
 {
     "name": "Reavers",
+    "race": "humans",
     "colour": [200, 30, 30],
     "awayColour": [20, 110, 35],
     "rerolls": 1,

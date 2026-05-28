@@ -524,26 +524,26 @@ var _rosterLastPhase = null;
 
 function _syncRosterPanel() {
     const isSetupLike = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
-
-    if (!isSetupLike) {
-        const panel = document.getElementById('roster-panel');
-        if (panel && panel.classList.contains('visible')) closeRosterPanel();
-        _rosterLastPhase = null;
-        return;
-    }
-
-    const key = `${G.phase}:${G.setupSide || G.kicker || ''}`;
+    const key         = `${G.phase}:${G.setupSide || G.kicker || ''}`;
     if (key === _rosterLastPhase) return;
+
+    const wasSetupLike = _rosterLastPhase != null
+                      && (_rosterLastPhase.startsWith('setup:')
+                       || _rosterLastPhase.startsWith('kickoff_soliddefence:'));
     _rosterLastPhase = key;
 
-    const activeSetupSide = G.phase === 'setup' ? G.setupSide : G.kicker;
-    // Online: only open the panel when it is this player's own turn to set up.
-    if (NET.online && NET.side !== activeSetupSide) {
+    if (isSetupLike) {
+        const activeSetupSide = G.phase === 'setup' ? G.setupSide : G.kicker;
+        // Online: only auto-open the panel for the player whose turn it is.
+        if (NET.online && NET.side !== activeSetupSide) {
+            closeRosterPanel();
+            return;
+        }
+        openRosterPanel(activeSetupSide);
+    } else if (wasSetupLike) {
+        // Setup just ended — close once. User may reopen via team chip during play.
         closeRosterPanel();
-        return;
     }
-
-    openRosterPanel(activeSetupSide);
 }
 
 function updateTeams() {
@@ -552,9 +552,12 @@ function updateTeams() {
     // During a canvas drag nothing in the roster can change — skip DOM rebuild.
     if (setupDrag && !setupDrag.fromPanel) { _syncRosterPanel(); return; }
 
-    // The roster panel shows only the team that is actively setting up.
-    const isSetupLike  = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
-    const activeSide   = G.phase === 'setup' ? G.setupSide : G.kicker;
+    // During setup the active setup side drives the panel; during play the
+    // user-selected view side (from the team chip click) drives it.
+    const isSetupLike = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+    const activeSide  = G.phase === 'setup' ? G.setupSide : G.kicker;
+    const panelEl     = document.getElementById('roster-panel');
+    const viewSide    = panelEl ? panelEl.dataset.viewSide : null;
 
     let _rowLastClick = { id: null, time: 0 };
 
@@ -564,7 +567,9 @@ function updateTeams() {
         el.innerHTML = '';
 
         const isSetup = isSetupLike;
-        const sides   = isSetupLike ? [activeSide] : ['home', 'away'];
+        const sides   = isSetupLike ? [activeSide]
+                     :  viewSide     ? [viewSide]
+                     :                  ['home', 'away'];
 
         sides.forEach(side => {
             // Dugout shows only off-pitch players: reserves, KO'd, and casualties.

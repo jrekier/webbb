@@ -55,8 +55,8 @@ function startGame(homeTeam, awayTeam) {
         render();
     }
 
-    document.getElementById('ss-name-home').textContent = homeTeamDef.name.toUpperCase();
-    document.getElementById('ss-name-away').textContent = awayTeamDef.name.toUpperCase();
+    applyTeamLogo('home', homeTeamDef);
+    applyTeamLogo('away', awayTeamDef);
 
     // Propagate resolved team colours to the CSS variables used throughout the UI.
     const root = document.documentElement;
@@ -68,6 +68,29 @@ function startGame(homeTeam, awayTeam) {
         const [r, g, b] = awayTeamDef.colour;
         root.style.setProperty('--away', `rgb(${r},${g},${b})`);
     }
+}
+
+// ── applyTeamLogo ────────────────────────────────────────────────
+// Sets the race logo (as a CSS mask) and the title (full team name)
+// on the status-strip team chip. Falls back to a generic shield silhouette
+// when the team has no race field (custom uploaded teams).
+
+function applyTeamLogo(side, teamDef) {
+    const logoEl = document.getElementById(`ss-logo-${side}`);
+    const chipEl = document.querySelector(`#status-strip .ss-${side}`);
+    if (!logoEl || !chipEl) return;
+
+    const race = teamDef.race;
+    const url  = (race && _TEAM_LOGOS[race]) ? resolveSheet(_TEAM_LOGOS[race]) : null;
+    if (url) {
+        const cssUrl = `url("${url}")`;
+        logoEl.style.webkitMaskImage = cssUrl;
+        logoEl.style.maskImage       = cssUrl;
+        logoEl.style.display         = '';
+    } else {
+        logoEl.style.display = 'none';
+    }
+    chipEl.setAttribute('title', teamDef.name || side.toUpperCase());
 }
 
 // ── Your-turn toast ──────────────────────────────────────────────
