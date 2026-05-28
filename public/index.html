@@ -111,6 +111,28 @@
 
 <!-- ── Game screen ────────────────────────────────────────── -->
 <div id="screen-game" class="screen hidden">
+
+  <!-- Status strip — always visible on both mobile and desktop -->
+  <div id="status-strip">
+    <div class="ss-team ss-home" onclick="toggleRosterPanel()">
+      <span class="ss-name team-home" id="ss-name-home">HOME</span>
+      <span class="ss-rerolls team-home" id="ss-rr-home"></span>
+      <span class="ss-bribes team-home" id="ss-br-home"></span>
+      <span class="ss-score team-home" id="ss-score-home">0</span>
+    </div>
+    <div class="ss-center">
+      <span id="ss-phase-label"></span>
+      <span id="ss-turn-label"></span>
+    </div>
+    <div class="ss-team ss-away" onclick="toggleRosterPanel()">
+      <span class="ss-score team-away" id="ss-score-away">0</span>
+      <span class="ss-bribes team-away" id="ss-br-away"></span>
+      <span class="ss-rerolls team-away" id="ss-rr-away"></span>
+      <span class="ss-name team-away" id="ss-name-away">AWAY</span>
+    </div>
+    <button class="ss-log-btn" onclick="toggleMobileLog()">☰</button>
+  </div>
+
 <div id="layout">
 
   <!-- Canvas -->
@@ -122,31 +144,6 @@
   <!-- Right: info + log + actions -->
   <div class="sidebar" id="sidebar-right">
 
-    <div class="section">
-      <div id="turn-banner">
-        <span id="lbl-active">HOME</span><br>
-        <span class="turn-num">TURN <span id="lbl-turn">1</span></span>
-      </div>
-      <div id="score-banner">
-        <span id="score-home" class="team-home">0</span>
-        <span id="score-sep">–</span>
-        <span id="score-away" class="team-away">0</span>
-      </div>
-      <div id="score-teams">
-        <span id="lbl-home-team" class="team-home">Home</span>
-        <span class="score-teams-sep"> – </span>
-        <span id="lbl-away-team" class="team-away">Away</span>
-      </div>
-      <div id="score-rerolls">
-        <span id="rr-home" class="team-home"></span>
-        <span id="rr-away" class="team-away"></span>
-      </div>
-      <div id="score-bribes">
-        <span id="br-home" class="team-home bribe-dots"></span>
-        <span id="br-away" class="team-away bribe-dots"></span>
-      </div>
-    </div>
-
     <div class="section" id="section-player-editor" style="display:none;">
       <div class="section-title">Player Editor</div>
       <div id="player-editor-name"></div>
@@ -156,11 +153,6 @@
         <select id="skill-select"></select>
         <button id="btn-add-skill" onclick="addSkillToSelected()">+ Add</button>
       </div>
-    </div>
-
-    <div class="section" id="section-teams" hidden>
-      <div class="section-title">Dugout</div>
-      <div id="teams-list"></div>
     </div>
 
     <div class="section" id="section-log">
@@ -186,16 +178,6 @@
 </div>
   <!-- Mobile HUD — visible only on narrow screens (CSS) -->
   <div id="mobile-hud">
-    <div id="mobile-top-bar">
-      <button id="mobile-dugout-btn" onclick="toggleMobileDugout()" style="display:none"></button>
-      <span id="mobile-score-label">
-        <span><span id="mobile-score-home" class="team-home">0</span><span style="color:var(--text-dim)"> – </span><span id="mobile-score-away" class="team-away">0</span></span>
-        <span id="mobile-score-rerolls"><span id="mobile-rr-home" class="team-home"></span><span id="mobile-br-home" class="team-home mobile-bribe"></span><span id="mobile-br-away" class="team-away mobile-bribe"></span><span id="mobile-rr-away" class="team-away"></span></span>
-      </span>
-      <span id="mobile-active-label">HOME</span>
-      <span id="mobile-turn-label">T1</span>
-      <button id="mobile-log-btn" onclick="toggleMobileLog()">☰</button>
-    </div>
     <div id="mobile-bottom-bar">
       <button id="mobile-btn-cancel"         class="action-btn"         onclick="onClickCancel();"        style="display:none">Cancel</button>
       <button id="mobile-btn-throw"          class="action-btn success" onclick="onClickThrow();"         style="display:none">Throw</button>
@@ -241,14 +223,14 @@
     <div id="mobile-log-copy"></div>
   </div>
 
-  <!-- Mobile dugout panel -->
-  <div id="mobile-dugout-panel" class="hidden">
-    <div id="mobile-dugout-header">
-      <span>Dugout</span>
-      <button onclick="toggleMobileDugout()">✕</button>
+  <!-- Roster panel — edge-anchored, slides in during setup phases -->
+  <div id="roster-panel">
+    <div id="roster-header">
+      <span id="roster-title">DUGOUT</span>
     </div>
-    <div id="mobile-dugout-body">
-      <div id="mobile-teams-list"></div>
+    <div id="roster-body">
+      <div id="roster-list"></div>
+      <div id="roster-demote-zone" data-demote-zone="true">← BENCH</div>
     </div>
   </div>
 

@@ -179,6 +179,7 @@ function _onPointerMove(e) {
             setupDrag.pixelX = px;
             setupDrag.pixelY = py;
             _dragMoved       = true;
+            updateRosterHover(e.clientX, e.clientY);
             render();
             return;
         }
@@ -258,6 +259,7 @@ function _onPointerUp(e) {
 
     // ── Player drag drop ─────────────────────────────────────────
     if (phase === 'dragging' && setupDrag) {
+        clearRosterHover();
         const drag = setupDrag;
         setupDrag  = null;
 
@@ -296,10 +298,10 @@ function _onPointerUp(e) {
                     if (NET.online) sendAction({ type: 'DEBUG_MOVE_BALL', col, row });
                 }
             }
-        } else if (outsidePitch && drag.player.col >= 0
-                && _isSetupLike() && (!NET.online || NET.side === G.setupSide)) {
-            // Drag released beyond the pitch boundary → demote to reserve.
-            _applyDemote(drag.player);
+        } else if (!drag.isBall && drag.player.col >= 0
+                && _isSetupLike() && (!NET.online || NET.side === G.setupSide)
+                && _tryRosterDrop(drag.player, e.clientX, e.clientY)) {
+            // Handled: player dropped onto the roster panel (demote or pitch↔reserve swap).
         } else if (inBounds) {
             const occupant = playerAt(G, col, row);
             if (G.testMode) {
@@ -346,7 +348,7 @@ function _onPointerUp(e) {
 
 function _onPointerCancel() {
     _clearLongPress();
-    // Preserve panel-initiated drags — they have their own cancel handler.
+    clearRosterHover();
     if (setupDrag && !setupDrag.fromPanel) setupDrag = null;
     _gesture = null;
     render();
@@ -484,6 +486,56 @@ function _onContextMenu(e) {
 }
 
 
+// ── _tryRosterDrop ────────────────────────────────────────────────
+// Called on pointer-up when a pitch player was being dragged.
+// Returns true if the drop landed on the roster panel and was handled.
+// Behaviour:
+//   • Drop on a specific reserve player row → swap them (pitch↔reserve).
+//   • Drop on panel background            → plain demote to reserve.
+//   • Drop elsewhere                      → returns false, caller handles.
+
+function _tryRosterDrop(pitchPlayer, clientX, clientY) {
+    const panel = document.getElementById('roster-panel');
+    if (!panel || !panel.classList.contains('visible')) return false;
+
+    const dropEl = document.elementFromPoint(clientX, clientY);
+    if (!dropEl || !panel.contains(dropEl)) return false;
+
+    // Walk up from the drop target — demote zone takes priority over player rows.
+    let reserveId = null;
+    let onDemoteZone = false;
+    let el = dropEl;
+    while (el && el !== panel) {
+        if (el.dataset && el.dataset.demoteZone) { onDemoteZone = true; break; }
+        if (el.dataset && el.dataset.playerId)   { reserveId = +el.dataset.playerId; break; }
+        el = el.parentElement;
+    }
+
+    if (onDemoteZone) {
+        _applyDemote(pitchPlayer);
+        return true;
+    }
+
+    if (reserveId !== null) {
+        const reserve = G.players.find(p => p.id === reserveId);
+        const isSwappable = reserve && reserve.status !== 'ko' && reserve.status !== 'casualty';
+        // Reserve↔pitch swap only exists in setup phase (not kickoff_soliddefence).
+        if (isSwappable && G.phase === 'setup') {
+            swapReservePlayer(G, reserveId, pitchPlayer.id);
+            if (NET.online) sendAction({ type: 'SETUP_RESERVE_SWAP', reserveId, pitchId: pitchPlayer.id });
+            setupErrors      = null;
+            _rosterLastPhase = null;
+            return true;
+        }
+        // KO'd, casualty, or wrong phase — fall through to plain demote.
+    }
+
+    // No specific player targeted (or target was unavailable) → plain demote.
+    _applyDemote(pitchPlayer);
+    return true;
+}
+
+
 // ── _applyDemote ──────────────────────────────────────────────────
 // Demotes a player from the pitch to reserve and syncs the network.
 // Called whenever any drag (canvas or panel) is released off the pitch.
@@ -497,8 +549,8 @@ function _applyDemote(player) {
         if (NET.online) sendAction({ type: 'SETUP_DEMOTE', playerId: player.id });
     }
     setupErrors = null;
-    const dp = document.getElementById('mobile-dugout-panel');
-    if (dp) dp.classList.add('hidden');
+    closeRosterPanel();
+    _rosterLastPhase = null;  // allow _syncRosterPanel to reopen for the current phase
 }
 
 
@@ -1111,6 +1163,12 @@ function onClickConfirmSetup() {
         setupErrors = null;
         log(result.msg);
         scrollToSetupSide();
+        // If we've left setup entirely (kick phase), force-close the panel now
+        // rather than waiting for _syncRosterPanel to detect the key change.
+        if (G.phase !== 'setup') {
+            closeRosterPanel();
+            _rosterLastPhase = null;
+        }
     }
     render();
 }
@@ -1317,35 +1375,12 @@ function updateButtons() {
     if (btnEnd && btnEnd.style.display !== 'none')
         btnEnd.textContent = `End ${G.active.toUpperCase()} Turn`;
 
-    // ── Mobile status labels ──────────────────────────────────────
-    const activeEl = document.getElementById('mobile-active-label');
-    if (activeEl) {
-        const side = G.phase === 'setup'                   ? G.setupSide
-                   : G.phase === 'kick'                    ? G.kicker
-                   : G.phase === 'touchback'               ? G.receiver
-                   : G.phase === 'kickoff_touchback'       ? G.receiver
-                   : G.phase === 'kickoff_soliddefence'    ? G.kicker
-                   : G.phase === 'kickoff_quicksnap'       ? G.receiver
-                   : G.phase === 'kickoff_charge'          ? G.kicker
-                   : G.phase === 'kickoff_highkick'        ? G.receiver
-                   :                                         G.active;
-        activeEl.textContent = G.phase === 'touchback'            ? 'TOUCHBACK'
-                             : G.phase === 'kickoff_touchback'    ? 'TOUCHBACK'
-                             : G.phase === 'kick'                 ? `${(G.kicker || '').toUpperCase()} KICK`
-                             : G.phase === 'kickoff_soliddefence' ? 'SOLID DEFENCE'
-                             : G.phase === 'kickoff_quicksnap'    ? 'QUICK SNAP'
-                             : G.phase === 'kickoff_charge'       ? 'CHARGE!'
-                             : G.phase === 'kickoff_highkick'     ? 'HIGH KICK'
-                             :                                       (side || '').toUpperCase();
-        activeEl.className   = side === 'home' ? 'team-home' : 'team-away';
-    }
-    const turnEl = document.getElementById('mobile-turn-label');
-    if (turnEl)
-        turnEl.textContent = G.phase === 'play'     ? `H${G.half} T${G.turn}`
-                           : G.phase === 'gameover' ? 'FT' : '';
+    // Status strip labels (shared by mobile and desktop — updateSidebar handles
+    // the full phase text; here we only keep the score sync that updateButtons
+    // needs for the confirm-prompt path that doesn't always call render()).
     const score = G.score || { home: 0, away: 0 };
-    const sh = document.getElementById('mobile-score-home');
-    const sa = document.getElementById('mobile-score-away');
+    const sh = document.getElementById('ss-score-home');
+    const sa = document.getElementById('ss-score-away');
     if (sh) sh.textContent = score.home;
     if (sa) sa.textContent = score.away;
 }
