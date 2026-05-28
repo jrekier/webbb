@@ -31,6 +31,42 @@ function scrollToSetupSide() {
 var wheelState   = null;
 var inspectState = null;
 
+// ── Roster drag-over highlight ────────────────────────────────────────────────
+// Highlights whichever player row or demote zone the drag cursor is over so
+// the user gets clear drop-target feedback without needing CSS :hover.
+
+var _rosterHoverEl = null;
+
+function updateRosterHover(clientX, clientY) {
+    const panel = document.getElementById('roster-panel');
+    if (!panel || !panel.classList.contains('visible')) {
+        clearRosterHover();
+        return;
+    }
+
+    const dropEl = document.elementFromPoint(clientX, clientY);
+    let newHover = null;
+    let el = dropEl;
+    while (el && el !== panel) {
+        if (el.dataset && (el.dataset.demoteZone || el.dataset.playerId)) {
+            newHover = el;
+            break;
+        }
+        el = el.parentElement;
+    }
+
+    if (_rosterHoverEl === newHover) return;
+    if (_rosterHoverEl) _rosterHoverEl.classList.remove('roster-drag-over');
+    _rosterHoverEl = newHover;
+    if (_rosterHoverEl) _rosterHoverEl.classList.add('roster-drag-over');
+}
+
+function clearRosterHover() {
+    if (!_rosterHoverEl) return;
+    _rosterHoverEl.classList.remove('roster-drag-over');
+    _rosterHoverEl = null;
+}
+
 // ── HUD panel toggles ─────────────────────────────────────────────────────────
 
 // Opens/closes the sliding log panel; on open, mirrors the current log entries.
@@ -46,15 +82,78 @@ function toggleMobileLog() {
     }
 }
 
-// Opens/closes the sliding dugout panel. Re-renders first so the team lists
-// are always up to date when the panel appears.
-function toggleMobileDugout() {
-    const panel = document.getElementById('mobile-dugout-panel');
-    if (panel.classList.contains('hidden')) {
-        render();  // populate mobile-teams-list before revealing
-        panel.classList.remove('hidden');
+// ── Roster panel ──────────────────────────────────────────────────────────────
+// The roster panel slides in from the edge nearest the active setup zone.
+// Home setup → anchored at screen bottom (short drag up to home's setup rows).
+// Away setup → anchored just below the status strip (short drag down to away rows).
+// During normal play the panel can be opened/closed via the status strip tap.
+
+function openRosterPanel(side) {
+    const panel = document.getElementById('roster-panel');
+    if (!panel) return;
+    // Home setup zone is at the bottom of the pitch → panel anchors at top.
+    // Away setup zone is at the top of the pitch → panel anchors at bottom.
+    const classes = ['visible'];
+    if (side === 'home') classes.push('from-top');
+    // Reserves cannot be brought in during soliddefence (movement only).
+    if (G.phase === 'kickoff_soliddefence') classes.push('demote-only');
+    panel.className = classes.join(' ');
+    const title = document.getElementById('roster-title');
+    if (title) {
+        const label = G.phase === 'kickoff_soliddefence' ? 'SOLID DEFENCE' : 'DUGOUT';
+        title.textContent = side ? `${side.toUpperCase()} ${label}` : label;
+    }
+    requestAnimationFrame(_applyRosterPitchPadding);
+}
+
+function closeRosterPanel() {
+    const panel = document.getElementById('roster-panel');
+    if (!panel) return;
+    panel.classList.remove('visible');
+    _applyRosterPitchPadding();
+}
+
+// Adjusts #pitch-wrap padding so the canvas never extends behind the roster panel.
+// sizePitch() reads the padding via getComputedStyle, so this automatically
+// resizes the canvas to the available area.
+function _applyRosterPitchPadding() {
+    const pw    = document.getElementById('pitch-wrap');
+    const panel = document.getElementById('roster-panel');
+    if (!pw) return;
+
+    const visible = panel && panel.classList.contains('visible');
+    if (!visible) {
+        pw.style.paddingTop    = '';
+        pw.style.paddingBottom = '';
+        sizePitch();
+        return;
+    }
+
+    const panelH  = panel.getBoundingClientRect().height;
+    const fromTop = panel.classList.contains('from-top');
+
+    if (fromTop) {
+        pw.style.paddingTop    = panelH + 'px';
+        pw.style.paddingBottom = '';
     } else {
-        panel.classList.add('hidden');
+        // Panel already includes action-bar clearance in its own padding-bottom,
+        // so its measured height covers both the visible roster and the action bar gap.
+        pw.style.paddingTop    = '';
+        pw.style.paddingBottom = panelH + 'px';
+    }
+    sizePitch();
+}
+
+function toggleRosterPanel() {
+    const isSetupLike = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+    if (!isSetupLike) return;  // roster panel only used during setup
+    const panel = document.getElementById('roster-panel');
+    if (!panel) return;
+    if (panel.classList.contains('visible')) {
+        closeRosterPanel();
+    } else {
+        const side = G.setupSide || G.kicker || 'home';
+        openRosterPanel(side);
     }
 }
 
@@ -129,7 +228,7 @@ function _onPanelPointerMove(e) {
     _dragMoved = true;
     if (!setupDrag._panelCollapsed) {
         setupDrag._panelCollapsed = true;
-        const panel = document.getElementById('mobile-dugout-panel');
+        const panel = document.getElementById('roster-panel');
         if (panel) panel.classList.add('drag-collapsing');
     }
     render();
@@ -163,8 +262,10 @@ function _cleanupPanelDrag() {
     _abortPanelPointers();
     setupDrag = null;
     _suppressRowClick = false;
-    const panel = document.getElementById('mobile-dugout-panel');
-    if (panel) { panel.classList.remove('drag-collapsing'); panel.classList.add('hidden'); }
+    const panel = document.getElementById('roster-panel');
+    if (panel) { panel.classList.remove('drag-collapsing'); panel.classList.remove('visible'); }
+    // Reset so _syncRosterPanel reopens the panel on the next render call.
+    _rosterLastPhase = null;
 }
 
 // ── Action wheel ──────────────────────────────────────────────────────────────

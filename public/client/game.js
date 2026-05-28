@@ -55,8 +55,8 @@ function startGame(homeTeam, awayTeam) {
         render();
     }
 
-    document.getElementById('lbl-home-team').textContent = homeTeamDef.name.toUpperCase();
-    document.getElementById('lbl-away-team').textContent = awayTeamDef.name.toUpperCase();
+    document.getElementById('ss-name-home').textContent = homeTeamDef.name.toUpperCase();
+    document.getElementById('ss-name-away').textContent = awayTeamDef.name.toUpperCase();
 
     // Propagate resolved team colours to the CSS variables used throughout the UI.
     const root = document.documentElement;

@@ -123,6 +123,19 @@ function render() {
     drawWheelOverlay();
 }
 
+// Returns true when canvas-relative (px, py) maps to a screen position that
+// lies over the visible roster panel. Used to suppress pitch highlights that
+// would appear as a phantom row at the panel edge.
+function _cursorOverRosterPanel(px, py) {
+    const panel = document.getElementById('roster-panel');
+    if (!panel || !panel.classList.contains('visible')) return false;
+    const cr = canvas.getBoundingClientRect();
+    const pr = panel.getBoundingClientRect();
+    const sx = px + cr.left;
+    const sy = py + cr.top;
+    return sx >= pr.left && sx <= pr.right && sy >= pr.top && sy <= pr.bottom;
+}
+
 // ── drawSetupZones ────────────────────────────────────────────────
 // Tints the pitch to show the valid setup zone for the current side.
 
@@ -159,8 +172,8 @@ function drawSetupZones() {
         ctx.strokeRect(col * CELL + 1, row * CELL + 1, CELL - 2, CELL - 2);
     }
 
-    // Highlight target cell during drag
-    if (setupDrag) {
+    // Highlight target cell during drag — skip when cursor is over the roster panel.
+    if (setupDrag && !_cursorOverRosterPanel(setupDrag.pixelX, setupDrag.pixelY)) {
         const col      = Math.floor(setupDrag.pixelX / CELL);
         const row      = Math.floor((setupDrag.pixelY + cameraY) / CELL);
         const occupant = G.players.find(o => o.id !== setupDrag.player.id && o.col === col && o.row === row);
@@ -224,81 +237,83 @@ function drawSetupErrorBanner() {
     const fh  = Math.max(10, Math.min(15, Math.floor(CELL * 0.36)));
     const bh  = fh * 2.4;
     const txt = setupErrors[0];  // show first error; rest in the log
+
+    // Away setup has the roster panel at the bottom — draw the banner at the top instead.
+    const panel = document.getElementById('roster-panel');
+    const panelAtBottom = panel && panel.classList.contains('visible')
+                       && !panel.classList.contains('from-top');
+    const y = panelAtBottom ? 0 : canvas.height - bh;
+
     ctx.fillStyle = 'rgba(160,30,30,0.85)';
-    ctx.fillRect(0, canvas.height - bh, canvas.width, bh);
+    ctx.fillRect(0, y, canvas.width, bh);
     ctx.fillStyle    = '#fff';
     ctx.font         = `bold ${fh}px 'IBM Plex Mono', monospace`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(txt, canvas.width / 2, canvas.height - bh / 2);
+    ctx.fillText(txt, canvas.width / 2, y + bh / 2);
 }
 
 
-// ── Sidebar ───────────────────────────────────────────────────────
+// ── updateStatusStrip ─────────────────────────────────────────────
+// Populates the always-visible status strip shared by mobile and desktop.
+
 function updateSidebar() {
-    // Turn banner
-    const lbl = document.getElementById('lbl-active');
+    // Phase / active label
+    const lbl = document.getElementById('ss-phase-label');
+    const turn = document.getElementById('ss-turn-label');
     if (G.phase === 'setup') {
         lbl.textContent = `${(G.setupSide || '').toUpperCase()} SETUP`;
         lbl.className   = G.setupSide === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = '';
+        turn.textContent = '';
     } else if (G.phase === 'kick') {
         lbl.textContent = `${(G.kicker || '').toUpperCase()} KICKS`;
         lbl.className   = G.kicker === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = '';
+        turn.textContent = '';
     } else if (G.phase === 'touchback' || G.phase === 'kickoff_touchback') {
         lbl.textContent = 'TOUCHBACK';
         lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = '';
+        turn.textContent = '';
     } else if (G.phase === 'kickoff_soliddefence') {
-        lbl.textContent = `${(G.kicker || '').toUpperCase()} SOLID DEFENCE`;
+        lbl.textContent = `${(G.kicker || '').toUpperCase()} SOLID DEF`;
         lbl.className   = G.kicker === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = '';
+        turn.textContent = '';
     } else if (G.phase === 'kickoff_quicksnap') {
-        lbl.textContent = `${(G.receiver || '').toUpperCase()} QUICK SNAP`;
+        lbl.textContent = `${(G.receiver || '').toUpperCase()} SNAP`;
         lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = '';
+        turn.textContent = '';
     } else if (G.phase === 'kickoff_charge') {
-        lbl.textContent = `${(G.kicker || '').toUpperCase()} CHARGE!`;
+        lbl.textContent = `${(G.kicker || '').toUpperCase()} CHARGE`;
         lbl.className   = G.kicker === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = '';
+        turn.textContent = '';
     } else if (G.phase === 'kickoff_highkick') {
         lbl.textContent = `${(G.receiver || '').toUpperCase()} HIGH KICK`;
         lbl.className   = G.receiver === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = '';
+        turn.textContent = '';
     } else if (G.phase === 'gameover') {
         const { home, away } = G.score || { home: 0, away: 0 };
         lbl.textContent = home > away ? 'HOME WINS' : away > home ? 'AWAY WINS' : 'DRAW';
         lbl.className   = home > away ? 'team-home' : away > home ? 'team-away' : '';
-        document.getElementById('lbl-turn').textContent = 'FT';
+        turn.textContent = 'FT';
     } else {
         lbl.textContent = G.active.toUpperCase();
         lbl.className   = G.active === 'home' ? 'team-home' : 'team-away';
-        document.getElementById('lbl-turn').textContent = `H${G.half} T${G.turn}`;
+        turn.textContent = `H${G.half} T${G.turn}`;
     }
 
     // Score
     const score = G.score || { home: 0, away: 0 };
-    document.getElementById('score-home').textContent = score.home;
-    document.getElementById('score-away').textContent = score.away;
+    document.getElementById('ss-score-home').textContent = score.home;
+    document.getElementById('ss-score-away').textContent = score.away;
 
-    // Rerolls — one dot per remaining reroll (desktop + mobile)
+    // Rerolls — one dot per remaining reroll
     const rr = G.rerolls || { home: 0, away: 0 };
-    const rrHome = '●'.repeat(rr.home);
-    const rrAway = '●'.repeat(rr.away);
-    document.getElementById('rr-home').textContent        = rrHome;
-    document.getElementById('rr-away').textContent        = rrAway;
-    document.getElementById('mobile-rr-home').textContent = rrHome;
-    document.getElementById('mobile-rr-away').textContent = rrAway;
+    document.getElementById('ss-rr-home').textContent = '●'.repeat(rr.home);
+    document.getElementById('ss-rr-away').textContent = '●'.repeat(rr.away);
 
-    // Bribes — one $ per remaining bribe (desktop + mobile)
+    // Bribes — one $ per remaining bribe
     const br = G.bribes || { home: 0, away: 0 };
-    const brHome = '$'.repeat(br.home);
-    const brAway = '$'.repeat(br.away);
-    document.getElementById('br-home').textContent        = brHome;
-    document.getElementById('br-away').textContent        = brAway;
-    document.getElementById('mobile-br-home').textContent = brHome;
-    document.getElementById('mobile-br-away').textContent = brAway;
+    document.getElementById('ss-br-home').textContent = '$'.repeat(br.home);
+    document.getElementById('ss-br-away').textContent = '$'.repeat(br.away);
 
     updateTeams();
     updatePlayerEditor();
@@ -505,16 +520,42 @@ function _paintMiniSprite(canvas, p, isLying) {
 
 // ── updateTeams ───────────────────────────────────────────────────
 
+var _rosterLastPhase = null;
+
+function _syncRosterPanel() {
+    const isSetupLike = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+
+    if (!isSetupLike) {
+        const panel = document.getElementById('roster-panel');
+        if (panel && panel.classList.contains('visible')) closeRosterPanel();
+        _rosterLastPhase = null;
+        return;
+    }
+
+    const key = `${G.phase}:${G.setupSide || G.kicker || ''}`;
+    if (key === _rosterLastPhase) return;
+    _rosterLastPhase = key;
+
+    const activeSetupSide = G.phase === 'setup' ? G.setupSide : G.kicker;
+    // Online: only open the panel when it is this player's own turn to set up.
+    if (NET.online && NET.side !== activeSetupSide) {
+        closeRosterPanel();
+        return;
+    }
+
+    openRosterPanel(activeSetupSide);
+}
+
 function updateTeams() {
-    const section   = document.getElementById('section-teams');
-    if (!G.players || !G.players.length) { section.hidden = true; return; }
-    section.hidden = false;
+    if (!G.players || !G.players.length) return;
 
-    const offPitchN    = G.players.filter(p => p.col < 0).length;
-    const offPitchHome = G.players.filter(p => p.col < 0 && p.side === 'home').length;
-    const offPitchAway = G.players.filter(p => p.col < 0 && p.side === 'away').length;
+    // During a canvas drag nothing in the roster can change — skip DOM rebuild.
+    if (setupDrag && !setupDrag.fromPanel) { _syncRosterPanel(); return; }
 
-    // Shared across both buildList() calls so double-tap works in both panels.
+    // The roster panel shows only the team that is actively setting up.
+    const isSetupLike  = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+    const activeSide   = G.phase === 'setup' ? G.setupSide : G.kicker;
+
     let _rowLastClick = { id: null, time: 0 };
 
     function buildList(elId) {
@@ -522,11 +563,11 @@ function updateTeams() {
         if (!el) return;
         el.innerHTML = '';
 
-        const isSetup = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
+        const isSetup = isSetupLike;
+        const sides   = isSetupLike ? [activeSide] : ['home', 'away'];
 
-        ['home', 'away'].forEach(side => {
+        sides.forEach(side => {
             // Dugout shows only off-pitch players: reserves, KO'd, and casualties.
-            // On-pitch players are visible on the board and don't need to be listed.
             const group = G.players.filter(p => p.side === side && p.col < 0);
 
             // Sort: active reserves first (promotable), then KO, then casualties.
@@ -537,10 +578,13 @@ function updateTeams() {
             };
             const sorted = [...group].sort((a, b) => statusRank(a) - statusRank(b));
 
-            const header = document.createElement('div');
-            header.className = 'teams-side-header team-' + side;
-            header.textContent = side.toUpperCase();
-            el.appendChild(header);
+            // Only show team header when listing multiple teams (play phase).
+            if (sides.length > 1) {
+                const header = document.createElement('div');
+                header.className = 'teams-side-header team-' + side;
+                header.textContent = side.toUpperCase();
+                el.appendChild(header);
+            }
 
             if (!sorted.length) {
                 const empty = document.createElement('div');
@@ -560,8 +604,8 @@ function updateTeams() {
                 row.className = 'player-list-row'
                     + (isSelected ? ' pl-selected' : '')
                     + (canSwap    ? ' pl-swappable' : '')
-                    + (isAvail    ? ' pl-reserve'   : '')  // styled as ready-to-promote
-;
+                    + (isAvail    ? ' pl-reserve'   : '');
+                row.dataset.playerId = p.id;
 
                 // Draggable onto the pitch during setup
                 if (isSetup && G.setupSide === side && (!NET.online || NET.side === side)) {
@@ -572,10 +616,12 @@ function updateTeams() {
                         const mc = row.querySelector('.player-mini-canvas');
                         if (mc) e.dataTransfer.setDragImage(mc, Math.floor(mc.width / 2), Math.floor(mc.height / 2));
                     });
-                    // Mobile panel: drag onto pitch fires as soon as movement is detected.
-                    // Desktop sidebar uses the HTML5 dragstart/drop path instead.
-                    if (isAvail && elId === 'mobile-teams-list') {
-                        row.addEventListener('pointerdown', e => startPanelPress(p, e), { passive: true });
+                    // Roster panel: pointer path for touch/pen; HTML5 drag for mouse.
+                    if (isAvail && elId === 'roster-list') {
+                        row.addEventListener('pointerdown', e => {
+                            if (e.pointerType === 'touch' || e.pointerType === 'pen')
+                                startPanelPress(p, e);
+                        }, { passive: true });
                     }
                 }
 
@@ -619,15 +665,8 @@ function updateTeams() {
         });
     }
 
-    buildList('teams-list');
-    buildList('mobile-teams-list');
-
-    // Mobile button — show when the dugout has anyone in it.
-    const mBtn = document.getElementById('mobile-dugout-btn');
-    if (mBtn) {
-        mBtn.style.display = offPitchN ? '' : 'none';
-        mBtn.textContent   = `Dugout H:${offPitchHome} A:${offPitchAway}`;
-    }
+    buildList('roster-list');
+    _syncRosterPanel();
 }
 
 // ── Pitch ─────────────────────────────────────────────────────────
