@@ -222,6 +222,13 @@ function endTurn(G) {
 // Roles swap: half-1 receiver now kicks. Reset to setup.
 
 function startHalfTime(G) {
+    // Drive-scoped illness (Dodgy Snack) expires at half-time too.
+    for (const p of G.players) {
+        if (!p.illnesses || !p.illnesses.length) continue;
+        for (const stat of p.illnesses) p[stat] = (p[stat] || 0) + 1;
+        p.illnesses = null;
+    }
+
     const koMsgs = [];
     for (const p of G.players) {
         if (p.status === 'ko') {
@@ -374,6 +381,13 @@ function _placeInFormation(players, formation) {
 // receive the kickoff from the scoring team).
 
 function resetAfterTouchdown(G, scoringSide) {
+    // Drive-scoped illness (Dodgy Snack) expires — restore each reduced stat by 1.
+    for (const p of G.players) {
+        if (!p.illnesses || !p.illnesses.length) continue;
+        for (const stat of p.illnesses) p[stat] = (p[stat] || 0) + 1;
+        p.illnesses = null;
+    }
+
     // KO recovery roll (4+) before resetting positions
     const koMsgs = [];
     for (const p of G.players) {

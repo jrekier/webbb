@@ -1544,8 +1544,10 @@ function _applyKickoffEvent(G, aimCol, aimRow) {
                     target.col = -1; target.row = -1;
                     msg += ` ${pn(target)} violently ill — sent to reserves for the drive! (rolled 1)`;
                 } else {
-                    target.ma = Math.max(1, target.ma - 1);
-                    target.av = Math.max(1, target.av - 1);
+                    const ill = [];
+                    if (target.ma > 1) { target.ma -= 1; ill.push('ma'); }
+                    if (target.av > 1) { target.av -= 1; ill.push('av'); }
+                    if (ill.length) target.illnesses = ill;
                     msg += ` ${pn(target)} feeling off — MA/AV reduced by 1 for this drive. (rolled ${snackRoll})`;
                 }
             }

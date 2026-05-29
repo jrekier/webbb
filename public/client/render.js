@@ -386,9 +386,7 @@ function showChipTooltip(anchor, p) {
 
     const maInfo = isActivated
         ? `${p.maLeft} MA \u00b7 ${p.rushLeft} GFI`
-        : (G.phase === 'play' && p.col >= 0 && !p.usedAction && p.status === 'active')
-          ? `MA ${p.maLeft}`
-          : null;
+        : null;
 
     const skillsHtml = p.skills && p.skills.length
         ? `<div class="ct-skills">${p.skills.map(s => `<span class="ct-skill">${s}</span>`).join('')}</div>`
@@ -403,6 +401,9 @@ function showChipTooltip(anchor, p) {
         maInfo     ? `<span class="ct-badge ct-st-ma">${maInfo}</span>`              : '',
     ].filter(Boolean).join('');
 
+    const reduced = new Set([...(p.injuries || []), ...(p.illnesses || [])]);
+    const statCell = (key, val) => `<b${reduced.has(key) ? ' class="ct-stat-injured"' : ''}>${val}</b>`;
+
     tt.innerHTML = `
         <div class="ct-top">
           <div class="ct-sprite-slot"></div>
@@ -411,13 +412,13 @@ function showChipTooltip(anchor, p) {
             <div class="ct-pos">${p.pos}</div>
             <div class="ct-stats-grid">
               <span>MA</span><span>ST</span><span>AG</span><span>PA</span><span>AV</span>
-              <b>${p.ma}</b><b>${p.st}</b><b>${p.ag}</b><b>${p.pa}</b><b>${p.av}</b>
+              ${statCell('ma', p.ma)}${statCell('st', p.st)}${statCell('ag', p.ag)}${statCell('pa', p.pa)}${statCell('av', p.av)}
             </div>
           </div>
         </div>${skillsHtml || badgesHtml ? `
         <div class="ct-bottom">${skillsHtml}${badgesHtml ? `<div class="ct-badges">${badgesHtml}</div>` : ''}</div>` : ''}`;
 
-    tt.querySelector('.ct-sprite-slot').appendChild(_drawMiniSprite(p));
+    tt.querySelector('.ct-sprite-slot').appendChild(_drawMiniSprite(p, 56));
     tt.hidden            = false;
     _chipTooltipPlayerId = p.id;
     // CSS handles positioning for both desktop (top-left anchored) and mobile
@@ -438,16 +439,18 @@ function hideChipTooltip(delay) {
 const MINI_H = 24;
 const MINI_W = 18;
 
-function _drawMiniSprite(p) {
+function _drawMiniSprite(p, targetH) {
     const isLying = p.status === 'ko' || p.status === 'prone'
                  || p.status === 'stunned' || p.status === 'casualty';
 
+    const h = targetH || MINI_H;
+    const w = Math.round(h * MINI_W / MINI_H);
     const canvas  = document.createElement('canvas');
     canvas.classList.add('player-mini-canvas');
 
     // Lying players use a wider, shorter box (dimensions swapped)
-    canvas.width  = isLying ? MINI_H : MINI_W;
-    canvas.height = isLying ? MINI_W : MINI_H;
+    canvas.width  = isLying ? h : w;
+    canvas.height = isLying ? w : h;
 
     // CSS status styling
     if (p.status === 'casualty') {
@@ -468,7 +471,8 @@ function _paintMiniSprite(canvas, p, isLying) {
     ctx2.imageSmoothingEnabled = false;
 
     if (sprite) {
-        const scale = MINI_H / SPRITE_REF_HEIGHT;
+        const refH  = isLying ? canvas.width : canvas.height;
+        const scale = refH / SPRITE_REF_HEIGHT;
         const sw    = Math.round(sprite.width  * scale);
         const sh    = Math.round(sprite.height * scale);
 
@@ -1170,7 +1174,43 @@ function drawPlayer(p) {
         ctx.fillText('?', cx, cy - r * 1.15);
         ctx.restore();
     }
+
+    // Injury indicator — small red cross above the sprite.
+    if (p.injuries && p.injuries.length) {
+        const sz = Math.round(CELL * 0.18);
+        const ix = Math.round(cx - r * 0.62);
+        const iy = Math.round(cy - r * 0.95);
+        ctx.save();
+        ctx.fillStyle   = '#c81020';
+        ctx.fillRect(ix - sz / 2, iy - sz / 6, sz, sz / 3);  // horizontal bar
+        ctx.fillRect(ix - sz / 6, iy - sz / 2, sz / 3, sz);  // vertical bar
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(ix - sz / 2, iy - sz / 6, sz, sz / 3);
+        ctx.strokeRect(ix - sz / 6, iy - sz / 2, sz / 3, sz);
+        ctx.restore();
+    }
+
+    // Illness indicator — nauseated-face icon. Sits beside the injury cross
+    // if both are present, otherwise in the same anchor slot.
+    if (p.illnesses && p.illnesses.length && _illIcon.complete && _illIcon.naturalWidth) {
+        const sz = Math.round(CELL * 0.32);
+        const offsetX = (p.injuries && p.injuries.length) ? r * 0.18 : -r * 0.62;
+        const ix = Math.round(cx + offsetX);
+        const iy = Math.round(cy - r * 0.95);
+        ctx.drawImage(_illIcon, ix - sz / 2, iy - sz / 2, sz, sz);
+    }
 }
+
+// Status icons (lazy-loaded). Refer to .complete + .naturalWidth before drawing.
+var _illIcon = (() => {
+    const img = new Image();
+    img.onload = () => { if (typeof render === 'function') render(); };
+    img.src = (typeof resolveSheet === 'function')
+        ? resolveSheet('assets/status/ill.svg')
+        : 'assets/status/ill.svg';
+    return img;
+})();
 
 // ── drawPlayerSprite ─────────────────────────────────────────────
 // Scale is anchored to a reference height so sprites with different natural

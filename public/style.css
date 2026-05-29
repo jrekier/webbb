@@ -721,6 +721,7 @@ canvas {
 }
 .ct-stats-grid span { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
 .ct-stats-grid b    { display: block; font-size: 16px; color: var(--text); font-weight: 700; line-height: 1.3; }
+.ct-stats-grid b.ct-stat-injured { color: var(--blood); }
 .ct-bottom {
     margin-top: 10px;
     border-top: 1px solid var(--border);
