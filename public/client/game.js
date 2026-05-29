@@ -50,6 +50,7 @@ function startGame(homeTeam, awayTeam) {
         G.assistantCoaches = { home: homeTeamDef.assistantCoaches || 0, away: awayTeamDef.assistantCoaches || 0 };
         G.fanFactor       = { home: homeTeamDef.fanFactor       || 0, away: awayTeamDef.fanFactor       || 0 };
         G.apothecary      = { home: !!homeTeamDef.apothecary,         away: !!awayTeamDef.apothecary         };
+        G.treasury        = { home: homeTeamDef.treasury        || 0, away: awayTeamDef.treasury        || 0 };
         const winner = initToss(G);
         showTossOverlay(winner);
         render();

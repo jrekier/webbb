@@ -472,17 +472,24 @@ canvas {
     flex-shrink: 0;
 }
 
-.ss-rerolls {
-    font-size: 12px;
-    letter-spacing: 2px;
-    flex-shrink: 0;
-    min-width: 0;
-}
-
+.ss-rerolls,
 .ss-bribes {
-    font-size: 11px;
-    opacity: 0.85;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
     flex-shrink: 0;
+}
+.ss-pip {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: contain;
+            mask-size: contain;
 }
 
 .ss-center {
@@ -629,6 +636,33 @@ canvas {
     font-size: 12px;
     letter-spacing: 3px;
     flex-shrink: 0;
+    gap: 12px;
+}
+
+#roster-team-stats {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+}
+.rts-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.rts-icon {
+    width: 14px;
+    height: 14px;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: contain;
+            mask-size: contain;
 }
 
 #roster-header button {

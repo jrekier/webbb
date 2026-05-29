@@ -104,9 +104,63 @@ function openRosterPanel(side) {
         const label = G.phase === 'kickoff_soliddefence' ? 'SOLID DEFENCE' : 'DUGOUT';
         title.textContent = side ? `${side.toUpperCase()} ${label}` : label;
     }
+    _populateRosterTeamStats(side);
     // Re-render so the list rebuilds for the (possibly new) view side.
     if (typeof render === 'function') render();
     requestAnimationFrame(_applyRosterPitchPadding);
+}
+
+// Icon + count for each team-level resource that's > 0.
+// Add a new entry to STAT_ICONS to surface another stat — the rest is automatic.
+const STAT_ICONS = [
+    { key: 'fanFactor',        icon: 'assets/status/fans.svg',    label: 'Fans' },
+    { key: 'assistantCoaches', icon: 'assets/status/coaches.svg', label: 'Asst Coaches' },
+    { key: 'rerolls',          icon: 'assets/status/rerolls.svg', label: 'Rerolls' },
+    { key: 'treasury',         icon: 'assets/status/treasury.svg', label: 'Treasury' },
+    { key: 'bribes',           icon: 'assets/status/bribes.svg',   label: 'Bribes' },
+    // { key: 'cheerleaders', icon: 'assets/status/cheerleaders.svg', label: 'Cheerleaders' },
+    // apothecary handled separately (boolean, not a count)
+];
+
+function _populateRosterTeamStats(side) {
+    const el = document.getElementById('roster-team-stats');
+    if (!el || !side) return;
+    el.innerHTML = '';
+    el.style.color = `var(--${side})`;  // tint icons with team colour
+
+    for (const { key, icon, label } of STAT_ICONS) {
+        const count = G[key]?.[side] || 0;
+        if (!count) continue;
+        const item = document.createElement('span');
+        item.className = 'rts-item';
+        item.title     = `${label}: ${count}`;
+        const iconEl = document.createElement('span');
+        iconEl.className = 'rts-icon';
+        const url = (typeof resolveSheet === 'function') ? resolveSheet(icon) : icon;
+        iconEl.style.webkitMaskImage = `url("${url}")`;
+        iconEl.style.maskImage       = `url("${url}")`;
+        item.appendChild(iconEl);
+        const num = document.createElement('span');
+        num.textContent = count;
+        item.appendChild(num);
+        el.appendChild(item);
+    }
+
+    // Apothecary — boolean flag, shown as a lone icon with no count.
+    if (G.apothecary?.[side]) {
+        const apo = document.createElement('span');
+        apo.className = 'rts-item';
+        apo.title = 'Apothecary';
+        const iconEl = document.createElement('span');
+        iconEl.className = 'rts-icon';
+        const url = (typeof resolveSheet === 'function')
+            ? resolveSheet('assets/status/apothecary.svg')
+            : 'assets/status/apothecary.svg';
+        iconEl.style.webkitMaskImage = `url("${url}")`;
+        iconEl.style.maskImage       = `url("${url}")`;
+        apo.appendChild(iconEl);
+        el.appendChild(apo);
+    }
 }
 
 function closeRosterPanel() {

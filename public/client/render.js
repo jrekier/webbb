@@ -257,6 +257,26 @@ function drawSetupErrorBanner() {
 // ── updateStatusStrip ─────────────────────────────────────────────
 // Populates the always-visible status strip shared by mobile and desktop.
 
+var _pipUrlCache = {};
+function _renderStatPips(elId, count, path) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.innerHTML = '';
+    if (!count) return;
+    if (!_pipUrlCache[path]) {
+        _pipUrlCache[path] = (typeof resolveSheet === 'function') ? resolveSheet(path) : path;
+    }
+    const cssUrl = `url("${_pipUrlCache[path]}")`;
+    for (let i = 0; i < count; i++) {
+        const pip = document.createElement('span');
+        pip.className = 'ss-pip';
+        pip.style.webkitMaskImage = cssUrl;
+        pip.style.maskImage       = cssUrl;
+        el.appendChild(pip);
+    }
+}
+
+
 function updateSidebar() {
     // Phase / active label
     const lbl = document.getElementById('ss-phase-label');
@@ -305,15 +325,15 @@ function updateSidebar() {
     document.getElementById('ss-score-home').textContent = score.home;
     document.getElementById('ss-score-away').textContent = score.away;
 
-    // Rerolls — one dot per remaining reroll
+    // Rerolls — one dice icon per remaining reroll
     const rr = G.rerolls || { home: 0, away: 0 };
-    document.getElementById('ss-rr-home').textContent = '●'.repeat(rr.home);
-    document.getElementById('ss-rr-away').textContent = '●'.repeat(rr.away);
+    _renderStatPips('ss-rr-home', rr.home, 'assets/status/rerolls.svg');
+    _renderStatPips('ss-rr-away', rr.away, 'assets/status/rerolls.svg');
 
-    // Bribes — one $ per remaining bribe
+    // Bribes — one bribe icon per remaining bribe
     const br = G.bribes || { home: 0, away: 0 };
-    document.getElementById('ss-br-home').textContent = '$'.repeat(br.home);
-    document.getElementById('ss-br-away').textContent = '$'.repeat(br.away);
+    _renderStatPips('ss-br-home', br.home, 'assets/status/bribes.svg');
+    _renderStatPips('ss-br-away', br.away, 'assets/status/bribes.svg');
 
     updateTeams();
     updatePlayerEditor();
