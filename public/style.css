@@ -686,54 +686,57 @@ canvas {
 }
 
 /* ── Chip tooltip ─────────────────────────────────────────────── */
+/* Desktop default: anchored fixed panel in the top-left corner. */
 .chip-tooltip {
     position: fixed;
     z-index: 1000;
+    top: calc(var(--strip-h) + 12px);
+    left: 12px;
+    width: 300px;
     background: var(--bg-d);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: 10px;
+    padding: 14px 16px;
     pointer-events: none;
-    min-width: 170px;
-    max-width: 230px;
     box-shadow: 0 8px 28px rgba(0,0,0,0.25);
 }
-.ct-top  { display: flex; gap: 10px; align-items: flex-start; }
+.ct-top  { display: flex; gap: 14px; align-items: flex-start; }
 .ct-sprite-slot { flex-shrink: 0; }
-.ct-sprite-slot canvas { display: block; width: 30px; height: 40px;
+.ct-sprite-slot canvas { display: block; width: 42px; height: 56px;
     image-rendering: pixelated; image-rendering: crisp-edges; }
 .ct-info { flex: 1; min-width: 0; }
 .ct-name {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 18px; letter-spacing: 1px; line-height: 1.1;
+    font-size: 22px; letter-spacing: 1px; line-height: 1.1;
 }
 .ct-pos {
-    font-size: 8px; color: var(--text-dim);
-    letter-spacing: 1.5px; text-transform: uppercase;
-    margin-bottom: 6px;
+    font-size: 10px; color: var(--text-dim);
+    letter-spacing: 1.8px; text-transform: uppercase;
+    margin-bottom: 8px;
 }
 .ct-stats-grid {
     display: grid; grid-template-columns: repeat(5, 1fr);
     text-align: center;
+    gap: 2px 4px;
 }
-.ct-stats-grid span { font-size: 7px; color: var(--text-dim); text-transform: uppercase; }
-.ct-stats-grid b    { display: block; font-size: 13px; color: var(--text); font-weight: 700; line-height: 1.3; }
+.ct-stats-grid span { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.ct-stats-grid b    { display: block; font-size: 16px; color: var(--text); font-weight: 700; line-height: 1.3; }
 .ct-bottom {
-    margin-top: 8px;
+    margin-top: 10px;
     border-top: 1px solid var(--border);
-    padding-top: 7px;
-    display: flex; flex-direction: column; gap: 5px;
+    padding-top: 9px;
+    display: flex; flex-direction: column; gap: 7px;
 }
-.ct-skills { display: flex; flex-wrap: wrap; gap: 3px; }
+.ct-skills { display: flex; flex-wrap: wrap; gap: 4px; }
 .ct-skill  {
-    font-size: 8px; color: var(--text-dim);
+    font-size: 10px; color: var(--text-dim);
     background: rgba(0,0,0,0.06);
-    border-radius: 3px; padding: 2px 5px;
+    border-radius: 3px; padding: 3px 7px;
 }
-.ct-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.ct-badges { display: flex; flex-wrap: wrap; gap: 5px; }
 .ct-badge  {
-    font-size: 8px; letter-spacing: 0.8px; text-transform: uppercase;
-    padding: 2px 6px; border-radius: 3px; font-weight: 600;
+    font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 3px; font-weight: 600;
 }
 .ct-st-active   { background: rgba(60,120,60,0.15);   color: #2a7a2a; }
 .ct-st-done     { background: rgba(0,0,0,0.08);       color: var(--text-dim); }
@@ -1121,9 +1124,25 @@ canvas {
 
 /* ── Responsive ───────────────────────────────────────────────── */
 
-/* Desktop: roster panel covers only the pitch, not the sidebar */
+/* Desktop: roster panel covers only the pitch (not the sidebar), and uses
+   more vertical space than the mobile default so full rosters fit at a glance. */
 @media (min-width: 501px) {
-    #roster-panel { right: var(--sidebar-w); }
+    #roster-panel {
+        right: var(--sidebar-w);
+        max-height: 55vh;
+    }
+    #roster-header { padding: 12px 20px; font-size: 14px; }
+    #roster-body   { padding: 12px 20px; }
+    #roster-demote-zone {
+        padding: 11px 14px;
+        font-size: 11px;
+    }
+    .player-list-row {
+        padding: 5px 6px;
+        gap: 8px;
+    }
+    .player-list-name { font-size: 11px; }
+    .player-list-pos  { font-size: 9px;  }
 }
 
 /* Mobile: right sidebar hidden, full-canvas pitch, HUD overlay */

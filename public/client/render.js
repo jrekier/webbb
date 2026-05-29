@@ -420,32 +420,10 @@ function showChipTooltip(anchor, p) {
     tt.querySelector('.ct-sprite-slot').appendChild(_drawMiniSprite(p));
     tt.hidden            = false;
     _chipTooltipPlayerId = p.id;
-
-    // On touch devices CSS pins the card to the bottom; skip JS positioning.
-    if ('ontouchstart' in window) return;
-
-    // Desktop: float the card near the anchor point.
-    const isEl = typeof anchor?.getBoundingClientRect === 'function';
-    let ax, ay, preferAbove;
-    if (isEl) {
-        const r = anchor.getBoundingClientRect();
-        ax = r.left + r.width / 2;  ay = r.bottom;  preferAbove = false;
-    } else {
-        ax = anchor?.clientX ?? window.innerWidth  / 2;
-        ay = anchor?.clientY ?? window.innerHeight / 2;
-        preferAbove = true;
-    }
-    tt.style.left = (ax - 80) + 'px';
-    tt.style.top  = '-9999px';
-    requestAnimationFrame(() => {
-        const tr  = tt.getBoundingClientRect();
-        let top   = preferAbove ? ay - tr.height - 16 : ay + 6;
-        if  (preferAbove  && top < 8)                                  top = ay + 16;
-        if  (!preferAbove && top + tr.height > window.innerHeight - 8) top = ay - tr.height - 6;
-        const left = Math.max(8, Math.min(window.innerWidth - tr.width - 8, ax - tr.width / 2));
-        tt.style.top  = Math.max(8, top) + 'px';
-        tt.style.left = left + 'px';
-    });
+    // CSS handles positioning for both desktop (top-left anchored) and mobile
+    // (bottom-pinned). No per-click coordinate juggling needed.
+    tt.style.left = '';
+    tt.style.top  = '';
 }
 
 function hideChipTooltip(delay) {
