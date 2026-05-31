@@ -42,6 +42,8 @@ var _TEAM_LOGOS = {
     humans: 'assets/logos/Human_BB2025.svg',
     orcs:   'assets/logos/Orc_BB2025.svg',
     skaven: 'assets/logos/Skaven_BB2025.svg',
+    dwarfs: 'assets/logos/Dwarf_BB2025.svg',
+    imperialnobility: 'assets/logos/ImperialNobility_BB2025.svg',
 };
 
 function _initTeamLogos() {

@@ -46,6 +46,22 @@
           <span class="tcb-name">Vermintide</span>
         </div>
       </button>
+      <button class="team-choice-btn" data-race="dwarfs" onclick="selectTeam('home','dwarfs')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Dwarfs">
+          <span class="tcb-race">Dwarfs</span>
+          <span class="tcb-name">Grudgebearers</span>
+        </div>
+      </button>
+      <button class="team-choice-btn" data-race="imperialnobility" onclick="selectTeam('home','imperialnobility')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Imperial Nobility">
+          <span class="tcb-race">Nobility</span>
+          <span class="tcb-name">Gilded Guard</span>
+        </div>
+      </button>
     </div>
   </div>
 
@@ -74,6 +90,22 @@
           <img class="tcb-logo" alt="Skaven">
           <span class="tcb-race">Skaven</span>
           <span class="tcb-name">Vermintide</span>
+        </div>
+      </button>
+      <button class="team-choice-btn" data-race="dwarfs" onclick="selectTeam('away','dwarfs')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Dwarfs">
+          <span class="tcb-race">Dwarfs</span>
+          <span class="tcb-name">Grudgebearers</span>
+        </div>
+      </button>
+      <button class="team-choice-btn" data-race="imperialnobility" onclick="selectTeam('away','imperialnobility')">
+        <div class="tcb-bar"></div>
+        <div class="tcb-body">
+          <img class="tcb-logo" alt="Imperial Nobility">
+          <span class="tcb-race">Nobility</span>
+          <span class="tcb-name">Gilded Guard</span>
         </div>
       </button>
     </div>
@@ -266,7 +298,9 @@
       fetch('team-humans.json').then(r => r.json()),
       fetch('team-orcs.json').then(r => r.json()),
       fetch('team-skaven.json').then(r => r.json()),
-  ]).then(([humans, orcs, skaven]) => startApp({ humans, orcs, skaven }));
+      fetch('team-dwarfs.json').then(r => r.json()),
+      fetch('team-imperialnobility.json').then(r => r.json()),
+  ]).then(([humans, orcs, skaven, dwarfs, imperialnobility]) => startApp({ humans, orcs, skaven, dwarfs, imperialnobility }));
 </script>
 </body>
 </html>
