@@ -73,6 +73,12 @@ function getGameContext(G, sel, NET) {
         && ((canDeclare && !selProne)
             || (myTurn && G.activated?.id === sel?.id && G.blitz?.phase === 'moving'));
 
+    const hasStab = sel?.skills?.includes('Stab');
+    const canDeclareStab = hasStab
+        && getBlockTargets(G, sel).length > 0
+        && ((canDeclare && !selProne)
+            || (myTurn && G.activated?.id === sel?.id && G.blitz?.phase === 'moving'));
+
     const canDeclareTTM = canDeclare && !G.hasThrownMate
         && !!sel?.skills?.includes('Throw Team-Mate');
 
@@ -136,6 +142,7 @@ function getGameContext(G, sel, NET) {
         canCancel,
         canStop,
         canDeclarePV,
+        canDeclareStab,
         canDeclareTTM,
         canPickASTarget,
         canUseFend,

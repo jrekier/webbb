@@ -442,6 +442,8 @@ function _buildSpecialActions(player, gc) {
     const actions = [];
     if (gc.canDeclarePV)
         actions.push({ label: 'Proj.\nVomit', color: '#80ff60', bg: 'rgba(20,70,20,0.92)', fn: onClickPV });
+    if (gc.canDeclareStab)
+        actions.push({ label: 'Stab', color: '#ff7070', bg: 'rgba(90,20,20,0.92)', fn: onClickStab });
     if (gc.canDeclareTTM)
         actions.push({ label: 'Throw\nMate', color: '#c0c0ff', bg: 'rgba(40,20,80,0.92)', fn: onClickTTM });
     return actions;

@@ -912,6 +912,17 @@ function clickPlayer(player) {
         return;
     }
 
+    // Stab targeting — tap an adjacent standing enemy.
+    if (G.stabbing) {
+        if (G.activated && player.side !== G.active
+                && isAdjacent(G.activated, player) && isStanding(player)) {
+            if (NET.online) sendAction({ type: 'STAB_EXECUTE', targetId: player.id });
+            else { const msg = executeStab(G, player.id); if (msg) log(msg); }
+        }
+        render();
+        return;
+    }
+
     // Block targeting — must be adjacent already.
     if (G.block === 'targeting') {
         if (player.side !== G.active && isAdjacent(G.activated, player)) {
@@ -1093,6 +1104,12 @@ function onClickPV() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (NET.online) sendAction({ type: 'PV_DECLARE', playerId: G.sel.id });
     else { const msg = declarePV(G, G.sel.id); if (msg) log(msg); render(); }
+}
+
+function onClickStab() {
+    if (!G.sel || G.sel.side !== G.active) return;
+    if (NET.online) sendAction({ type: 'STAB_DECLARE', playerId: G.sel.id });
+    else { const msg = declareStab(G, G.sel.id); if (msg) log(msg); render(); }
 }
 
 function onClickTTM() {

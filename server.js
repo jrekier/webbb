@@ -31,6 +31,7 @@ const {
     declareKick, touchbackGiveBall, secureBall,
     resolveKickScatter, highKickPlace, skipHighKick,
     declarePV, executePV,
+    declareStab, executeStab,
     declareTTM, pickTTMMissile, throwTeamMate,
     useTeamReroll, declineTeamReroll,
     resolveBribe,
@@ -689,6 +690,8 @@ function handleAction(room, msg) {
         case 'AS_PICK_TARGET': room.lastLogMsg = resolveASHit(G, msg.targetId);       break;
         case 'PV_DECLARE':  if (!gc.canDeclarePV)  return; room.lastLogMsg = declarePV(G, msg.playerId);       break;
         case 'PV_EXECUTE':  room.lastLogMsg = executePV(G, msg.targetId);             break;
+        case 'STAB_DECLARE': if (!gc.canDeclareStab) return; room.lastLogMsg = declareStab(G, msg.playerId);   break;
+        case 'STAB_EXECUTE': room.lastLogMsg = executeStab(G, msg.targetId);          break;
         case 'TTM_DECLARE': if (!gc.canDeclareTTM) return; room.lastLogMsg = declareTTM(G, msg.playerId);      break;
         case 'TTM_PICK_MISSILE': room.lastLogMsg = pickTTMMissile(G, msg.missileId);  break;
         case 'TTM_THROW':   room.lastLogMsg = throwTeamMate(G, msg.col, msg.row);     break;

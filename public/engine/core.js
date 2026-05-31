@@ -112,6 +112,7 @@ function cancelActivation(G) {
     G.securingBall       = false;
     G.fouling            = false;
     G.pvTargeting        = false;
+    G.stabbing           = false;
     G.throwTeamMate      = null;
     G.animalSavagery     = null;
     G.targeting          = null;
@@ -137,6 +138,7 @@ function endActivation(G) {
     G.asRolled           = false;
     G.fouling            = false;
     G.pvTargeting        = false;
+    G.stabbing           = false;
     G.throwTeamMate      = null;
     G.animalSavagery     = null;
     G.targeting          = null;

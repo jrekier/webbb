@@ -2037,6 +2037,81 @@ function executePV(G, targetId) {
     return msg;
 }
 
+// ── declareStab ───────────────────────────────────────────────────
+// Enters Stab targeting mode. A Stab Special Action may be declared by any
+// activated player with the skill (no per-turn limit). It may also replace
+// the Block made as part of a Blitz — declared at the point of contact, not
+// up front — so this clears G.blitz. Either way the activation ends once the
+// Stab is performed (executeStab).
+
+function declareStab(G, playerId) {
+    const p = G.players.find(p => p.id === playerId);
+    if (!p) return null;
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
+    if (bh?.abort) return bh.msg;
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
+    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, true)  : null;
+    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
+    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+
+    G.activated  = p;
+    G.sel        = p;
+    G.blitz      = null;
+    G.stabbing   = true;
+    G.targeting  = true;
+    if (G.animalSavagery) return prefix;
+    return (prefix ? prefix + ' ' : '') + `${pn(p)} [[skill:Stab]] — select an adjacent standing enemy.`;
+}
+
+// ── executeStab ───────────────────────────────────────────────────
+// Resolves a Stab action: an Armour Roll made directly against the target,
+// which cannot be modified in any way (attacker = null → no Mighty Blow; the
+// only armour modifier in the engine). If armour breaks, a normal Injury Roll
+// follows (Thick Skull / Stunty still apply to injury). No block dice, no push,
+// no knockdown unless injured, and a Stab never causes a turnover.
+
+function executeStab(G, targetId) {
+    if (!G.stabbing || !G.activated) return null;
+    const att = G.activated;
+    const def = G.players.find(p => p.id === targetId);
+    if (!def || def.side === att.side || !isAdjacent(att, def) || !isStanding(def)) return null;
+
+    G.stabbing     = false;
+    G.targeting    = null;
+    att.usedAction = true;
+    G.activated    = null;
+
+    let msg = `${pn(att)} [[skill:Stab]] → ${pn(def)}! `;
+    const { armorRoll, armorBroken, injuryRoll, outcome } = rollArmourAndInjury(def, null);
+    if (!armorBroken) return msg + `AV ${armorRoll}/${def.av} — armour holds.`;
+
+    const hadBall = def.hasBall;
+    if (hadBall) {
+        def.hasBall    = false;
+        G.ball.carrier = null;
+        G.ball.col     = def.col;
+        G.ball.row     = def.row;
+    }
+
+    msg += `AV ${armorRoll}/${def.av} broken! Inj ${injuryRoll}: `;
+    if (outcome === 'stunned') {
+        def.status = 'prone';
+        markStunned(def);
+        msg += 'Stunned.';
+    } else if (outcome === 'ko') {
+        def.status = 'ko';
+        def.col    = -1;
+        msg += "KO'd!";
+    } else {
+        def.status = 'casualty';
+        def.col    = -1;
+        msg += 'CASUALTY!';
+    }
+    if (hadBall) msg += ' ' + scatterBall(G);
+    return msg;
+}
+
 // ── Throw Team-Mate ────────────────────────────────────────────────
 
 // ── declareTTM ─────────────────────────────────────────────────────
@@ -2409,6 +2484,7 @@ if (typeof module !== 'undefined') {
         highKickPlace, skipHighKick,
         movePlayer, activateMover,
         declarePV, executePV,
+        declareStab, executeStab,
         declareTTM, pickTTMMissile, throwTeamMate,
         resolveASHit,
         useTeamReroll, declineTeamReroll,

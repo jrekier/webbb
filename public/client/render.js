@@ -893,6 +893,15 @@ function drawHighlights() {
         });
     }
 
+    // Stab targets — red on adjacent standing enemies
+    if (G.stabbing && G.activated) {
+        G.players.filter(p =>
+            p.side !== G.active && isStanding(p) && isAdjacent(G.activated, p)
+        ).forEach(t => {
+            hlCell(t.col, t.row, 'rgba(200,40,40,0.25)', 'rgba(230,60,60,0.85)', false);
+        });
+    }
+
     // Foul targets — dark red on adjacent prone/stunned enemies
     if (G.fouling && G.activated) {
         G.players.filter(p =>
