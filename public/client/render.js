@@ -161,6 +161,33 @@ function drawSetupZones() {
     ctx.fillStyle = 'rgba(255,210,0,0.10)';
     ctx.fillRect(0, losRow * CELL, COLS * CELL, CELL);
 
+    // Solid Defence — two states per kicker on-pitch player:
+    //   • Selected (in the SD pool): solid green outline → rearrangeable.
+    //   • Selectable (not yet selected, removal budget still available):
+    //     dashed green outline → can still be picked / demoted.
+    //   Anything else: no highlight → locked in place.
+    if (G.phase === 'kickoff_soliddefence') {
+        const canSelectMore = G.solidDefenceMovesLeft > 0;
+        ctx.save();
+        G.players.forEach(p => {
+            if (p.side !== G.kicker || p.col < 0) return;
+            if (p.sdSelected) {
+                ctx.setLineDash([]);
+                ctx.fillStyle   = 'rgba(80,200,80,0.10)';
+                ctx.strokeStyle = 'rgba(80,200,80,0.85)';
+                ctx.lineWidth   = 1.5;
+                ctx.fillRect(p.col * CELL + 1, p.row * CELL + 1, CELL - 2, CELL - 2);
+                ctx.strokeRect(p.col * CELL + 1.5, p.row * CELL + 1.5, CELL - 3, CELL - 3);
+            } else if (canSelectMore) {
+                ctx.setLineDash([3, 2]);
+                ctx.strokeStyle = 'rgba(80,200,80,0.55)';
+                ctx.lineWidth   = 1.2;
+                ctx.strokeRect(p.col * CELL + 1.5, p.row * CELL + 1.5, CELL - 3, CELL - 3);
+            }
+        });
+        ctx.restore();
+    }
+
     // Drop-target highlight when dragging from the sidebar
     if (dragHover) {
         const { col, row } = dragHover;
@@ -575,7 +602,11 @@ function updateTeams() {
 
         sides.forEach(side => {
             // Dugout shows only off-pitch players: reserves, KO'd, and casualties.
-            const group = G.players.filter(p => p.side === side && p.col < 0);
+            // During Solid Defence the dugout shows only players that the
+            // coach selected for the SD pool — original reserves stay hidden.
+            const inSD = G.phase === 'kickoff_soliddefence';
+            const group = G.players.filter(p =>
+                p.side === side && p.col < 0 && (!inSD || p.sdSelected));
 
             // Sort: active reserves first (promotable), then KO, then casualties.
             const statusRank = p => {

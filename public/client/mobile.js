@@ -95,8 +95,6 @@ function openRosterPanel(side) {
     // Away setup zone is at the top of the pitch → panel anchors at bottom.
     const classes = ['visible'];
     if (side === 'home') classes.push('from-top');
-    // Reserves cannot be brought in during soliddefence (movement only).
-    if (G.phase === 'kickoff_soliddefence') classes.push('demote-only');
     panel.className = classes.join(' ');
     panel.dataset.viewSide = side || '';
     const title = document.getElementById('roster-title');

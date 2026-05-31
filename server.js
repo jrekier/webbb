@@ -515,6 +515,7 @@ function handleSolidDefenceConfirm(room, side) {
     }
     G.setupSide = null;
     G.phase = 'kick';
+    G.players.forEach(p => { delete p.sdSelected; });
     const logMsg = resolveKickScatter(G);
     broadcast(room, { type: 'UPDATE', G, logMsg });
 }

@@ -1444,7 +1444,7 @@ function _applyKickoffEvent(G, aimCol, aimRow) {
 
         case 'Solid Defence': {
             const d3 = Math.ceil(d6() / 2);
-            G.solidDefenceMovesLeft = d3 + 1;
+            G.solidDefenceMovesLeft = d3 + 3;
             G.pendingKick = { col: aimCol, row: aimRow };
             G.phase     = 'kickoff_soliddefence';
             G.setupSide = G.kicker;  // reuse setup drag UI

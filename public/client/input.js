@@ -1187,6 +1187,7 @@ function onClickSolidDefenceConfirm() {
     const pendingRow = G.pendingKick?.row;
     G.setupSide = null;
     G.phase = 'kick';
+    G.players.forEach(p => { delete p.sdSelected; });
     const msg = resolveKickScatter(G, pendingCol, pendingRow);
     if (msg) log(msg);
     render();

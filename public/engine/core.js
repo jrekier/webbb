@@ -589,23 +589,34 @@ function moveSolidDefencePlayer(G, playerId, col, row) {
     if (G.phase !== 'kickoff_soliddefence') return null;
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.kicker) return null;
+    // Only "selected" players (those the coach has chosen for the SD pool)
+    // may be placed/rearranged. Non-selected players stay where they are.
+    if (!p.sdSelected) return null;
     if (!isValidPerfectDefenseSquare(G.kicker, col, row)) return null;
     if (G.players.some(o => o.id !== playerId && o.col === col && o.row === row)) return null;
     p.col = col;
     p.row = row;
+    // Flag stays — the player remains "selected" for the rest of this SD,
+    // so they can be rearranged further before SD is confirmed.
     return 'ok';
 }
 
 // ── demoteSolidDefencePlayer ──────────────────────────────────────
-// Move a kicker's on-pitch player to reserve during Solid Defence.
+// Select a kicker's on-pitch player as part of the Solid Defence pool,
+// sending them to the bench. Consumes one slot from the move budget.
 
 function demoteSolidDefencePlayer(G, playerId) {
     if (G.phase !== 'kickoff_soliddefence') return null;
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.kicker || p.col < 0) return null;
-    if (G.solidDefenceMovesLeft <= 0) return null;
+    if (p.sdSelected) {
+        // Already in the pool — re-demote is free; don't double-count.
+    } else {
+        if (G.solidDefenceMovesLeft <= 0) return null;
+        G.solidDefenceMovesLeft -= 1;
+        p.sdSelected = true;
+    }
     p.col = -1; p.row = -1;
-    G.solidDefenceMovesLeft -= 1;
     return 'ok';
 }
 
