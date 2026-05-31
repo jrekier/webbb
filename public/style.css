@@ -19,6 +19,8 @@
     align-items: center;
     justify-content: center;
     gap: 16px;
+    padding: 16px;
+    box-sizing: border-box;
     font-family: 'IBM Plex Mono', monospace;
 }
 
@@ -51,6 +53,7 @@
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
+    max-width: 100%;
 }
 
 .ts-section-title {
@@ -65,7 +68,7 @@
 .ts-home-label { background: var(--red); }
 .ts-away-label { background: var(--blue); }
 
-.team-choice-group { display: flex; gap: 6px; }
+.team-choice-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 
 /* Each race card */
 #screen-team-select .team-choice-btn {
@@ -89,9 +92,11 @@
 #screen-team-select .team-choice-btn:hover  { border-color: var(--text-dim); }
 
 /* Race-specific accent colours via CSS custom property */
-#screen-team-select .team-choice-btn[data-race="humans"] { --tcb-colour: rgb(200,30,30); }
-#screen-team-select .team-choice-btn[data-race="orcs"]   { --tcb-colour: rgb(30,80,180); }
-#screen-team-select .team-choice-btn[data-race="skaven"] { --tcb-colour: rgb(210,85,10); }
+#screen-team-select .team-choice-btn[data-race="humans"]           { --tcb-colour: rgb(200,30,30); }
+#screen-team-select .team-choice-btn[data-race="orcs"]             { --tcb-colour: rgb(30,80,180); }
+#screen-team-select .team-choice-btn[data-race="skaven"]           { --tcb-colour: rgb(210,85,10); }
+#screen-team-select .team-choice-btn[data-race="dwarfs"]           { --tcb-colour: rgb(60,90,140); }
+#screen-team-select .team-choice-btn[data-race="imperialnobility"] { --tcb-colour: rgb(175,35,45); }
 
 /* Coloured top bar — visible only when selected */
 .tcb-bar {
