@@ -98,6 +98,9 @@ function getGameContext(G, sel, NET) {
     const canUseWrestle        = G.block?.phase === 'wrestle-choice'
         && (!NET.online || NET.side === G.block?.wrestleSide);
 
+    const canUseJuggernaut     = G.block?.phase === 'juggernaut-choice'
+        && (!NET.online || NET.side === G.active);
+
     const canUseDivingTackle   = !!G.divingTackle
         && (!NET.online || NET.side === G.divingTackle?.side);
 
@@ -155,6 +158,7 @@ function getGameContext(G, sel, NET) {
         canUseStandFirm,
         canUseStripBall,
         canUseWrestle,
+        canUseJuggernaut,
         canUseDivingTackle,
         canChooseNoIntercept,
         canConfirmSetup,

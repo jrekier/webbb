@@ -1386,6 +1386,21 @@ function updateButtons() {
         };
     }
 
+    // Juggernaut — a blitzing attacker may treat a Both Down as a push.
+    if (gc.canUseJuggernaut && !G.confirm) {
+        G.confirm = {
+            prompt: `${G.block.att?.name} — use Juggernaut to treat Both Down as a push?`,
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'JUGGERNAUT', use: true });
+                else { const m = resolveJuggernaut(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'JUGGERNAUT', use: false });
+                else { const m = resolveJuggernaut(G, false); if (m) log(m); }
+            },
+        };
+    }
+
     // Diving Tackle — a marking defender may dive to add −2 to an opponent's dodge.
     if (gc.canUseDivingTackle && !G.confirm) {
         const dt = G.players.find(p => p.id === G.divingTackle.dtId);

@@ -23,7 +23,7 @@ const {
     activateMover, movePlayer, resolveDivingTackle,
     activateBlitz, setBlitzTarget, blitzBlock,
     declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
-    resolveFend, resolveStandFirm, resolveStripBall, resolveWrestle,
+    resolveFend, resolveStandFirm, resolveStripBall, resolveWrestle, resolveJuggernaut,
     resolveASHit,
     declareFoul, executeFoul, resolveArgueCall,
     declareHandoff, doHandoff,
@@ -688,6 +688,7 @@ function handleAction(room, msg) {
         case 'STAND_FIRM':  room.lastLogMsg = resolveStandFirm(G, msg.use);           break;
         case 'STRIP_BALL':  room.lastLogMsg = resolveStripBall(G, msg.use);           break;
         case 'WRESTLE':     room.lastLogMsg = resolveWrestle(G, msg.use);             break;
+        case 'JUGGERNAUT':  room.lastLogMsg = resolveJuggernaut(G, msg.use);          break;
         case 'DIVING_TACKLE': room.lastLogMsg = resolveDivingTackle(G, msg.use);      break;
         case 'AS_PICK_TARGET': room.lastLogMsg = resolveASHit(G, msg.targetId);       break;
         case 'PV_DECLARE':  if (!gc.canDeclarePV)  return; room.lastLogMsg = declarePV(G, msg.playerId);       break;

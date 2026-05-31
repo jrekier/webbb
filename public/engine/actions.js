@@ -205,23 +205,32 @@ function pickBlockFace(G, face) {
 
         case 'PUSH':
         case 'DEF_STUMBLES':
-        case 'DEF_DOWN': {
-            G.block.phase       = 'pick-push';
-            G.block.pushSquares = getPushSquares(G, att, def);
-            const falls = face.id !== 'PUSH';
-            const prefix = `${pn(def)} is pushed back${falls ? ' and falls!' : '.'}  `;
-            if (def.skills?.includes('Stand Firm')) {
-                G.block.phase = 'stand-firm-choice';
-                return prefix + `${pn(def)} may use [[skill:Stand Firm]] — stay in place?`;
-            }
-            // If every candidate is off-pitch, auto-resolve into the crowd.
-            if (G.block.pushSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
-                const [cc, cr] = G.block.pushSquares[0];
-                return prefix + pickPushSquare(G, cc, cr);
-            }
-            return prefix + 'Choose push square.';
-        }
+        case 'DEF_DOWN':
+            return _startPush(G, att, def);
     }
+}
+
+// ── _startPush ────────────────────────────────────────────────────
+// Sets up a push: builds the candidate squares and offers the target's Stand
+// Firm — unless a Juggernaut attacker is blitzing, which switches it off. Auto-
+// resolves a push that can only go into the crowd. G.block.chosenFace marks
+// whether the defender merely shifts (PUSH) or is pushed and falls.
+
+function _startPush(G, att, def) {
+    G.block.phase       = 'pick-push';
+    G.block.pushSquares = getPushSquares(G, att, def);
+    const falls = G.block.chosenFace.id !== 'PUSH';
+    const prefix = `${pn(def)} is pushed back${falls ? ' and falls!' : '.'}  `;
+    if (def.skills?.includes('Stand Firm') && !(att.skills?.includes('Juggernaut') && G.blitz)) {
+        G.block.phase = 'stand-firm-choice';
+        return prefix + `${pn(def)} may use [[skill:Stand Firm]] — stay in place?`;
+    }
+    // If every candidate is off-pitch, auto-resolve into the crowd.
+    if (G.block.pushSquares.every(([c, r]) => c < 0 || c >= COLS || r < 0 || r >= ROWS)) {
+        const [cc, cr] = G.block.pushSquares[0];
+        return prefix + pickPushSquare(G, cc, cr);
+    }
+    return prefix + 'Choose push square.';
 }
 
 // ── Both Down resolution (with optional Wrestle) ──────────────────
@@ -230,6 +239,13 @@ function pickBlockFace(G, face) {
 // optional, so it is offered as a choice; it overrides the opponent's Block.
 
 function _bothDown(G, att, def) {
+    // Juggernaut (during a Blitz): the defender cannot use Wrestle against this
+    // player, and the attacker may treat any Both Down as a push instead.
+    if (G.blitz && att.skills?.includes('Juggernaut')) {
+        G.block.phase = 'juggernaut-choice';
+        return `${pn(att)} may use [[skill:Juggernaut]] — treat Both Down as a push?`;
+    }
+
     // Queue the players who may choose to use Wrestle. Offer the defender first
     // (the common defensive use). Skip the attacker when they have Block —
     // staying up is strictly better, so they would never wrestle.
@@ -312,6 +328,23 @@ function resolveWrestle(G, use) {
     G.activated    = null;
     endTurn(G);
     return `${pn(wrestler)} uses [[skill:Wrestle]]! Both players are placed prone.${scatterMsg} TURNOVER`;
+}
+
+// ── resolveJuggernaut ─────────────────────────────────────────────
+// Called after a Both Down (during a Blitz) suspends into
+// G.block.phase='juggernaut-choice'.
+// use=true : treat the Both Down as a plain push — attacker stays up, no
+//            turnover; the target's Stand Firm is also off (see _startPush).
+// use=false: resolve as a normal Both Down (Wrestle stays negated by Juggernaut).
+
+function resolveJuggernaut(G, use) {
+    if (!G.block || G.block.phase !== 'juggernaut-choice') return null;
+    const { att, def } = G.block;
+    if (use) {
+        G.block.chosenFace = { id: 'PUSH' };
+        return `${pn(att)} uses [[skill:Juggernaut]]! ` + _startPush(G, att, def);
+    }
+    return _resolveBothDownNormal(G, att, def);
 }
 
 // ── pickPushSquare ────────────────────────────────────────────────
@@ -2612,7 +2645,7 @@ function declineTeamReroll(G) { return _resolveTeamReroll(G, false); }
 
 if (typeof module !== 'undefined') {
     module.exports = {
-        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall, resolveWrestle,
+        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall, resolveWrestle, resolveJuggernaut,
         activateBlitz, setBlitzTarget, blitzBlock,
         declareFoul, executeFoul, resolveArgueCall, resolveBribe,
         scatterBall, throwIn, tryPickup, checkTouchdown,
