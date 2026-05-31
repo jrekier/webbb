@@ -45,14 +45,14 @@ function isAdjacent(a, b) {
 // ── inTackleZoneOf ───────────────────────────────────────────────
 
 function inTackleZoneOf(p, threat) {
-    return isStanding(threat) && !threat.bonedHead && !threat.reallyStupid && !threat.animalSavage && isAdjacent(p, threat);
+    return isStanding(threat) && !threat.distracted && isAdjacent(p, threat);
 }
 
 // ── countTackleZones ─────────────────────────────────────────────
 
 function countTackleZones(G, side, col, row) {
     return G.players.filter(e =>
-        e.side !== side && isStanding(e) && !e.bonedHead && !e.reallyStupid && !e.animalSavage
+        e.side !== side && isStanding(e) && !e.distracted
         && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
         && !(e.col === col && e.row === row)
     ).length;
@@ -88,25 +88,33 @@ function isValidSetupSquare(side, col, row) {
 
 function countAssists(G, att, def) {
     const friends = (side) => G.players.filter(p =>
-        p.side === side && isStanding(p) && p.id !== att.id && p.id !== def.id
+        p.side === side && isStanding(p) && !p.distracted && p.id !== att.id && p.id !== def.id
     );
 
     const attAssists = friends(att.side).filter(helper => {
-        if (helper.bonedHead) return false;
         if (!isAdjacent(helper, def)) return false;
-        if (helper.skills?.includes('Guard')) return true;
+        // Guard grants an assist even when marked — unless an adjacent opponent
+        // switches it off with Defensive (during this helper's own turn).
+        if (helper.skills?.includes('Guard')
+            && !(G.active === helper.side && G.players.some(e =>
+                e.side !== helper.side && isStanding(e) && !e.distracted
+                && e.skills?.includes('Defensive') && isAdjacent(e, helper))))
+            return true;
         return !G.players.some(enemy =>
-            enemy.side === def.side && isStanding(enemy) && !enemy.bonedHead
+            enemy.side === def.side && isStanding(enemy) && !enemy.distracted
             && enemy.id !== def.id && isAdjacent(helper, enemy)
         );
     }).length;
 
     const defAssists = friends(def.side).filter(helper => {
-        if (helper.bonedHead) return false;
         if (!isAdjacent(helper, att)) return false;
-        if (helper.skills?.includes('Guard')) return true;
+        if (helper.skills?.includes('Guard')
+            && !(G.active === helper.side && G.players.some(e =>
+                e.side !== helper.side && isStanding(e) && !e.distracted
+                && e.skills?.includes('Defensive') && isAdjacent(e, helper))))
+            return true;
         return !G.players.some(enemy =>
-            enemy.side === att.side && isStanding(enemy) && !enemy.bonedHead
+            enemy.side === att.side && isStanding(enemy) && !enemy.distracted
             && enemy.id !== att.id && isAdjacent(helper, enemy)
         );
     }).length;

@@ -60,10 +60,10 @@ function _boneHeadCheck(G, p) {
     if (!p.skills?.includes('Bone Head')) return null;
     const roll = Math.floor(Math.random() * 6) + 1;
     if (roll >= 2) {
-        p.bonedHead = false;
+        p.distracted = false;
         return { msg: `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — OK!`, abort: false };
     }
-    p.bonedHead  = true;
+    p.distracted = true;
     p.usedAction = true;
     G.activated  = null;
     G.block      = null;
@@ -77,7 +77,7 @@ function _reallyStupidCheck(G, p) {
     // +2 modifier if a non-Distracted, non-RS teammate is adjacent (BB2020 rule)
     const hasFriend = G.players.some(f =>
         f.id !== p.id && f.side === p.side && isStanding(f)
-        && !f.bonedHead && !f.reallyStupid
+        && !f.distracted
         && !f.skills?.includes('Really Stupid')
         && isAdjacent(p, f)
     );
@@ -85,10 +85,10 @@ function _reallyStupidCheck(G, p) {
     const roll   = Math.floor(Math.random() * 6) + 1;
     const ctx    = hasFriend ? 'friend nearby' : 'alone';
     if (roll >= target) {
-        p.reallyStupid = false;
+        p.distracted = false;
         return { msg: `${pn(p)} [[skill:Really Stupid]] (${ctx}, rolled ${roll}/${target}+) — OK!`, abort: false };
     }
-    p.reallyStupid = true;
+    p.distracted = true;
     p.usedAction   = true;
     G.activated    = null;
     G.block        = null;
@@ -103,7 +103,7 @@ function _animalSavageryCheck(G, p, isBlockOrBlitz) {
     const roll   = Math.floor(Math.random() * 6) + 1;
     G.asRolled = true;
     if (roll >= target) {
-        p.animalSavage = false;
+        p.distracted = false;
         return { msg: `${pn(p)} [[skill:Animal Savagery]] (rolled ${roll}/${target}+) — OK!`, abort: false };
     }
 
@@ -113,7 +113,7 @@ function _animalSavageryCheck(G, p, isBlockOrBlitz) {
     );
 
     if (adjacentFriends.length === 0) {
-        p.animalSavage = true;
+        p.distracted = true;
         p.usedAction   = true;
         G.activated    = null;
         G.block        = null;
@@ -1906,8 +1906,7 @@ function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
 
 function _divingTacklers(G, p) {
     return G.players.filter(e =>
-        e.side !== p.side && isStanding(e)
-        && !e.bonedHead && !e.reallyStupid && !e.animalSavage
+        e.side !== p.side && isStanding(e) && !e.distracted
         && e.skills?.includes('Diving Tackle')
         && Math.abs(e.col - p.col) <= 1 && Math.abs(e.row - p.row) <= 1
         && !(e.col === p.col && e.row === p.row)

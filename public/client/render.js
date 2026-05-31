@@ -1225,7 +1225,7 @@ function drawPlayer(p) {
     }
 
     // Lost-tackle-zone indicator: faint "?" above the token for BH / RS / AS failures
-    if (p.bonedHead || p.reallyStupid || p.animalSavage) {
+    if (p.distracted) {
         ctx.save();
         ctx.font         = `bold ${Math.round(CELL * 0.28)}px sans-serif`;
         ctx.fillStyle    = 'rgba(255,255,255,0.45)';
