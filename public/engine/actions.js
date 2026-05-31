@@ -1620,9 +1620,15 @@ function resolveKickScatter(G, nc, nr) {
 
     if (G.highKick) {
         G.highKick = false;
-        G.phase    = 'kickoff_highkick';
-        parts.push(`[[skill:High Kick!]] ${G.receiver.toUpperCase()} may place a player here before the catch.`);
-        return parts.join(' ');
+        // Only enter the High Kick prompt if the landing square is empty —
+        // you can't place a player onto an occupied square. If somebody's
+        // already there, fall through to the normal catch attempt.
+        if (!G.players.some(p => p.col === finalCol && p.row === finalRow)) {
+            G.phase = 'kickoff_highkick';
+            parts.push(`[[skill:High Kick!]] ${G.receiver.toUpperCase()} may place a player here before the catch.`);
+            return parts.join(' ');
+        }
+        parts.push(`[[skill:High Kick!]] Square already occupied — no placement.`);
     }
 
     const catchMsg = _resolveKickCatch(G, finalCol, finalRow);
@@ -1713,6 +1719,9 @@ function highKickPlace(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p || p.side !== G.receiver) return null;
     if (p.status !== 'active' || p.col < 0) return null;
+    // Destination must be empty — defensive check in case the client view
+    // and engine state drifted between selection and dispatch.
+    if (G.players.some(o => o.id !== p.id && o.col === G.ball.col && o.row === G.ball.row)) return null;
 
     p.col = G.ball.col;
     p.row = G.ball.row;
