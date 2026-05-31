@@ -123,6 +123,7 @@ function cancelActivation(G) {
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.pendingReroll      = null;
+    G.divingTackle       = null;
     G.activated          = null;
     return `${name} — action cancelled`;
 }
@@ -149,6 +150,7 @@ function endActivation(G) {
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.pendingReroll      = null;
+    G.divingTackle       = null;
 
     if (G.phase === 'kickoff_charge') {
         G.hasBlitzed = false;  // each charge activation gets its own blitz allowance
@@ -202,6 +204,7 @@ function endTurn(G) {
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.pendingReroll      = null;
+    G.divingTackle       = null;
     // Turn increments when the receiver becomes active again (completing a full round).
     if (G.active === G.receiver) G.turn += 1;
 
@@ -280,6 +283,7 @@ function startHalfTime(G) {
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.pendingReroll      = null;
+    G.divingTackle       = null;
     G.rerolls            = { ...G.startingRerolls };
     G.ball               = { col: -1, row: -1, carrier: null };
     G.phase              = 'setup';
@@ -430,6 +434,7 @@ function resetAfterTouchdown(G, scoringSide) {
     G.passRerollChoice   = null;
     G.interceptionChoice = null;
     G.pendingReroll      = null;
+    G.divingTackle       = null;
 
     // Scoring team kicks off the next drive; both sides set up again
     G.kicker    = scoringSide;

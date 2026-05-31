@@ -200,27 +200,8 @@ function pickBlockFace(G, face) {
             return `${pn(att)} is knocked down! ${injMsg} TURNOVER`;
         }
 
-        case 'BOTH_DOWN': {
-            const attHasBlock = att.skills?.includes('Block');
-            const defHasBlock = def.skills?.includes('Block');
-            const attHadBall  = !attHasBlock && att.hasBall;
-            const defHadBall  = !defHasBlock && def.hasBall;
-            const attInj      = attHasBlock ? null : knockDown(G, att);
-            const defInj      = defHasBlock ? null : knockDown(G, def, { attacker: att });
-            const scatterMsg  = (attHadBall || defHadBall) ? ' ' + scatterBall(G) : '';
-            G.block = null;
-            G.blitz = null;
-            att.usedAction = true;
-            if (attHasBlock) {
-                G.activated = null;
-                if (defHasBlock) return `Both keep their footing (Block).`;
-                return `${pn(def)} knocked down! ${defInj}${scatterMsg} ${pn(att)} keeps footing (Block).`;
-            }
-            G.activated = null;
-            endTurn(G);
-            if (defHasBlock) return `${pn(att)} knocked down! ${attInj}${scatterMsg} ${pn(def)} keeps footing (Block). TURNOVER`;
-            return `Both knocked down! ${pn(att)}: ${attInj} ${pn(def)}: ${defInj}${scatterMsg} TURNOVER`;
-        }
+        case 'BOTH_DOWN':
+            return _bothDown(G, att, def);
 
         case 'PUSH':
         case 'DEF_STUMBLES':
@@ -241,6 +222,96 @@ function pickBlockFace(G, face) {
             return prefix + 'Choose push square.';
         }
     }
+}
+
+// ── Both Down resolution (with optional Wrestle) ──────────────────
+// Wrestle lets either player, on a Both Down, place BOTH players prone with
+// no armour rolls (a turnover, since the active attacker goes down). It is
+// optional, so it is offered as a choice; it overrides the opponent's Block.
+
+function _bothDown(G, att, def) {
+    // Queue the players who may choose to use Wrestle. Offer the defender first
+    // (the common defensive use). Skip the attacker when they have Block —
+    // staying up is strictly better, so they would never wrestle.
+    const queue = [];
+    if (def.skills?.includes('Wrestle')) queue.push('def');
+    if (att.skills?.includes('Wrestle') && !att.skills?.includes('Block')) queue.push('att');
+
+    if (queue.length > 0) return _offerWrestle(G, att, def, queue);
+    return _resolveBothDownNormal(G, att, def);
+}
+
+function _offerWrestle(G, att, def, queue) {
+    const player = queue[0] === 'def' ? def : att;
+    G.block.phase        = 'wrestle-choice';
+    G.block.wrestleQueue = queue;
+    G.block.wrestleSide  = player.side;
+    return `${pn(player)} may use [[skill:Wrestle]] — drag both players down?`;
+}
+
+// Resolves a Both Down with no Wrestle used: players with Block keep their
+// footing; the rest are knocked down (armour rolls). Turnover if the active
+// attacker goes down.
+
+function _resolveBothDownNormal(G, att, def) {
+    const attHasBlock = att.skills?.includes('Block');
+    const defHasBlock = def.skills?.includes('Block');
+    const attHadBall  = !attHasBlock && att.hasBall;
+    const defHadBall  = !defHasBlock && def.hasBall;
+    const attInj      = attHasBlock ? null : knockDown(G, att);
+    const defInj      = defHasBlock ? null : knockDown(G, def, { attacker: att });
+    const scatterMsg  = (attHadBall || defHadBall) ? ' ' + scatterBall(G) : '';
+    G.block = null;
+    G.blitz = null;
+    att.usedAction = true;
+    if (attHasBlock) {
+        G.activated = null;
+        if (defHasBlock) return `Both keep their footing (Block).`;
+        return `${pn(def)} knocked down! ${defInj}${scatterMsg} ${pn(att)} keeps footing (Block).`;
+    }
+    G.activated = null;
+    endTurn(G);
+    if (defHasBlock) return `${pn(att)} knocked down! ${attInj}${scatterMsg} ${pn(def)} keeps footing (Block). TURNOVER`;
+    return `Both knocked down! ${pn(att)}: ${attInj} ${pn(def)}: ${defInj}${scatterMsg} TURNOVER`;
+}
+
+// ── resolveWrestle ────────────────────────────────────────────────
+// Called after a Both Down suspends into G.block.phase='wrestle-choice'.
+// use=true : both players placed prone, no armour rolls — TURNOVER.
+// use=false: offer the next eligible player, else resolve the Both Down normally.
+
+function resolveWrestle(G, use) {
+    if (!G.block || G.block.phase !== 'wrestle-choice') return null;
+    const { att, def } = G.block;
+
+    if (!use) {
+        G.block.wrestleQueue.shift();
+        if (G.block.wrestleQueue.length > 0) return _offerWrestle(G, att, def, G.block.wrestleQueue);
+        return _resolveBothDownNormal(G, att, def);
+    }
+
+    const wrestler = G.block.wrestleQueue[0] === 'def' ? def : att;
+
+    // Both players are Placed Prone — no armour rolls for either. A knocked-down
+    // player drops the ball, which then scatters.
+    let scatterMsg = '';
+    [att, def].forEach(p => {
+        p.status = 'prone';
+        if (p.hasBall) {
+            p.hasBall      = false;
+            G.ball.carrier = null;
+            G.ball.col     = p.col;
+            G.ball.row     = p.row;
+            scatterMsg     = ' ' + scatterBall(G);
+        }
+    });
+
+    G.block = null;
+    G.blitz = null;
+    att.usedAction = true;
+    G.activated    = null;
+    endTurn(G);
+    return `${pn(wrestler)} uses [[skill:Wrestle]]! Both players are placed prone.${scatterMsg} TURNOVER`;
 }
 
 // ── pickPushSquare ────────────────────────────────────────────────
@@ -1779,9 +1850,9 @@ function _finishMove(G, p, col, row, needsrush, msg) {
     return msg;
 }
 
-// Resolves one dodge roll including the Dodge-skill free reroll and a
-// possible team-reroll offer.  Returns { msg, done } where done=true
-// means the caller should return msg immediately (turnover or suspended).
+// Resolves one dodge: the roll, the Dodge-skill free reroll, and a possible
+// team-reroll offer. Returns the final (or suspended) message string. A
+// successful dodge is handed to _dodgeSucceeded, which may offer Diving Tackle.
 function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
     const markedByTackle = G.players.some(e =>
         e.side !== p.side && isStanding(e) && isAdjacent(p, e) && e.skills?.includes('Tackle'));
@@ -1791,7 +1862,8 @@ function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
     let rerolled = false;
 
     if (!failed) {
-        return { msg: msg + `${pn(p)} [[move:dodges]] (rolled ${roll}, needed ${target}+). `, done: false };
+        return _dodgeSucceeded(G, p, col, row, needsrush, roll, target,
+            msg + `${pn(p)} [[move:dodges]] (rolled ${roll}, needed ${target}+). `);
     }
 
     if (p.skills?.includes('Dodge') && !G.hasDodged && !markedByTackle) {
@@ -1800,7 +1872,8 @@ function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
         rerolled    = true;
         ({ roll, target, failed } = dodge(dodgerolltarget));
         if (!failed) {
-            return { msg: msg + `${pn(p)} [[move:dodges]] on reroll (rolled ${roll}, needed ${target}+). `, done: false };
+            return _dodgeSucceeded(G, p, col, row, needsrush, roll, target,
+                msg + `${pn(p)} [[move:dodges]] on reroll (rolled ${roll}, needed ${target}+). `);
         }
     }
 
@@ -1816,12 +1889,83 @@ function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
             secondFailed: f2,
             successMsg: `Team reroll: ${pn(p)} [[move:dodges]] (rolled ${r2}, needed ${t2}+). `,
             failMsg:    `Team reroll: ${pn(p)} fails dodge again (rolled ${r2}, needed ${t2}+). `,
-            onSuccess: (G, suffix) => _finishMove(G, p, col, row, needsrush, msgAtFailure + suffix),
+            onSuccess: (G, suffix) => _dodgeSucceeded(G, p, col, row, needsrush, r2, t2, msgAtFailure + suffix),
             onFail:    (G, suffix) => _moveTurnover(G, p, col, row, msgAtFailure + suffix),
         };
-        return { msg: msg + 'Team reroll available.', done: true };
+        return msg + 'Team reroll available.';
     }
-    return { msg: _moveTurnover(G, p, col, row, msg), done: true };
+    return _moveTurnover(G, p, col, row, msg);
+}
+
+// ── Diving Tackle ─────────────────────────────────────────────────
+// After a dodge SUCCEEDS, a standing opponent marking the square being left may
+// use Diving Tackle: apply a −2 modifier to the (already rolled) Agility test
+// and be placed prone in the square the dodger vacated. It is reactive — only
+// offered when that −2 would turn the success into a failure (never vs a natural
+// 6) — and only one marker may use it.
+
+function _divingTacklers(G, p) {
+    return G.players.filter(e =>
+        e.side !== p.side && isStanding(e)
+        && !e.bonedHead && !e.reallyStupid && !e.animalSavage
+        && e.skills?.includes('Diving Tackle')
+        && Math.abs(e.col - p.col) <= 1 && Math.abs(e.row - p.row) <= 1
+        && !(e.col === p.col && e.row === p.row)
+    );
+}
+
+// Called when a dodge succeeds. p still occupies its source square here, so that
+// is the square being vacated. Offers Diving Tackle when a marker's −2 would
+// break the dodge; otherwise finishes the move.
+function _dodgeSucceeded(G, p, col, row, needsrush, roll, target, msg) {
+    if (roll !== 6 && (roll - 2) < target) {
+        const dts = _divingTacklers(G, p);
+        if (dts.length > 0) {
+            const dt = dts[0];
+            G.divingTackle = {
+                side: dt.side, dtId: dt.id, moverId: p.id,
+                col, row, needsrush, roll, target,
+                srcCol: p.col, srcRow: p.row, msg,
+            };
+            return msg + `${pn(dt)} may use [[skill:Diving Tackle]] on ${pn(p)} (−2 to the dodge).`;
+        }
+    }
+    return _finishMove(G, p, col, row, needsrush, msg);
+}
+
+// ── resolveDivingTackle ───────────────────────────────────────────
+// Called after a successful dodge suspends into G.divingTackle.
+// use=true : −2 is applied. Since it is only offered when that breaks the dodge,
+//            the dodger now fails — knocked down in the destination square
+//            (turnover) — and the diver is placed prone in the vacated source.
+// use=false: the dodge stands and the move finishes.
+
+function resolveDivingTackle(G, use) {
+    if (!G.divingTackle) return null;
+    const { dtId, moverId, col, row, needsrush, roll, target, srcCol, srcRow, msg } = G.divingTackle;
+    G.divingTackle = null;
+    const dt = G.players.find(x => x.id === dtId);
+    const p  = G.players.find(x => x.id === moverId);
+    if (!p) return null;
+
+    if (!use || !dt) return _finishMove(G, p, col, row, needsrush, msg);
+
+    const m = msg + `${pn(dt)} uses [[skill:Diving Tackle]]! −2 to the dodge — ${pn(p)} fails (${roll}−2 < ${target}+). `;
+    const turnMsg = _moveTurnover(G, p, col, row, m);
+
+    // The diver is placed prone in the now-vacated source square.
+    dt.col    = srcCol;
+    dt.row    = srcRow;
+    dt.status = 'prone';
+    let extra = '';
+    if (dt.hasBall) {
+        dt.hasBall     = false;
+        G.ball.carrier = null;
+        G.ball.col     = srcCol;
+        G.ball.row     = srcRow;
+        extra = ' ' + scatterBall(G);
+    }
+    return turnMsg + ` ${pn(dt)} dives into ${sqLabel(srcCol, srcRow)} and is placed prone.` + extra;
 }
 
 // ── movePlayer ────────────────────────────────────────────────────
@@ -1830,6 +1974,7 @@ function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
 
 function movePlayer(G, col, row) {
     if (!G.activated) return null;
+    if (G.divingTackle) return null;   // a dodge is suspended awaiting a Diving Tackle decision
     const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, G.activated, col, row);
     if (!allowed) return null;
 
@@ -1882,9 +2027,7 @@ function movePlayer(G, col, row) {
                     onSuccess: (G, suffix) => {
                         const m = msgBeforeReroll + suffix;
                         if (dodgerolltarget !== 0) {
-                            const result = _checkDodge(G, p, col, row, needsrush, dodgerolltarget, m);
-                            if (result.done) return result.msg;
-                            return _finishMove(G, p, col, row, needsrush, result.msg);
+                            return _checkDodge(G, p, col, row, needsrush, dodgerolltarget, m);
                         }
                         return _finishMove(G, p, col, row, needsrush, m);
                     },
@@ -1897,11 +2040,10 @@ function movePlayer(G, col, row) {
         msg += `${pn(p)} [[move:rushes]] (rolled ${rushroll}). `;
     }
 
-    // Dodge — delegate to _checkDodge which handles skill reroll and team-reroll offer.
+    // Dodge — _checkDodge fully resolves the roll, rerolls, an optional Diving
+    // Tackle, and the move's completion, returning the final/suspended message.
     if (dodgerolltarget !== 0) {
-        const result = _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg);
-        if (result.done) return result.msg;
-        msg = result.msg;
+        return _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg);
     }
 
     return _finishMove(G, p, col, row, needsrush, msg);
@@ -2471,7 +2613,7 @@ function declineTeamReroll(G) { return _resolveTeamReroll(G, false); }
 
 if (typeof module !== 'undefined') {
     module.exports = {
-        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall,
+        knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall, resolveWrestle,
         activateBlitz, setBlitzTarget, blitzBlock,
         declareFoul, executeFoul, resolveArgueCall, resolveBribe,
         scatterBall, throwIn, tryPickup, checkTouchdown,
@@ -2483,6 +2625,7 @@ if (typeof module !== 'undefined') {
         declareKick, touchbackGiveBall,
         highKickPlace, skipHighKick,
         movePlayer, activateMover,
+        resolveDivingTackle,
         declarePV, executePV,
         declareStab, executeStab,
         declareTTM, pickTTMMissile, throwTeamMate,

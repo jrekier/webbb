@@ -95,6 +95,12 @@ function getGameContext(G, sel, NET) {
     const canUseStripBall      = G.block?.phase === 'strip-ball-choice'
         && (!NET.online || NET.side === G.active);
 
+    const canUseWrestle        = G.block?.phase === 'wrestle-choice'
+        && (!NET.online || NET.side === G.block?.wrestleSide);
+
+    const canUseDivingTackle   = !!G.divingTackle
+        && (!NET.online || NET.side === G.divingTackle?.side);
+
     const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
 
     const canUseTeamReroll     = !!G.pendingReroll && (!NET.online || NET.side === G.active);
@@ -148,6 +154,8 @@ function getGameContext(G, sel, NET) {
         canUseFend,
         canUseStandFirm,
         canUseStripBall,
+        canUseWrestle,
+        canUseDivingTackle,
         canChooseNoIntercept,
         canConfirmSetup,
         canUseTeamReroll,

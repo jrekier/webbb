@@ -1370,6 +1370,38 @@ function updateButtons() {
         };
     }
 
+    // Wrestle — on a Both Down, the chosen player may drag both players prone.
+    if (gc.canUseWrestle && !G.confirm) {
+        const decider = G.block.wrestleQueue?.[0] === 'att' ? G.block.att : G.block.def;
+        G.confirm = {
+            prompt: `${decider?.name} — use Wrestle to drag both players down?`,
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'WRESTLE', use: true });
+                else { const m = resolveWrestle(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'WRESTLE', use: false });
+                else { const m = resolveWrestle(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Diving Tackle — a marking defender may dive to add −2 to an opponent's dodge.
+    if (gc.canUseDivingTackle && !G.confirm) {
+        const dt = G.players.find(p => p.id === G.divingTackle.dtId);
+        G.confirm = {
+            prompt: `${dt?.name} — use Diving Tackle? (−2 fails the dodge; ${dt?.name} dives in prone)`,
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'DIVING_TACKLE', use: true });
+                else { const m = resolveDivingTackle(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'DIVING_TACKLE', use: false });
+                else { const m = resolveDivingTackle(G, false); if (m) log(m); }
+            },
+        };
+    }
+
     // ── Button visibility — desktop + mobile in one pass ──────────
     const btnDefs = [
         ['btn-throw',                      'mobile-btn-throw',                      play && gc.canThrow],
