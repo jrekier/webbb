@@ -1732,7 +1732,13 @@ function _applyKickoffEvent(G, aimCol, aimRow) {
                     msg += ` ${pn(target)} violently ill — sent to reserves for the drive! (rolled 1)`;
                 } else {
                     const ill = [];
-                    if (target.ma > 1) { target.ma -= 1; ill.push('ma'); }
+                    if (target.ma > 1) {
+                        target.ma -= 1;
+                        // maLeft was set from the full MA at drive start; clamp it so the
+                        // reduction bites this turn too, not just on the card.
+                        target.maLeft = Math.min(target.maLeft ?? target.ma, target.ma);
+                        ill.push('ma');
+                    }
                     if (target.av > 1) { target.av -= 1; ill.push('av'); }
                     if (ill.length) target.illnesses = ill;
                     msg += ` ${pn(target)} feeling off — MA/AV reduced by 1 for this drive. (rolled ${snackRoll})`;
