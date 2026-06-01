@@ -174,6 +174,8 @@ function declareBlock(G, att, def) {
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
 
+    G.hasBlocked = true;   // block thrown — bars cancel for the rest of this activation
+
     G.block = {
         att, def, rolls, chooser,
         phase: 'pick-face',
@@ -912,6 +914,7 @@ function activateBlitz(G, playerId) {
     if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
     const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
 
+    G.hasBlocked = false;   // fresh activation — no block thrown yet
     G.activated  = p;
     G.blitz      = 'targeting';
     G.targeting  = true;
@@ -952,6 +955,7 @@ function blitzBlock(G, att, target) {
     }
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
+    G.hasBlocked = true;   // blitz block thrown — bars cancel for the rest of this activation
     G.block = { att, def: target, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null };
     return `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(target)} (ST${defStr}) · ${dice}d`;
 }
@@ -2183,6 +2187,7 @@ function activateMover(G, playerId) {
     // Prone: need at least 3 total MA+rush to stand
     if (p.maLeft + p.rushLeft < 3) return null;
 
+    G.hasBlocked = false;   // fresh activation — no block thrown yet
     G.activated = p;
     G.sel       = p;
 

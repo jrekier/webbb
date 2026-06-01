@@ -85,6 +85,7 @@ function activatePlayer(G, playerId) {
     if (G.activated) return null;
     if (p.col < 0) return null;
     if (p.status === 'stunned' || p.status === 'ko' || p.status === 'casualty') return null;
+    G.hasBlocked = false;   // fresh activation — no block thrown yet
     G.activated = p;
     G.sel       = p;
     return `${p.name} activated`;

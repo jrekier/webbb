@@ -123,6 +123,7 @@ function hasMovedYet(G) {
 function canStillCancel(G) {
     if (!G.activated) return false;
     if (G.asRolled) return false;
+    if (G.hasBlocked) return false;   // a block was already thrown this activation — it can't be undone
     return !hasMovedYet(G) || G.blitzFromProne || G.stoodUpFromProne;
 }
 
