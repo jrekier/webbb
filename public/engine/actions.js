@@ -313,6 +313,22 @@ function _offerWrestle(G, att, def, queue) {
     return `${pn(player)} may use [[skill:Wrestle]] — drag both players down?`;
 }
 
+// ── _endNoTurnoverBlock ───────────────────────────────────────────
+// Ends (or continues) a blocker's activation after a block that did NOT cause a
+// turnover. A blitzer with movement left — MA or a Rush — keeps their activation
+// so they can carry on moving; everyone else is done. Always clears G.targeting
+// (left set by the blitz; a stale value soft-locks the coach). `wasBlitz` must
+// be captured before G.blitz is nulled. Returns a short log suffix.
+
+function _endNoTurnoverBlock(G, att, wasBlitz) {
+    if (wasBlitz && (att.maLeft + att.rushLeft) > 0) {
+        G.targeting = null;
+        return att.maLeft > 0 ? ` · ${att.maLeft} MA left` : ' · may rush';
+    }
+    endActivation(G);
+    return '';
+}
+
 // Resolves a Both Down with no Wrestle used: players with Block keep their
 // footing; the rest are knocked down (armour rolls). Turnover if the active
 // attacker goes down.
@@ -325,14 +341,16 @@ function _resolveBothDownNormal(G, att, def) {
     const attInj      = attHasBlock ? null : knockDown(G, att);
     const defInj      = defHasBlock ? null : knockDown(G, def, { attacker: att });
     const scatterMsg  = (attHadBall || defHadBall) ? ' ' + scatterBall(G) : '';
+    const wasBlitz    = G.blitz;
     G.block = null;
     G.blitz = null;
-    att.usedAction = true;
+
     if (attHasBlock) {
-        G.activated = null;
-        if (defHasBlock) return `Both keep their footing (Block).`;
-        return `${pn(def)} knocked down! ${defInj}${scatterMsg} ${pn(att)} keeps footing (Block).`;
+        const tail = _endNoTurnoverBlock(G, att, wasBlitz);   // no turnover
+        if (defHasBlock) return `Both keep their footing (Block).${tail}`;
+        return `${pn(def)} knocked down! ${defInj}${scatterMsg} ${pn(att)} keeps footing (Block).${tail}`;
     }
+    att.usedAction = true;
     G.activated = null;
     endTurn(G);
     if (defHasBlock) return `${pn(att)} knocked down! ${attInj}${scatterMsg} ${pn(def)} keeps footing (Block). TURNOVER`;
@@ -564,6 +582,7 @@ function resolveFollowUp(G, followUp) {
             } else {
                 // No MA left, no Rush available — second block impossible
                 G.blitz = null;
+                G.targeting = null;   // clear blitz targeting so the coach isn't soft-locked
                 att.usedAction = true;
                 G.activated = null;
                 return `${followMsg}${scatterMsg} — no MA for [[skill:Frenzy]] second block.`;
@@ -579,22 +598,11 @@ function resolveFollowUp(G, followUp) {
         return `${followMsg}${scatterMsg} [[skill:Frenzy]]! Second block — ${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d${maMsg}`;
     }
 
-    // Normal end of activation
-    if (G.blitz) {
-        G.blitz     = null;
-        G.targeting = null;
-        const maMsg = att.maLeft > 0 ? ` · ${att.maLeft} MA left` : '';
-        if (att.maLeft === 0) {
-            att.usedAction = true;
-            G.activated    = null;
-        }
-        return followMsg + maMsg + scatterMsg;
-    }
-
-    att.usedAction = true;
-    G.activated    = null;
-    G.targeting    = null;
-    return followMsg + scatterMsg;
+    // Normal end of activation — a blitzer with movement (MA or a Rush) left
+    // keeps acting; otherwise the activation ends.
+    const wasBlitz = G.blitz;
+    G.blitz = null;
+    return followMsg + _endNoTurnoverBlock(G, att, wasBlitz) + scatterMsg;
 }
 
 // ── resolveStripBall ──────────────────────────────────────────────
