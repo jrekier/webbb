@@ -948,8 +948,37 @@ function setBlitzTarget(G, defId) {
 
 // Executes the block at the end of a blitz move.
 // Trait checks (BH/RS/AS) already ran in activateBlitz — they must not fire again here.
+//
+// The block itself costs one square of movement. Spend MA if any is left;
+// otherwise it requires a Go For It (rush). With neither MA nor a rush left, the
+// block cannot be made.
 function blitzBlock(G, att, target) {
-    att.maLeft = Math.max(0, att.maLeft - 1);
+    if (att.maLeft > 0) {
+        att.maLeft -= 1;
+        return _throwBlitzBlock(G, att, target, '');
+    }
+    if (att.rushLeft > 0) {
+        const { roll, failed } = rush();
+        att.rushLeft -= 1;
+        if (!failed) {
+            return _throwBlitzBlock(G, att, target, `${pn(att)} [[move:rushes]] to block (rolled ${roll}). `);
+        }
+        // Failed GFI — pre-roll the reroll attempt so _offerReroll needs no dice knowledge.
+        const failBase = `${pn(att)} fails rush (rolled ${roll}). `;
+        const { roll: r2, failed: f2 } = rush();
+        return _offerReroll(G, att, {
+            rerolled: false, label: 'rush', secondFailed: f2, baseMsg: failBase,
+            successMsg: `Team reroll: ${pn(att)} [[move:rushes]] (rolled ${r2}). `,
+            failMsg:    `Team reroll: ${pn(att)} fails rush again (rolled ${r2}). `,
+            onSuccess: (G, suffix) => _throwBlitzBlock(G, att, target, suffix),
+            onFail:    (G, suffix) => _blitzGfiTurnover(G, att, failBase + suffix),
+        });
+    }
+    return null;   // no MA, no rush — the block can't be made
+}
+
+// Rolls and applies the blitz block once its movement cost has been paid.
+function _throwBlitzBlock(G, att, target, preMsg) {
     let { attStr, defStr } = countAssists(G, att, target);
     if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') {
         attStr += 1;
@@ -963,7 +992,16 @@ function blitzBlock(G, att, target) {
     const rolls = rollBlockDice(dice);
     G.hasBlocked = true;   // blitz block thrown — bars cancel for the rest of this activation
     G.block = { att, def: target, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null };
-    return `${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(target)} (ST${defStr}) · ${dice}d`;
+    return `${preMsg}${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(target)} (ST${defStr}) · ${dice}d`;
+}
+
+// A failed Go For It taken to make a blitz block: the attacker is knocked down,
+// drops any ball they carried, and the turn ends.
+function _blitzGfiTurnover(G, att, msg) {
+    let injMsg = knockDown(G, att);
+    if (!G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row) injMsg += ' ' + scatterBall(G);
+    endTurn(G);   // clears the activation (blitz/targeting) and flips the turn
+    return `${msg}${injMsg} TURNOVER`;
 }
 
 // ── throwIn ──────────────────────────────────────────────────────
