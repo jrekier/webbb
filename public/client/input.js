@@ -826,7 +826,10 @@ function _debugState() {
 // Opens the confirm overlay showing block odds before committing.
 
 function _confirmBlock(att, def, onConfirm) {
-    const { attStr, defStr } = countAssists(G, att, def);
+    let { attStr, defStr } = countAssists(G, att, def);
+    // Mirror declareBlock's Cheering Fans +1 so the preview matches the real
+    // block — but don't consume the bonus here; declareBlock does that on commit.
+    if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') attStr += 1;
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const picker = chooser === 'att' ? 'your pick' : 'their pick';
     G.confirm = {
