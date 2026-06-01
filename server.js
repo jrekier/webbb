@@ -17,7 +17,7 @@ const {
     moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, confirmSetup, validateSetup,
     cancelActivation, endActivation, endTurn,
     moveSolidDefencePlayer, demoteSolidDefencePlayer,
-    kickoffQuickSnapMove,
+    kickoffQuickSnapMove, fixReferences,
 } = require('./public/engine/core.js');
 const {
     activateMover, movePlayer, resolveDivingTackle,
@@ -146,6 +146,76 @@ function broadcastLobbyUpdate() {
 
 const rooms = new Map();
 
+// ── Game-state persistence ────────────────────────────────────────
+// Rooms live in memory, so a server restart (redeploy or crash) would lose
+// every active game and players could not reconnect ("Room not found"). We
+// snapshot started games to SQLite on each state change and reload them on
+// boot. NOTE: on hosts with an ephemeral filesystem (e.g. Railway without a
+// volume) this survives a process crash but not a redeploy — point ROOMS_DB
+// at a persistent volume for full durability.
+
+let roomsDb = null;
+try {
+    const { DatabaseSync } = require('node:sqlite');
+    const dbPath = process.env.ROOMS_DB || path.join(__dirname, 'data', 'rooms.db');
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    roomsDb = new DatabaseSync(dbPath);
+    roomsDb.exec(`CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL)`);
+} catch (e) {
+    console.warn('Room persistence disabled:', e.message);
+}
+
+const ROOM_SNAPSHOT_TTL_MS = 6 * 60 * 60 * 1000;   // discard snapshots older than 6h on boot
+const ROOM_RESTORE_GRACE_MS = 5 * 60 * 1000;       // window for players to reconnect after a restart
+
+function persistRoom(room) {
+    // Only snapshot a started game, and never mid-suspension: G.pendingReroll
+    // holds function closures that don't survive JSON. Skipping it means the
+    // saved snapshot is always a clean, resolvable state (the player just
+    // re-attempts the interrupted roll after a restart).
+    if (!roomsDb || !room.G || room.G.pendingReroll) return;
+    try {
+        const data = JSON.stringify({
+            id: room.id, tokens: room.tokens,
+            homeTeamDef: room.homeTeamDef, awayTeamDef: room.awayTeamDef,
+            homeTeam: room.homeTeam, awayTeam: room.awayTeam, G: room.G,
+        });
+        roomsDb.prepare(`INSERT INTO rooms (id, data, updated) VALUES (?, ?, ?)
+                         ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated = excluded.updated`)
+               .run(room.id, data, Date.now());
+    } catch (e) { console.warn(`persistRoom(${room.id}) failed:`, e.message); }
+}
+
+function unpersistRoom(id) {
+    if (!roomsDb) return;
+    try { roomsDb.prepare('DELETE FROM rooms WHERE id = ?').run(id); } catch {}
+}
+
+function loadPersistedRooms() {
+    if (!roomsDb) return;
+    try {
+        roomsDb.prepare('DELETE FROM rooms WHERE updated < ?').run(Date.now() - ROOM_SNAPSHOT_TTL_MS);
+        const saved = roomsDb.prepare('SELECT data FROM rooms').all();
+        for (const row of saved) {
+            const s = JSON.parse(row.data);
+            fixReferences(s.G);   // re-link player object refs lost in the JSON round-trip
+            const room = {
+                id: s.id, home: null, away: null, G: s.G, tokens: s.tokens,
+                homeTeamDef: s.homeTeamDef, awayTeamDef: s.awayTeamDef,
+                homeTeam: s.homeTeam, awayTeam: s.awayTeam,
+                lastLogMsg: null, reconnectTimer: null,
+            };
+            // If nobody reconnects after the restart, clean the room up.
+            room.reconnectTimer = setTimeout(() => {
+                console.log(`Room ${room.id}: no reconnect after restart — destroying`);
+                destroyRoom(room);
+            }, ROOM_RESTORE_GRACE_MS);
+            rooms.set(s.id, room);
+        }
+        if (saved.length) console.log(`Restored ${saved.length} active game(s) from disk`);
+    } catch (e) { console.warn('loadPersistedRooms failed:', e.message); }
+}
+
 // Joins that arrived before the room was created (race condition:
 // away player connects faster than home player).
 // roomId → { ws, authToken, timer }
@@ -244,6 +314,7 @@ function broadcast(room, msg) {
     const text = JSON.stringify(msg);
     if (room.home) room.home.send(text);
     if (room.away) room.away.send(text);
+    persistRoom(room);   // snapshot the latest state so it survives a restart
 }
 
 function reconnectToRoom(ws, roomId, side, token) {
@@ -269,6 +340,7 @@ function reconnectToRoom(ws, roomId, side, token) {
 
 function destroyRoom(room) {
     rooms.delete(room.id);
+    unpersistRoom(room.id);
     console.log(`Room ${room.id} destroyed`);
     broadcastLobbyUpdate();
 }
@@ -394,21 +466,28 @@ wss.on('connection', (ws) => {
         }
 
         console.log(`Room ${room.id} · ${side}: ${msg.type}`);
-        handleAction(room, msg);
-        // Turnover during Charge! — auto-resolve the kick in the same broadcast
-        {
-            const G = room.G;
-            if (G.phase === 'kickoff_charge' && G.chargeMovesLeft === 0 && !G.activated) {
-                G.players.forEach(p => { if (p.side === G.kicker) { p.usedAction = false; p.maLeft = p.ma; p.rushLeft = 2; } });
-                const col = G.pendingKick?.col;
-                const row = G.pendingKick?.row;
-                G.phase = 'kick';
-                const scatterMsg = resolveKickScatter(G, col, row);
-                if (scatterMsg) room.lastLogMsg = (room.lastLogMsg ? room.lastLogMsg + ' ' : '') + scatterMsg;
+        // Never let one bad action take down the whole server (and every other
+        // game with it). On an engine error, log it and tell just this client.
+        try {
+            handleAction(room, msg);
+            // Turnover during Charge! — auto-resolve the kick in the same broadcast
+            {
+                const G = room.G;
+                if (G.phase === 'kickoff_charge' && G.chargeMovesLeft === 0 && !G.activated) {
+                    G.players.forEach(p => { if (p.side === G.kicker) { p.usedAction = false; p.maLeft = p.ma; p.rushLeft = 2; } });
+                    const col = G.pendingKick?.col;
+                    const row = G.pendingKick?.row;
+                    G.phase = 'kick';
+                    const scatterMsg = resolveKickScatter(G, col, row);
+                    if (scatterMsg) room.lastLogMsg = (room.lastLogMsg ? room.lastLogMsg + ' ' : '') + scatterMsg;
+                }
             }
+            broadcast(room, { type: 'UPDATE', G: room.G, logMsg: room.lastLogMsg });
+            room.lastLogMsg = null;
+        } catch (err) {
+            console.error(`Room ${room.id}: action ${msg.type} threw —`, err.stack || err.message);
+            try { ws.send(JSON.stringify({ type: 'ERROR', msg: 'That action failed on the server.' })); } catch {}
         }
-        broadcast(room, { type: 'UPDATE', G: room.G, logMsg: room.lastLogMsg });
-        room.lastLogMsg  = null;
     });
 
     ws.on('close', () => {
@@ -707,7 +786,14 @@ function handleAction(room, msg) {
 
 // ── Start listening ───────────────────────────────────────────────
 
+// Last-resort safety net: keep the server (and every other game) alive if an
+// error escapes a timer or callback. Active games are persisted, so even a
+// genuinely bad state is recoverable on reconnect.
+process.on('uncaughtException',  (err) => console.error('Uncaught exception (server kept alive):', err.stack || err.message));
+process.on('unhandledRejection', (err) => console.error('Unhandled rejection (server kept alive):', err));
+
 const PORT = process.env.PORT || 3000;
+loadPersistedRooms();   // restore any games left active by a previous run
 httpServer.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 });
