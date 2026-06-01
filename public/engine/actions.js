@@ -365,7 +365,10 @@ function _resolveBothDownNormal(G, att, def) {
 
 // ── resolveWrestle ────────────────────────────────────────────────
 // Called after a Both Down suspends into G.block.phase='wrestle-choice'.
-// use=true : both players placed prone, no armour rolls — TURNOVER.
+// use=true : both players placed prone, no armour rolls. This is NOT a turnover
+//            — Wrestle Places players Prone, which is distinct from a Knock-down,
+//            and only a Knock-down of the active player ends the turn (BB2020).
+//            The active player's action simply ends; their team carries on.
 // use=false: offer the next eligible player, else resolve the Both Down normally.
 
 function resolveWrestle(G, use) {
@@ -394,12 +397,15 @@ function resolveWrestle(G, use) {
         }
     });
 
-    G.block = null;
-    G.blitz = null;
+    // Placed Prone, not Knocked Down → no turnover. End the active player's
+    // activation (their team continues) and clear blitz targeting so the coach
+    // isn't soft-locked.
+    G.block        = null;
+    G.blitz        = null;
+    G.targeting    = null;
     att.usedAction = true;
     G.activated    = null;
-    endTurn(G);
-    return `${pn(wrestler)} uses [[skill:Wrestle]]! Both players are placed prone.${scatterMsg} TURNOVER`;
+    return `${pn(wrestler)} uses [[skill:Wrestle]]! Both players are placed prone.${scatterMsg}`;
 }
 
 // ── resolveJuggernaut ─────────────────────────────────────────────
