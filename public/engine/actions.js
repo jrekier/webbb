@@ -7,7 +7,7 @@ if (typeof module !== 'undefined') {
     var { COLS, ROWS, TURNS, sqLabel,
           playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
           countAssists, blockDiceCount, getBlockTargets, getPushSquares,
-          teamRerollsLeft,
+          teamRerollsLeft, looseBallAt,
           isInKickerHalf, isValidKickTarget, canMoveTo,
           markStunned, rollWeather } = require('./helpers.js');
     var { activatePlayer, endTurn, endActivation,
