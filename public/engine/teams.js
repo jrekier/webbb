@@ -2,6 +2,10 @@
 // Team loading and roster building.
 // No DOM, no canvas, no rendering — works identically in browser and Node.js.
 
+if (typeof module !== 'undefined') {
+    var { checkSkillSpelling } = require('./helpers.js');
+}
+
 // ── loadTeamFromJSON ──────────────────────────────────────────────
 // Validates and returns a team definition.
 
@@ -24,6 +28,7 @@ function loadTeamFromJSON(json) {
 
 function buildRosterFromTeam(teamDef, side, startId, formation) {
     return teamDef.players.map((p, i) => {
+        checkSkillSpelling(p.skills, `${teamDef.name || side} ${p.name}`);
         const [col, row] = formation[i] || [-1, -1];  // beyond 7: start in reserve
         return {
             id:         startId + i,

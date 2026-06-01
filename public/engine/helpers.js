@@ -7,13 +7,50 @@ var COLS  = 11;
 var ROWS  = 20;
 var TURNS = 6;
 
-var ALL_SKILLS = [
-    'Always Hungry', 'Animal Savagery', 'Block', 'Bone Head', 'Catch',
-    'Defensive', 'Diving Tackle', 'Dodge', 'Fend', 'Frenzy', 'Guard',
-    'Juggernaut', 'Leader', 'Mighty Blow', 'Pass', 'Pro', 'Projectile Vomit',
-    'Really Stupid', 'Right Stuff', 'Stab', 'Stand Firm', 'Strip Ball',
-    'Stunty', 'Sure Hands', 'Tackle', 'Thick Skull', 'Throw Team-Mate', 'Wrestle',
-];
+// Canonical Blood Bowl skill catalogue — the single source of truth for skill
+// *spelling*. Any skill string that reaches the engine must appear here, spelled
+// exactly as the engine's `skills.includes('…')` checks expect, or the skill
+// silently does nothing. `true` marks skills the engine actually acts on; the
+// rest are valid skills the builder can assign but the engine ignores for now.
+// checkSkillSpelling() (called from buildRosterFromTeam) warns at load time for
+// any skill not listed here, turning a silent no-op into a visible spelling error.
+var SKILL_CATALOGUE = {
+    // — implemented: the engine acts on these —
+    'Always Hungry': true, 'Animal Savagery': true, 'Ball & Chain': true,
+    'Block': true, 'Bone Head': true, 'Catch': true, 'Defensive': true,
+    'Diving Tackle': true, 'Dodge': true, 'Fend': true, 'Frenzy': true,
+    'Guard': true, 'Juggernaut': true, 'Leader': true, 'Mighty Blow': true,
+    'Pass': true, 'Pro': true, 'Projectile Vomit': true, 'Really Stupid': true,
+    'Right Stuff': true, 'Stab': true, 'Stand Firm': true, 'Strip Ball': true,
+    'Stunty': true, 'Sure Hands': true, 'Tackle': true, 'Thick Skull': true,
+    'Throw Team-Mate': true, 'Wrestle': true,
+    // — valid but not yet implemented: assignable, engine ignores them for now —
+    'Accurate': false, 'Big Hand': false, 'Break Tackle': false,
+    'Dauntless': false, 'Dirty Player': false, 'Extra Arms': false,
+    'Give and Go': false, 'Hatred (Troll)': false, 'Leap': false,
+    'Loner': false, 'Nerves of Steel': false, 'No Ball': false,
+    'Piling On': false, 'Prehensile Tail': false, 'Regeneration': false,
+    'Secret Weapon': false, 'Shadowing': false, 'Side Step': false,
+    'Sprint': false, 'Strong Arm': false, 'Sure Feet': false,
+    'Take Root': false, 'Taunt': false, 'Two Heads': false, 'Unsteady': false,
+    'Wild Animal': false,
+};
+
+// Skills the debug skill-picker offers — only the ones the engine acts on.
+var ALL_SKILLS = Object.keys(SKILL_CATALOGUE).filter(s => SKILL_CATALOGUE[s]);
+
+// ── checkSkillSpelling ────────────────────────────────────────────
+// Load-time drift guard. Warns (never throws) for any skill the catalogue
+// doesn't know — which almost always means a roster and the engine disagree on
+// spelling, so the skill would silently do nothing. `who` identifies the player.
+function checkSkillSpelling(skills, who) {
+    if (!skills) return;
+    for (const s of skills) {
+        if (!(s in SKILL_CATALOGUE)) {
+            console.warn(`⚠ Unrecognized skill "${s}" on ${who} — check spelling against the engine catalogue; it will be silently ignored.`);
+        }
+    }
+}
 
 // ── sqLabel ───────────────────────────────────────────────────────
 // Human-readable square label: col → letter (A–K), row → 1-based number.
@@ -284,6 +321,7 @@ function markStunned(p) {
 if (typeof module !== 'undefined') {
     module.exports = {
         COLS, ROWS, TURNS,
+        SKILL_CATALOGUE, ALL_SKILLS, checkSkillSpelling,
         sqLabel,
         playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
         leaderRerollAvailable, teamRerollsLeft,

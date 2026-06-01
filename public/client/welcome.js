@@ -61,6 +61,11 @@ function startApp(allTeams) {
     // If redirected from bbauth with an action, skip the welcome screen and go straight in.
     // Clear any stale reconnect token first — it must not race with the new CREATE/JOIN.
     if (window._authAction === 'create' || window._authAction === 'join') {
+        // Consume the one-time auth params from the URL. Otherwise a page reload
+        // would re-run CREATE/JOIN (the room is now full/in-game → it fails and
+        // drops the session) instead of silently reconnecting. The values are
+        // already captured in window._auth* above.
+        history.replaceState(null, '', location.pathname);
         _clearReconnectToken();
         connect()
             .then(() => {

@@ -17,14 +17,33 @@ var NET = {
 
 var _reconnectTimer   = null;
 var _reconnectAttempt = 0;
+var _overlayTimer     = null;   // delays both reconnect overlays so brief blips stay invisible
+
+// A disconnect must persist this long before we surface an overlay. Most blips
+// (wifi hiccup, mobile handoff, proxy hiccup) recover well under this, so they
+// flash nothing. This is display-only: it changes nothing about game state,
+// input handling, or when the server learns of the drop.
+var RECONNECT_OVERLAY_GRACE_MS = 2000;
+
+// Arm a reconnect overlay to appear only if we're still in trouble after the
+// grace window. A recovery (own reconnect, or opponent back) cancels it first,
+// so a quick blip never shows anything. self=true → "Reconnecting…",
+// self=false → "Opponent disconnected".
+function _armOverlay(self) {
+    if (_overlayTimer) return;   // already pending — don't restart the clock
+    _overlayTimer = setTimeout(() => { _overlayTimer = null; _showReconnecting(self); }, RECONNECT_OVERLAY_GRACE_MS);
+}
+
+function _cancelOverlay() {
+    if (_overlayTimer) { clearTimeout(_overlayTimer); _overlayTimer = null; }
+}
 
 function _scheduleReconnect() {
     if (_reconnectTimer) return;
     const saved = loadReconnectToken();
     if (!saved) return;          // no live session — nothing to reconnect to
 
-    // Let the (now-disconnected) player know we're recovering.
-    _showReconnecting(true);
+    _armOverlay(true);           // surface "Reconnecting…" only if the blip outlasts the grace
 
     // 1st retry ~0.3s (covers a quick blip), then 0.6, 1.2, 2.4, … capped at 8s.
     const base  = Math.min(8000, 300 * Math.pow(2, _reconnectAttempt));
@@ -40,6 +59,7 @@ function _scheduleReconnect() {
 function _reconnectSucceeded() {
     _reconnectAttempt = 0;
     if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+    _cancelOverlay();
     _hideReconnecting();
 }
 
@@ -178,7 +198,7 @@ function netReceive(msg) {
         }
 
         case 'OPPONENT_DISCONNECTED':
-            _showReconnecting(false);
+            _armOverlay(false);   // grace it — a brief opponent blip won't flash
             break;
 
         case 'RECONNECTED': {
@@ -202,6 +222,7 @@ function netReceive(msg) {
         case 'OPPONENT_RECONNECTED':
             Object.assign(G, msg.G);
             fixReferences(G);
+            _cancelOverlay();   // opponent came back within (or after) the grace — never/no longer flash
             _hideReconnecting();
             render();
             break;
@@ -210,14 +231,19 @@ function netReceive(msg) {
             _clearReconnectToken();
             _reconnectAttempt = 0;
             if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+            _cancelOverlay();
             console.warn('Reconnect failed:', msg.msg);
-            // Only meaningful mid-game (the overlay is up). On a cold load with a
-            // stale token it stays hidden and we just drop the token silently.
+            // Mid-game the grace may mean the "Reconnecting…" overlay hasn't
+            // appeared yet — surface it so the terminal message is visible. On a
+            // cold load with a stale token there's no game, so stay hidden and
+            // just drop the token silently.
+            if (typeof homeTeamDef !== 'undefined' && homeTeamDef) _showReconnecting(true);
             _endOverlay('Could not reconnect', 'The session has ended.');
             break;
 
         case 'ERROR':
             console.warn('Server says:', msg.msg);
+            _cancelOverlay();
             // If we were waiting on a (dis)connected player and the server gives
             // up (e.g. grace period expired), turn the overlay into an end state.
             _endOverlay('Game ended', msg.msg);
