@@ -10,20 +10,56 @@ var NET = {
 };
 
 // ── Auto-reconnect ────────────────────────────────────────────────
-// Schedules a reconnect attempt when the WebSocket closes and there
-// is a saved game session.  Uses a simple delay; the guard flag
-// prevents multiple concurrent timers.
+// When the WebSocket drops mid-game we keep retrying (with exponential
+// backoff + jitter, capped) for as long as a saved session exists. The
+// server holds the room open for 2 minutes, so a brief blip recovers in
+// well under a second and longer outages keep trying without hammering.
 
-var _reconnectTimer = null;
+var _reconnectTimer   = null;
+var _reconnectAttempt = 0;
 
 function _scheduleReconnect() {
     if (_reconnectTimer) return;
     const saved = loadReconnectToken();
-    if (!saved) return;
+    if (!saved) return;          // no live session — nothing to reconnect to
+
+    // Let the (now-disconnected) player know we're recovering.
+    _showReconnecting(true);
+
+    // 1st retry ~0.3s (covers a quick blip), then 0.6, 1.2, 2.4, … capped at 8s.
+    const base  = Math.min(8000, 300 * Math.pow(2, _reconnectAttempt));
+    const delay = base + Math.floor(Math.random() * 300);   // jitter
+    _reconnectAttempt++;
     _reconnectTimer = setTimeout(() => {
         _reconnectTimer = null;
-        connect().catch(_scheduleReconnect);
-    }, 2000);
+        connect().catch(() => _scheduleReconnect());
+    }, delay);
+}
+
+// Connection is healthy again — stop the backoff and clear the overlay.
+function _reconnectSucceeded() {
+    _reconnectAttempt = 0;
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+    _hideReconnecting();
+}
+
+// ── Reconnect overlay ─────────────────────────────────────────────
+// Shown to the local player while their own connection is recovering
+// (self=true), or while waiting on a disconnected opponent (self=false).
+
+function _showReconnecting(self) {
+    const overlay = document.getElementById('reconnect-overlay');
+    if (!overlay) return;
+    const msg = document.getElementById('reconnect-msg');
+    const sub = document.getElementById('reconnect-sub');
+    if (msg) msg.textContent = self ? 'Connection lost' : 'Opponent disconnected';
+    if (sub) sub.textContent = self ? 'Reconnecting…'    : 'Waiting for them to reconnect…';
+    overlay.classList.remove('hidden');
+}
+
+function _hideReconnecting() {
+    const overlay = document.getElementById('reconnect-overlay');
+    if (overlay) overlay.classList.add('hidden');
 }
 
 // ── connect ───────────────────────────────────────────────────────
@@ -115,7 +151,7 @@ function netReceive(msg) {
             // fall through to apply the initial G
 
         case 'UPDATE': {
-            document.getElementById('reconnect-overlay').classList.add('hidden');
+            _reconnectSucceeded();   // healthy traffic — clear overlay, reset backoff
             if (msg.logMsg) log(msg.logMsg);
             const prevActive    = G.active;
             const prevSetupSide = G.setupSide;
@@ -142,7 +178,7 @@ function netReceive(msg) {
         }
 
         case 'OPPONENT_DISCONNECTED':
-            document.getElementById('reconnect-overlay').classList.remove('hidden');
+            _showReconnecting(false);
             break;
 
         case 'RECONNECTED': {
@@ -159,24 +195,43 @@ function netReceive(msg) {
             Object.assign(G, msg.G);
             fixReferences(G);
             render();
-            document.getElementById('reconnect-overlay').classList.add('hidden');
+            _reconnectSucceeded();
             break;
         }
 
         case 'OPPONENT_RECONNECTED':
             Object.assign(G, msg.G);
             fixReferences(G);
-            document.getElementById('reconnect-overlay').classList.add('hidden');
+            _hideReconnecting();
             render();
             break;
 
         case 'RECONNECT_FAILED':
             _clearReconnectToken();
+            _reconnectAttempt = 0;
+            if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
             console.warn('Reconnect failed:', msg.msg);
+            // Only meaningful mid-game (the overlay is up). On a cold load with a
+            // stale token it stays hidden and we just drop the token silently.
+            _endOverlay('Could not reconnect', 'The session has ended.');
             break;
 
         case 'ERROR':
             console.warn('Server says:', msg.msg);
+            // If we were waiting on a (dis)connected player and the server gives
+            // up (e.g. grace period expired), turn the overlay into an end state.
+            _endOverlay('Game ended', msg.msg);
             break;
     }
+}
+
+// If the reconnect overlay is currently visible, convert it to a terminal
+// message (no-op when hidden, so it never fires on the welcome screen).
+function _endOverlay(title, sub) {
+    const overlay = document.getElementById('reconnect-overlay');
+    if (!overlay || overlay.classList.contains('hidden')) return;
+    const msg = document.getElementById('reconnect-msg');
+    const s   = document.getElementById('reconnect-sub');
+    if (msg) msg.textContent = title;
+    if (s)   s.textContent   = sub || 'The session has ended.';
 }
