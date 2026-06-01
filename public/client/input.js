@@ -666,6 +666,25 @@ function handleClick(event) {
     }
 
     // ── Dice overlay — pick a block face ─────────────────────────
+    // Pro: the active coach taps the single die they want to reroll.
+    if (G.block && G.block.phase === 'pro-pick-die') {
+        const isMine = !NET.online || NET.side === G.active;
+        if (isMine) {
+            const idx = G.block.rolls.findIndex(f =>
+                f._rect &&
+                px >= f._rect.x && px <= f._rect.x + f._rect.w &&
+                py >= f._rect.y && py <= f._rect.y + f._rect.h
+            );
+            if (idx >= 0) {
+                if (NET.online) sendAction({ type: 'BLOCK_PRO_DIE', dieIdx: idx });
+                else { const msg = proBlockRerollDie(G, idx); if (msg) log(msg); }
+                render();
+                return;
+            }
+        }
+        return;  // block other taps while picking a die
+    }
+
     if (G.block && G.block.phase === 'pick-face') {
         const chooser     = G.block.chooser;
         const chooserSide = chooser === 'att' ? G.active
@@ -1112,6 +1131,16 @@ function onClickStab() {
     else { const msg = declareStab(G, G.sel.id); if (msg) log(msg); render(); }
 }
 
+function onClickRerollBlock() {
+    if (NET.online) sendAction({ type: 'BLOCK_REROLL' });
+    else { const msg = rerollBlockDice(G); if (msg) log(msg); render(); }
+}
+
+function onClickProBlock() {
+    if (NET.online) sendAction({ type: 'BLOCK_PRO_DECLARE' });
+    else { const msg = declareProBlock(G); if (msg) log(msg); render(); }
+}
+
 function onClickTTM() {
     if (!G.sel || G.sel.side !== G.active) return;
     if (NET.online) sendAction({ type: 'TTM_DECLARE', playerId: G.sel.id });
@@ -1306,11 +1335,17 @@ function updateButtons() {
         };
     }
 
-    // Team reroll — active coach decides whether to spend a team reroll on a failed roll.
+    // Reroll — active coach decides whether to reroll a failed roll. Pro (the
+    // player's own gated reroll) is offered first; declining it falls through to
+    // a team reroll if one is available.
     if (G.pendingReroll && myTurnNow && !G.confirm) {
-        const label = G.pendingReroll.label ?? 'roll';
+        const pr    = G.pendingReroll;
+        const label = pr.label ?? 'roll';
+        const prompt = pr.kind === 'pro'
+            ? `${G.players.find(p => p.id === pr.playerId)?.name ?? 'Player'} — use Pro? (3+ to reroll the ${label})`
+            : `Reroll ${label}? (${teamRerollsLeft(G, pr.side)} left)`;
         G.confirm = {
-            prompt: `Reroll ${label}? (${G.rerolls?.[G.pendingReroll.side] ?? 0} left)`,
+            prompt,
             onYes: () => {
                 if (NET.online) { G.pendingReroll = null; sendAction({ type: 'TEAM_REROLL' }); }
                 else { const m = useTeamReroll(G); if (m) log(m); }
@@ -1420,6 +1455,8 @@ function updateButtons() {
     // ── Button visibility — desktop + mobile in one pass ──────────
     const btnDefs = [
         ['btn-throw',                      'mobile-btn-throw',                      play && gc.canThrow],
+        ['btn-reroll-block',               'mobile-btn-reroll-block',               gc.canRerollBlock],
+        ['btn-pro-block',                  'mobile-btn-pro-block',                  gc.canProBlock],
         ['btn-no-intercept',               'mobile-btn-no-intercept',               play && gc.canChooseNoIntercept],
         ['btn-cancel',                     'mobile-btn-cancel',                     play && gc.canCancel],
         ['btn-stop',                       'mobile-btn-stop',                       play && gc.canStop],

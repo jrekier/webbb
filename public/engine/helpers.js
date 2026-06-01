@@ -8,10 +8,11 @@ var ROWS  = 20;
 var TURNS = 6;
 
 var ALL_SKILLS = [
-    'Always Hungry', 'Animal Savagery', 'Block', 'Bone Head', 'Catch', 'Dodge',
-    'Fend', 'Frenzy', 'Guard', 'Juggernaut', 'Pass', 'Projectile Vomit', 'Really Stupid',
-    'Right Stuff', 'Stand Firm', 'Strip Ball', 'Stunty', 'Sure Hands',
-    'Tackle', 'Throw Team-Mate',
+    'Always Hungry', 'Animal Savagery', 'Block', 'Bone Head', 'Catch',
+    'Defensive', 'Diving Tackle', 'Dodge', 'Fend', 'Frenzy', 'Guard',
+    'Juggernaut', 'Leader', 'Mighty Blow', 'Pass', 'Pro', 'Projectile Vomit',
+    'Really Stupid', 'Right Stuff', 'Stab', 'Stand Firm', 'Strip Ball',
+    'Stunty', 'Sure Hands', 'Tackle', 'Thick Skull', 'Throw Team-Mate', 'Wrestle',
 ];
 
 // ── sqLabel ───────────────────────────────────────────────────────
@@ -56,6 +57,20 @@ function countTackleZones(G, side, col, row) {
         && Math.abs(e.col - col) <= 1 && Math.abs(e.row - row) <= 1
         && !(e.col === col && e.row === row)
     ).length;
+}
+
+// ── Team rerolls (incl. Leader) ───────────────────────────────────
+// Leader grants one extra team reroll while a player with the skill is on the
+// pitch (col >= 0 — i.e. not KO'd, casualty, or in reserves) and it has not
+// been spent this half. teamRerollsLeft is the total a side may still spend.
+
+function leaderRerollAvailable(G, side) {
+    return !G.leaderRerollUsed?.[side]
+        && G.players.some(p => p.side === side && p.col >= 0 && p.skills?.includes('Leader'));
+}
+
+function teamRerollsLeft(G, side) {
+    return (G.rerolls?.[side] || 0) + (leaderRerollAvailable(G, side) ? 1 : 0);
 }
 
 // ── hasMovedYet ──────────────────────────────────────────────────
@@ -271,6 +286,7 @@ if (typeof module !== 'undefined') {
         COLS, ROWS, TURNS,
         sqLabel,
         playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
+        leaderRerollAvailable, teamRerollsLeft,
         hasMovedYet, canStillCancel,
         isValidSetupSquare,
         countAssists, blockDiceCount, getBlockTargets, getPushSquares,

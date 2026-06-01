@@ -32,6 +32,7 @@ function createInitialState() {
         blitz:              null,
         rerolls:            { home: 0, away: 0 },
         startingRerolls:    { home: 0, away: 0 },
+        leaderRerollUsed:   { home: false, away: false },
         bribes:             { home: 0, away: 0 },
         cheerleaders:       { home: 0, away: 0 },
         assistantCoaches:   { home: 0, away: 0 },
@@ -175,6 +176,7 @@ function endTurn(G) {
     for (const p of G.players) {
         if (p.side === G.active) {
             p.usedAction = false;
+            p.usedPro    = false;   // Pro resets each turn (once per activation)
             p.maLeft     = p.ma;
             p.rushLeft     = 2;
             if (p.status === 'stunned' && !p.stunnedThisTurn) p.status = 'prone';
@@ -285,6 +287,7 @@ function startHalfTime(G) {
     G.pendingReroll      = null;
     G.divingTackle       = null;
     G.rerolls            = { ...G.startingRerolls };
+    G.leaderRerollUsed   = { home: false, away: false };
     G.ball               = { col: -1, row: -1, carrier: null };
     G.phase              = 'setup';
     G.setupSide          = G.kicker;

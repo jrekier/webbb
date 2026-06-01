@@ -23,6 +23,7 @@ const {
     activateMover, movePlayer, resolveDivingTackle,
     activateBlitz, setBlitzTarget, blitzBlock,
     declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp,
+    rerollBlockDice, declareProBlock, proBlockRerollDie,
     resolveFend, resolveStandFirm, resolveStripBall, resolveWrestle, resolveJuggernaut,
     resolveASHit,
     declareFoul, executeFoul, resolveArgueCall,
@@ -678,6 +679,9 @@ function handleAction(room, msg) {
             }
             break;
         }
+        case 'BLOCK_REROLL':      if (!gc.canRerollBlock) return; room.lastLogMsg = rerollBlockDice(G);          break;
+        case 'BLOCK_PRO_DECLARE': if (!gc.canProBlock)    return; room.lastLogMsg = declareProBlock(G);          break;
+        case 'BLOCK_PRO_DIE':     room.lastLogMsg = proBlockRerollDie(G, msg.dieIdx);                            break;
         case 'BLOCK_PUSH': {
             if (G.block && G.block.phase === 'pick-push')
                 room.lastLogMsg = pickPushSquare(G, msg.col, msg.row);

@@ -285,9 +285,16 @@ function drawSetupErrorBanner() {
 // Populates the always-visible status strip shared by mobile and desktop.
 
 var _pipUrlCache = {};
+var _pipState    = {};   // elId -> last "count|path" rendered, to avoid needless DOM rebuilds
 function _renderStatPips(elId, count, path) {
     const el = document.getElementById(elId);
     if (!el) return;
+    // updateSidebar() runs on every render() — including each frame while the
+    // pitch is being scrolled. Rebuilding the pip DOM every time makes the icons
+    // flicker on mobile, so skip it when nothing changed.
+    const key = `${count}|${path}`;
+    if (_pipState[elId] === key) return;
+    _pipState[elId] = key;
     el.innerHTML = '';
     if (!count) return;
     if (!_pipUrlCache[path]) {
@@ -1775,12 +1782,17 @@ function drawTTMTargetingOverlay() {
 // is in 'pick-face' phase.
 
 function drawDiceOverlay() {
-    if (!G.block || G.block === 'targeting' || G.block.phase !== 'pick-face') return;
+    if (!G.block || G.block === 'targeting'
+        || (G.block.phase !== 'pick-face' && G.block.phase !== 'pro-pick-die')) return;
 
     const rolls    = G.block.rolls;
+    const proPick  = G.block.phase === 'pro-pick-die';
     const chooser  = G.block.chooser;
-    const chooserSide = chooser === 'att' ? G.active
-                      : (G.active === 'home' ? 'away' : 'home');
+    // In pro-pick-die the active coach (the blocker) taps a die to reroll;
+    // otherwise the chooser side picks the result.
+    const chooserSide = proPick ? G.active
+                      : (chooser === 'att' ? G.active
+                      : (G.active === 'home' ? 'away' : 'home'));
     const isMyPick = !NET.online || NET.side === chooserSide;
 
     // Dim the pitch
@@ -1799,7 +1811,9 @@ function drawDiceOverlay() {
     ctx.font         = `bold ${Math.floor(dieW * 0.22)}px 'IBM Plex Mono', monospace`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'bottom';
-    const title = isMyPick ? 'Choose a result' : `${chooser.toUpperCase()} is choosing…`;
+    const title = proPick ? 'Pro — pick a die to reroll'
+                : isMyPick ? 'Choose a result'
+                : `${chooser.toUpperCase()} is choosing…`;
     ctx.fillText(title, canvas.width / 2, y - 10);
 
     rolls.forEach((face, i) => {

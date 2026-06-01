@@ -7,6 +7,7 @@ if (typeof module !== 'undefined') {
     var { COLS, ROWS, TURNS, sqLabel,
           playerAt, isAdjacent, isStanding, inTackleZoneOf, countTackleZones,
           countAssists, blockDiceCount, getBlockTargets, getPushSquares,
+          teamRerollsLeft,
           isInKickerHalf, isValidKickTarget, canMoveTo,
           markStunned, rollWeather } = require('./helpers.js');
     var { activatePlayer, endTurn, endActivation,
@@ -208,6 +209,53 @@ function pickBlockFace(G, face) {
         case 'DEF_DOWN':
             return _startPush(G, att, def);
     }
+}
+
+// ── _consumeTeamReroll ────────────────────────────────────────────
+// Spends a normal team reroll if any remain, otherwise the Leader reroll.
+
+function _consumeTeamReroll(G, side) {
+    if ((G.rerolls?.[side] || 0) > 0) G.rerolls[side] -= 1;
+    else                              G.leaderRerollUsed[side] = true;
+}
+
+// ── Block-dice rerolls ────────────────────────────────────────────
+// During the 'pick-face' phase the active coach may reroll the block dice — a
+// team reroll re-rolls them all; Pro re-rolls a single chosen die on a 3+. Only
+// one reroll may be used per block (G.block.rerolled), matching Pro's rule that
+// once attempted no other reroll may be used on the dice.
+
+function rerollBlockDice(G) {
+    if (!G.block || G.block.phase !== 'pick-face' || G.block.rerolled) return null;
+    const att = G.block.att;
+    if (teamRerollsLeft(G, att.side) <= 0) return null;
+    _consumeTeamReroll(G, att.side);
+    G.block.rolls    = rollBlockDice(G.block.rolls.length);
+    G.block.rerolled = true;
+    return `${pn(att)} uses a team reroll — block dice rerolled.`;
+}
+
+function declareProBlock(G) {
+    if (!G.block || G.block.phase !== 'pick-face' || G.block.rerolled) return null;
+    const att = G.block.att;
+    if (!att.skills?.includes('Pro') || att.usedPro) return null;
+    G.block.phase = 'pro-pick-die';
+    return `${pn(att)} [[skill:Pro]] — pick a die to reroll.`;
+}
+
+function proBlockRerollDie(G, idx) {
+    if (!G.block || G.block.phase !== 'pro-pick-die') return null;
+    const att = G.block.att;
+    if (idx < 0 || idx >= G.block.rolls.length) return null;
+
+    att.usedPro      = true;        // once per activation
+    G.block.rerolled = true;        // once attempted, no other reroll on these dice
+    G.block.phase    = 'pick-face';
+
+    const proRoll = d6();
+    if (proRoll < 3) return `${pn(att)} [[skill:Pro]] (${proRoll}) — no reroll.`;
+    G.block.rolls[idx] = { ...rollBlockDice(1)[0] };
+    return `${pn(att)} [[skill:Pro]] (${proRoll}+) — die rerolled.`;
 }
 
 // ── _startPush ────────────────────────────────────────────────────
@@ -1028,34 +1076,25 @@ function tryPickup(G, p) {
     }
 
     const failMsg = `${pn(p)} fails to pick up (rolled ${roll}, needed ${target}+).${extra}`;
-    if (!rerolled && (G.rerolls?.[p.side] ?? 0) > 0) {
-        rerolled = true;
-        // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
-        const r2 = d6();
-        const f2 = r2 !== 6 && r2 < target;
-        const msgAtFailure = failMsg + ' ';
-        G.pendingReroll = {
-            label: 'pickup',
-            side: p.side,
-            secondFailed: f2,
-            successMsg: `Team reroll: ${pn(p)} [[skill:picks up]] the ball (rolled ${r2}, needed ${target}+). `,
-            failMsg:    `Team reroll: ${pn(p)} fails to pick up again (rolled ${r2}, needed ${target}+). `,
-            onSuccess: (G, suffix) => {
-                p.hasBall      = true;
-                G.ball.carrier = p;
-                return msgAtFailure + suffix;
-            },
-            onFail: (G, suffix) => {
-                const scatterMsg = scatterBall(G);
-                endTurn(G);
-                return msgAtFailure + suffix + scatterMsg + ' TURNOVER';
-            },
-        };
-        return failMsg + ' Team reroll available.';
-    }
-    const scatterMsg = scatterBall(G);
-    endTurn(G);
-    return failMsg + ' ' + scatterMsg + ' TURNOVER';
+    // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
+    const r2 = d6();
+    const f2 = r2 !== 6 && r2 < target;
+    const msgAtFailure = failMsg + ' ';
+    return _offerReroll(G, p, {
+        rerolled, label: 'pickup', secondFailed: f2, baseMsg: failMsg + ' ',
+        successMsg: `Team reroll: ${pn(p)} [[skill:picks up]] the ball (rolled ${r2}, needed ${target}+). `,
+        failMsg:    `Team reroll: ${pn(p)} fails to pick up again (rolled ${r2}, needed ${target}+). `,
+        onSuccess: (G, suffix) => {
+            p.hasBall      = true;
+            G.ball.carrier = p;
+            return msgAtFailure + suffix;
+        },
+        onFail: (G, suffix) => {
+            const scatterMsg = scatterBall(G);
+            endTurn(G);
+            return msgAtFailure + suffix + scatterMsg + ' TURNOVER';
+        },
+    });
 }
 
 // ── checkTouchdown ────────────────────────────────────────────────
@@ -1360,6 +1399,12 @@ function throwBall(G, targetCol, targetRow) {
         return msg + (isFumble ? `Fumble` : `Inaccurate`) + ` — Pass skill available.`;
     }
 
+    // No Pass skill: a failed pass may still be saved by a team reroll / Pro.
+    if ((isFumble || !accurate) && !p.skills?.includes('Pass')) {
+        return _offerPassReroll(G, p, targetCol, targetRow, target,
+            msg + (isFumble ? 'Fumble' : 'Inaccurate') + '. ');
+    }
+
     if (isFumble) return _doFumble(G, p, msg);
     return _continueThrow(G, p, targetCol, targetRow, accurate, msg);
 }
@@ -1376,8 +1421,9 @@ function resolvePassReroll(G, use) {
     if (!p) return null;
 
     if (!use) {
-        if (isFumble) return _doFumble(G, p, prevMsg);
-        return _continueThrow(G, p, targetCol, targetRow, false, prevMsg);
+        // Pass skill declined — a team reroll / Pro may still be used.
+        return _offerPassReroll(G, p, targetCol, targetRow, target,
+            prevMsg + (isFumble ? 'Fumble' : 'Inaccurate') + '. ');
     }
 
     G.hasPassReroll  = true;
@@ -1386,6 +1432,27 @@ function resolvePassReroll(G, use) {
     if (reroll === 1) return _doFumble(G, p, msg);
     const accurate   = reroll === 6 || reroll >= target;
     return _continueThrow(G, p, targetCol, targetRow, accurate, msg);
+}
+
+// ── _offerPassReroll ──────────────────────────────────────────────
+// Offers a team reroll / Pro on a failed pass (after the Pass skill, or when the
+// passer has no Pass skill). Pre-rolls the retry and routes through _offerReroll,
+// resolving the throw via _continueThrow / _doFumble.
+
+function _offerPassReroll(G, p, targetCol, targetRow, target, baseMsg) {
+    G.passing       = false;
+    const r2        = d6();
+    const r2Fumble  = r2 === 1;
+    const r2Acc     = !r2Fumble && (r2 === 6 || r2 >= target);
+    return _offerReroll(G, p, {
+        rerolled: false, label: 'pass', secondFailed: !r2Acc, baseMsg,
+        successMsg: `Team reroll → accurate (rolled ${r2}). `,
+        failMsg:    `Team reroll → ${r2Fumble ? 'fumble' : 'inaccurate'} (rolled ${r2}). `,
+        onSuccess: (G, suffix) => _continueThrow(G, p, targetCol, targetRow, true, baseMsg + suffix),
+        onFail:    (G, suffix) => r2Fumble
+            ? _doFumble(G, p, baseMsg + suffix)
+            : _continueThrow(G, p, targetCol, targetRow, false, baseMsg + suffix),
+    });
 }
 
 // ── _resolveInaccurateAtLanding ───────────────────────────────────
@@ -1911,23 +1978,16 @@ function _checkDodge(G, p, col, row, needsrush, dodgerolltarget, msg) {
     }
 
     msg += `${pn(p)} fails dodge (rolled ${roll}, needed ${target}+). `;
-    if (!rerolled && (G.rerolls?.[p.side] ?? 0) > 0) {
-        rerolled = true;  // marks the roll's reroll slot as consumed
-        // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
-        const { roll: r2, target: t2, failed: f2 } = dodge(dodgerolltarget);
-        const msgAtFailure = msg;
-        G.pendingReroll = {
-            label: 'dodge',
-            side: p.side,
-            secondFailed: f2,
-            successMsg: `Team reroll: ${pn(p)} [[move:dodges]] (rolled ${r2}, needed ${t2}+). `,
-            failMsg:    `Team reroll: ${pn(p)} fails dodge again (rolled ${r2}, needed ${t2}+). `,
-            onSuccess: (G, suffix) => _dodgeSucceeded(G, p, col, row, needsrush, r2, t2, msgAtFailure + suffix),
-            onFail:    (G, suffix) => _moveTurnover(G, p, col, row, msgAtFailure + suffix),
-        };
-        return msg + 'Team reroll available.';
-    }
-    return _moveTurnover(G, p, col, row, msg);
+    // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
+    const { roll: r2, target: t2, failed: f2 } = dodge(dodgerolltarget);
+    const msgAtFailure = msg;
+    return _offerReroll(G, p, {
+        rerolled, label: 'dodge', secondFailed: f2, baseMsg: msg,
+        successMsg: `Team reroll: ${pn(p)} [[move:dodges]] (rolled ${r2}, needed ${t2}+). `,
+        failMsg:    `Team reroll: ${pn(p)} fails dodge again (rolled ${r2}, needed ${t2}+). `,
+        onSuccess: (G, suffix) => _dodgeSucceeded(G, p, col, row, needsrush, r2, t2, msgAtFailure + suffix),
+        onFail:    (G, suffix) => _moveTurnover(G, p, col, row, msgAtFailure + suffix),
+    });
 }
 
 // ── Diving Tackle ─────────────────────────────────────────────────
@@ -2043,31 +2103,23 @@ function movePlayer(G, col, row) {
             msg += `${pn(p)} fails rush (rolled ${rushroll}). `;
             // True once any reroll (skill or team) has been used/offered on this roll.
             // No skill auto-rerolls rush yet, but the flag is ready for future skills (e.g. Sprint).
-            let rerolled = false;
-            if (!rerolled && (G.rerolls?.[p.side] ?? 0) > 0) {
-                rerolled = true;
-                // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
-                const { roll: r2, failed: f2 } = rush();
-                const msgBeforeReroll = msg;
-                G.pendingReroll = {
-                    label: 'rush',
-                    side: p.side,
-                    secondFailed: f2,
-                    successMsg: `Team reroll: ${pn(p)} [[move:rushes]] (rolled ${r2}). `,
-                    failMsg:    `Team reroll: ${pn(p)} fails rush again (rolled ${r2}). `,
-                    // If rush succeeds, still need to check dodge (if entering a tackle zone).
-                    onSuccess: (G, suffix) => {
-                        const m = msgBeforeReroll + suffix;
-                        if (dodgerolltarget !== 0) {
-                            return _checkDodge(G, p, col, row, needsrush, dodgerolltarget, m);
-                        }
-                        return _finishMove(G, p, col, row, needsrush, m);
-                    },
-                    onFail: (G, suffix) => _moveTurnover(G, p, col, row, msgBeforeReroll + suffix),
-                };
-                return msg + 'Team reroll available.';
-            }
-            return _moveTurnover(G, p, col, row, msg);
+            // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
+            const { roll: r2, failed: f2 } = rush();
+            const msgBeforeReroll = msg;
+            return _offerReroll(G, p, {
+                rerolled: false, label: 'rush', secondFailed: f2, baseMsg: msg,
+                successMsg: `Team reroll: ${pn(p)} [[move:rushes]] (rolled ${r2}). `,
+                failMsg:    `Team reroll: ${pn(p)} fails rush again (rolled ${r2}). `,
+                // If rush succeeds, still need to check dodge (if entering a tackle zone).
+                onSuccess: (G, suffix) => {
+                    const m = msgBeforeReroll + suffix;
+                    if (dodgerolltarget !== 0) {
+                        return _checkDodge(G, p, col, row, needsrush, dodgerolltarget, m);
+                    }
+                    return _finishMove(G, p, col, row, needsrush, m);
+                },
+                onFail: (G, suffix) => _moveTurnover(G, p, col, row, msgBeforeReroll + suffix),
+            });
         }
         msg += `${pn(p)} [[move:rushes]] (rolled ${rushroll}). `;
     }
@@ -2629,11 +2681,64 @@ function throwTeamMate(G, targetCol, targetRow) {
 // _resolveTeamReroll is generic: it dispatches entirely through the
 // closures stored in G.pendingReroll — no per-roll knowledge here.
 
+// ── _offerReroll ──────────────────────────────────────────────────
+// Offers a reroll for a just-failed roll: the player's Pro (once per activation,
+// on a 3+) first, then a team reroll (incl. Leader). opts carries the pre-rolled
+// retry (secondFailed), display messages, and the onSuccess/onFail resolvers.
+// Returns the suspend message, or resolves the failure immediately (onFail) when
+// no reroll is available — e.g. a skill reroll was already used on this die.
+
+function _offerReroll(G, p, opts) {
+    const proAvail  = !opts.rerolled && p.skills?.includes('Pro') && !p.usedPro;
+    const teamAvail = !opts.rerolled && teamRerollsLeft(G, p.side) > 0;
+    if (!proAvail && !teamAvail) return opts.onFail(G, '');
+
+    G.pendingReroll = {
+        kind:      proAvail ? 'pro' : 'team',
+        label:     opts.label,
+        side:      p.side,
+        playerId:  p.id,
+        secondFailed: opts.secondFailed,
+        successMsg:   opts.successMsg,
+        failMsg:      opts.failMsg,
+        onSuccess:    opts.onSuccess,
+        onFail:       opts.onFail,
+        proRoll:   proAvail ? d6() : 0,
+        teamAvail,
+    };
+    return opts.baseMsg + (proAvail ? `${pn(p)} may use [[skill:Pro]].` : 'Reroll available.');
+}
+
+// ── _resolveTeamReroll ────────────────────────────────────────────
+// Resolves a pending reroll (Pro or team) once the coach has decided.
+
 function _resolveTeamReroll(G, used) {
     const pr = G.pendingReroll;
     G.pendingReroll = null;
     if (!pr) return '';
-    if (used) G.rerolls[pr.side] -= 1;
+
+    // ── Pro: a 3+ unlocks the reroll of the single die. Once Pro is attempted
+    // (used), no other reroll source may be used on this die.
+    if (pr.kind === 'pro') {
+        if (used) {
+            const player = G.players.find(x => x.id === pr.playerId);
+            if (player) player.usedPro = true;       // once per activation
+            if (pr.proRoll >= 3) {
+                const note = `${pn(player)} [[skill:Pro]] (${pr.proRoll}+) — reroll! `;
+                return pr.secondFailed ? pr.onFail(G, note) : pr.onSuccess(G, note);
+            }
+            return pr.onFail(G, `${pn(player)} [[skill:Pro]] (${pr.proRoll}) — no reroll. `);
+        }
+        // Pro declined (not attempted) — a team reroll may still be used.
+        if (pr.teamAvail) {
+            G.pendingReroll = { ...pr, kind: 'team', proRoll: 0 };
+            return '';
+        }
+        return pr.onFail(G, '');
+    }
+
+    // ── Team reroll (incl. Leader) ────────────────────────────────
+    if (used) _consumeTeamReroll(G, pr.side);
     if (used && !pr.secondFailed) return pr.onSuccess(G, pr.successMsg);
     // Decline: proceed with the original failure (no extra message).
     // Use-and-fail: show the failure message then resolve as failure.
@@ -2646,6 +2751,7 @@ function declineTeamReroll(G) { return _resolveTeamReroll(G, false); }
 if (typeof module !== 'undefined') {
     module.exports = {
         knockDown, declareBlock, pickBlockFace, pickPushSquare, resolveFollowUp, resolveStandFirm, resolveFend, resolveStripBall, resolveWrestle, resolveJuggernaut,
+        rerollBlockDice, declareProBlock, proBlockRerollDie,
         activateBlitz, setBlitzTarget, blitzBlock,
         declareFoul, executeFoul, resolveArgueCall, resolveBribe,
         scatterBall, throwIn, tryPickup, checkTouchdown,

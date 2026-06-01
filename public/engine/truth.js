@@ -4,7 +4,7 @@
 // that a new action only needs to be added here.
 
 if (typeof module !== 'undefined') {
-    var { isStanding, canStillCancel, getBlockTargets } = require('./helpers.js');
+    var { isStanding, canStillCancel, getBlockTargets, teamRerollsLeft } = require('./helpers.js');
 }
 
 function getGameContext(G, sel, NET) {
@@ -101,6 +101,16 @@ function getGameContext(G, sel, NET) {
     const canUseJuggernaut     = G.block?.phase === 'juggernaut-choice'
         && (!NET.online || NET.side === G.active);
 
+    // Block-dice rerolls — the active coach (attacker) decides, before a face is
+    // picked and before any reroll has been used on these dice.
+    const blockReroll = G.block?.phase === 'pick-face' && !G.block.rerolled
+        && (!NET.online || NET.side === G.active);
+    const canRerollBlock = blockReroll && teamRerollsLeft(G, G.block.att.side) > 0;
+    const canProBlock    = blockReroll
+        && !!G.block.att?.skills?.includes('Pro') && !G.block.att?.usedPro;
+    const blockProPickDie = G.block?.phase === 'pro-pick-die'
+        && (!NET.online || NET.side === G.active);
+
     const canUseDivingTackle   = !!G.divingTackle
         && (!NET.online || NET.side === G.divingTackle?.side);
 
@@ -159,6 +169,9 @@ function getGameContext(G, sel, NET) {
         canUseStripBall,
         canUseWrestle,
         canUseJuggernaut,
+        canRerollBlock,
+        canProBlock,
+        blockProPickDie,
         canUseDivingTackle,
         canChooseNoIntercept,
         canConfirmSetup,
