@@ -459,7 +459,11 @@ wss.on('connection', (ws) => {
         if (msg.type === 'DEBUG_MOVE_BALL')   { handleDebugMoveBall(room, msg);   return; }
         if (msg.type === 'DEBUG_SET_SKILLS')  { handleDebugSetSkills(room, msg);  return; }
 
-        const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP', 'CHOOSE_INTERCEPTOR'].includes(msg.type);
+        // Reaction choices can belong to the defending (non-active) coach, so they
+        // bypass the turn guard; each is then side-checked via gc in handleAction.
+        const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP', 'CHOOSE_INTERCEPTOR',
+                          'FEND', 'STAND_FIRM', 'STRIP_BALL', 'WRESTLE', 'JUGGERNAUT',
+                          'DIVING_TACKLE'].includes(msg.type);
         if (!turnFree && side !== room.G.active) {
             ws.send(JSON.stringify({ type: 'ERROR', msg: 'Not your turn' }));
             return;
@@ -469,7 +473,7 @@ wss.on('connection', (ws) => {
         // Never let one bad action take down the whole server (and every other
         // game with it). On an engine error, log it and tell just this client.
         try {
-            handleAction(room, msg);
+            handleAction(room, msg, side);
             // Turnover during Charge! — auto-resolve the kick in the same broadcast
             {
                 const G = room.G;
@@ -702,10 +706,13 @@ function handleDebugSetSkills(room, msg) {
 
 // ── Action handler ────────────────────────────────────────────────
 
-function handleAction(room, msg) {
+function handleAction(room, msg, side) {
     const G  = room.G;
     const sel = G.players.find(p => p.id === msg.playerId) ?? null;
-    const gc  = getGameContext(G, sel, { online: false });
+    // Use the real sender side so the canUse* gating enforces who may act —
+    // crucial for reaction choices (Wrestle/Fend/Stand Firm/Diving Tackle) that
+    // belong to the defending (non-active) coach.
+    const gc  = getGameContext(G, sel, { online: true, side });
     switch (msg.type) {
         case 'ACTIVATE':      if (!gc.canDeclare) return; room.lastLogMsg = activateMover(G, msg.playerId);      break;
         case 'ACTIVATE_AND_MOVE': {
@@ -767,12 +774,12 @@ function handleAction(room, msg) {
             break;
         }
         case 'FOLLOW_UP':   room.lastLogMsg = resolveFollowUp(G, msg.choice);         break;
-        case 'FEND':        room.lastLogMsg = resolveFend(G, msg.use);                break;
-        case 'STAND_FIRM':  room.lastLogMsg = resolveStandFirm(G, msg.use);           break;
-        case 'STRIP_BALL':  room.lastLogMsg = resolveStripBall(G, msg.use);           break;
-        case 'WRESTLE':     room.lastLogMsg = resolveWrestle(G, msg.use);             break;
-        case 'JUGGERNAUT':  room.lastLogMsg = resolveJuggernaut(G, msg.use);          break;
-        case 'DIVING_TACKLE': room.lastLogMsg = resolveDivingTackle(G, msg.use);      break;
+        case 'FEND':        if (!gc.canUseFend)         return; room.lastLogMsg = resolveFend(G, msg.use);          break;
+        case 'STAND_FIRM':  if (!gc.canUseStandFirm)    return; room.lastLogMsg = resolveStandFirm(G, msg.use);     break;
+        case 'STRIP_BALL':  if (!gc.canUseStripBall)    return; room.lastLogMsg = resolveStripBall(G, msg.use);     break;
+        case 'WRESTLE':     if (!gc.canUseWrestle)      return; room.lastLogMsg = resolveWrestle(G, msg.use);       break;
+        case 'JUGGERNAUT':  if (!gc.canUseJuggernaut)   return; room.lastLogMsg = resolveJuggernaut(G, msg.use);    break;
+        case 'DIVING_TACKLE': if (!gc.canUseDivingTackle) return; room.lastLogMsg = resolveDivingTackle(G, msg.use); break;
         case 'AS_PICK_TARGET': room.lastLogMsg = resolveASHit(G, msg.targetId);       break;
         case 'PV_DECLARE':  if (!gc.canDeclarePV)  return; room.lastLogMsg = declarePV(G, msg.playerId);       break;
         case 'PV_EXECUTE':  room.lastLogMsg = executePV(G, msg.targetId);             break;

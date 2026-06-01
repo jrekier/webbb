@@ -165,7 +165,11 @@ function declareBlock(G, att, def) {
     let { attStr, defStr } = countAssists(G, att, def);
     if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') {
         attStr += 1;
-        G.cheeringFansBonus = null;
+        // On a tie ('both'), spend only this side's half — the other team keeps
+        // their +1 for their own next block.
+        G.cheeringFansBonus = G.cheeringFansBonus === 'both'
+            ? (att.side === 'home' ? 'away' : 'home')
+            : null;
     }
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
@@ -940,7 +944,11 @@ function blitzBlock(G, att, target) {
     let { attStr, defStr } = countAssists(G, att, target);
     if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') {
         attStr += 1;
-        G.cheeringFansBonus = null;
+        // On a tie ('both'), spend only this side's half — the other team keeps
+        // their +1 for their own next block.
+        G.cheeringFansBonus = G.cheeringFansBonus === 'both'
+            ? (att.side === 'home' ? 'away' : 'home')
+            : null;
     }
     const { dice, chooser }  = blockDiceCount(attStr, defStr);
     const rolls = rollBlockDice(dice);
