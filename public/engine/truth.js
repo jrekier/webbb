@@ -1,6 +1,6 @@
 // truth.js
 // Single source of truth for what actions the selected player can take right now.
-// Called by updateButtons() (input.js) and _openWheel() (mobile.js) so
+// Called by updateButtons() (input.js) and _openWheel() (render.js) so
 // that a new action only needs to be added here.
 
 if (typeof module !== 'undefined') {

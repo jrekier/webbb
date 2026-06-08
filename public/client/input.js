@@ -10,7 +10,7 @@
 // Online: sends actions to server. Offline: applies locally.
 
 // ── Shared drag state ─────────────────────────────────────────────
-// Also read by render.js (ghost drawing) and mobile.js (panel drag).
+// Also read by render.js (ghost drawing + roster-panel drag).
 
 var setupDrag  = null;  // { player, pixelX, pixelY [, fromPanel] }
 var _dragMoved = false;
@@ -95,7 +95,7 @@ function setupInput() {
     // Touch devices use long-press (handled via the long-press timer).
     canvas.addEventListener('contextmenu', _onContextMenu);
 
-    // HTML5 Drag-and-Drop for the desktop sidebar → pitch path.
+    // HTML5 Drag-and-Drop for the mouse roster-panel → pitch path.
     // This is a separate event channel that coexists with Pointer Events.
     canvas.addEventListener('dragover',  _onCanvasDragOver);
     canvas.addEventListener('dragleave', _onCanvasDragLeave);
@@ -326,8 +326,7 @@ function _onPointerUp(e) {
 
     // ── Camera pan end ───────────────────────────────────────────
     if (phase === 'panning') {
-        // Dismiss any stale overlay left from before the scroll.
-        inspectState = null;
+        // Dismiss any stale tooltip left from before the scroll.
         hideChipTooltip(0);
         render();
         return;
@@ -365,7 +364,6 @@ function _onPointerLeave(e) {
     kickHover    = null;
     passHover    = null;
     ttmHover     = null;
-    inspectState = null;
     render();
 }
 
@@ -431,7 +429,6 @@ function _onTap(clientX, clientY) {
         if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
         _pendingTap = { timer: setTimeout(() => {
             _pendingTap  = null;
-            inspectState = null;
             hideChipTooltip(0);
             handleClick({ clientX, clientY });
         }, 260) };
@@ -439,7 +436,6 @@ function _onTap(clientX, clientY) {
     }
 
     // Immediate single tap — hand off to the main click handler.
-    inspectState = null;
     hideChipTooltip(0);
     handleClick({ clientX, clientY });
 }
@@ -478,7 +474,6 @@ function _onContextMenu(e) {
     const p    = playerAt(G, col, row);
     if (!p) return;
     G.sel = p;
-    inspectState = null;
     // Centre the wheel on the player's cell, not the cursor position.
     const cpx = (p.col + 0.5) * CELL;
     const cpy = (p.row + 0.5) * CELL - cameraY;
@@ -554,9 +549,10 @@ function _applyDemote(player) {
 }
 
 
-// ── HTML5 Drag-and-Drop (desktop sidebar → pitch) ─────────────────
-// The desktop teams list uses the HTML5 drag API (row.draggable = true +
-// dragstart). These handlers receive the resulting drop onto the canvas.
+// ── HTML5 Drag-and-Drop (mouse roster panel → pitch) ──────────────
+// Roster-panel rows use the HTML5 drag API for mouse (row.draggable = true +
+// dragstart); touch/pen use the Pointer Events path instead. These handlers
+// receive the resulting drop onto the canvas.
 // This is an entirely separate event channel from Pointer Events.
 
 function _onCanvasDragOver(e) {
@@ -617,7 +613,6 @@ function _onCanvasDrop(e) {
 
 function handleClick(event) {
     // Wheel overlay was already handled by _onTap before we got here.
-    inspectState = null;
 
     if (G.phase === 'toss' || G.phase === 'gameover') return;
 
@@ -1480,7 +1475,7 @@ function updateButtons() {
     if (btnEnd && btnEnd.style.display !== 'none')
         btnEnd.textContent = `End ${G.active.toUpperCase()} Turn`;
 
-    // Status strip labels (shared by mobile and desktop — updateSidebar handles
+    // Status strip labels (shared by mobile and desktop — updateHud handles
     // the full phase text; here we only keep the score sync that updateButtons
     // needs for the confirm-prompt path that doesn't always call render()).
     const score = G.score || { home: 0, away: 0 };
