@@ -111,15 +111,15 @@ function getGameContext(G, sel, NET) {
     const blockProPickDie = G.block?.phase === 'pro-pick-die'
         && (!NET.online || NET.side === G.active);
 
-    const canUseDivingTackle   = !!G.divingTackle
-        && (!NET.online || NET.side === G.divingTackle?.side);
+    const canUseDivingTackle   = G.pending?.kind === 'divingTackle'
+        && (!NET.online || NET.side === G.pending.side);
 
-    const canChooseNoIntercept = !!G.interceptionChoice && (!NET.online || NET.side !== G.active);
+    const canChooseNoIntercept = G.pending?.kind === 'intercept' && (!NET.online || NET.side !== G.active);
 
-    const canUseTeamReroll     = !!G.pendingReroll && (!NET.online || NET.side === G.active);
+    const canUseTeamReroll     = G.pending?.kind === 'reroll' && (!NET.online || NET.side === G.active);
 
-    const canUseBribe          = !!G.bribePending
-        && (!NET.online || NET.side === G.bribePending?.side);
+    const canUseBribe          = G.pending?.kind === 'bribe'
+        && (!NET.online || NET.side === G.pending.side);
 
     const canConfirmSetup = (G.phase === 'setup') && (!NET.online || NET.side === G.setupSide);
 

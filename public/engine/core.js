@@ -12,8 +12,61 @@ if (typeof module !== 'undefined') {
           isValidPerfectDefenseSquare } = require('./helpers.js');
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// GAME FLOW — PHASE MACHINE   (G.phase)
+//
+// The game advances through the phases below; each arrow names the function that
+// makes the transition. A "drive" is one kickoff-to-score/turnover sequence; a
+// half is several drives. The in-play action lifecycle (what happens during
+// 'play') is documented at the top of actions.js.
+//
+//   toss                       initToss picks the coin-toss winner
+//     │  chooseTossResult('kick' | 'receive')
+//     ▼
+//   setup ◀──────────────────┐  kicker sets up, then receiver
+//     │  confirmSetup          │  (confirmSetup advances to the 2nd side, then 'kick')
+//     ▼                        │
+//   kick                       │  declareKick: aim → main scatter → kickoff event
+//     │                        │
+//     ├─ interactive event ─▶  kickoff_soliddefence | _quicksnap | _charge | _highkick
+//     │      coach confirms → resolveKickScatter (or highKickPlace / skipHighKick)
+//     │                        │
+//     ├─ ball off-pitch or in kicker's half ─▶ kickoff_touchback | touchback
+//     │                                          └─ touchbackGiveBall ─┐
+//     ▼                                                                │
+//   play ◀── _resolveKickCatch  (ball caught/landed; G.active = receiver) ◀┘
+//     │
+//     │  endTurn ........... flips G.active; after the half's last turn:
+//     │        ├─ startHalfTime  ─▶ setup        (half 2; roles swap)
+//     │        └─ startGameOver  ─▶ gameover
+//     │
+//     │  checkTouchdown ─▶ endScoringTurn:
+//     │        ├─ half/game ends on this score ─▶ startHalfTime / startGameOver
+//     │        └─ otherwise resetAfterTouchdown ─▶ setup   (next drive)
+//     ▼
+//   gameover                   final whistle (startGameOver)
+//
+// Turn counting: each half is TURNS turns per team. endTurn ticks the counter
+// when the half's fixed opener becomes active; endScoringTurn applies the same
+// accounting to a touchdown so a score never adds or skips a turn.
+// ════════════════════════════════════════════════════════════════════════════
+
 // ── createInitialState ────────────────────────────────────────────
 
+// The whole game state object, G. Field groups (see the flow docs above and in
+// actions.js for how they're driven):
+//   • progress      — phase, half, turn, active, score, kicker/receiver, setupSide
+//   • team resources— rerolls, bribes, cheerleaders, coaches, fanFactor, apothecary
+//   • current action— activated, sel, and the MODE flags (block, blitz, passing,
+//                     handingOff, fouling, stabbing, pvTargeting, securingBall,
+//                     throwTeamMate, animalSavagery, targeting)
+//   • suspended     — G.pending: the one coach decision awaiting an answer
+//                     ({ kind, side, … }; kind = reroll/passReroll/intercept/
+//                     divingTackle/argue/bribe)
+//   • per-turn      — once-per-turn-action flags (hasBlitzed/hasPassed/…) and
+//                     transient roll flags (hasDodged, asRolled, …)
+//   • kickoff event — weather + the interactive-event scratch fields (see bottom)
+//   • ball, players
 function createInitialState() {
     return {
         phase:              'toss',   // 'toss' | 'setup' | 'play' | 'gameover'
@@ -38,14 +91,16 @@ function createInitialState() {
         assistantCoaches:   { home: 0, away: 0 },
         fanFactor:          { home: 0, away: 0 },
         apothecary:         { home: false, away: false },
-        pendingReroll:      null,
+        // The single suspended coach decision, or null. Shape: { kind, side, … }.
+        // kind ∈ reroll | passReroll | intercept | divingTackle | argue | bribe.
+        // Only one is ever active at a time (the game pauses until it's answered).
+        pending:            null,
         hasBlitzed:         false,
         hasPassed:          false,
         hasHandedOff:       false,
         hasFouled:          false,
         hasThrownMate:      false,
         fouling:            false,
-        argueCallPending:   null,
         coachEjected:       { home: false, away: false },
         handingOff:         false,
         hasDodged:          false,
@@ -55,8 +110,6 @@ function createInitialState() {
         stoodUpFromProne:   false,
         passing:            false,
         hasPassReroll:      false,
-        passRerollChoice:   null,
-        interceptionChoice: null,
         throwTeamMate:      null,
         animalSavagery:     null,
         targeting:          null,
@@ -91,6 +144,46 @@ function activatePlayer(G, playerId) {
     return `${p.name} activated`;
 }
 
+// ── State reset helpers ───────────────────────────────────────────
+// Every transient piece of an activation lives in one of two groups, cleared
+// through these helpers so the lifecycle functions (endActivation / cancel /
+// endTurn / half-time / touchdown) can't each forget a different field — the
+// class of bug behind stale-targeting freezes. See the action-lifecycle map at
+// the top of actions.js for what each field drives.
+
+// Action/decision state tied to the CURRENT activation: the multi-step action
+// MODE flags and the suspend/resume coach-decision channels. (G.block is owned by
+// the block resolver and intentionally not touched here. G.securingBall is also
+// excluded — _finishMove auto-ends the activation BEFORE its Secure-the-Ball
+// check, so clearing it in endActivation would downgrade a last-square 2+ secure
+// to a normal pickup; the turn/drive resets clear it inline instead.)
+function _clearActionState(G) {
+    G.blitz              = null;
+    G.stoodUpFromProne   = false;
+    G.hasDodged          = false;
+    G.asRolled           = false;
+    G.fouling            = false;
+    G.pvTargeting        = false;
+    G.stabbing           = false;
+    G.throwTeamMate      = null;
+    G.animalSavagery     = null;
+    G.targeting          = null;
+    G.handingOff         = false;
+    G.passing            = false;
+    G.hasPassReroll      = false;
+    G.pending            = null;   // any suspended coach decision (reroll/intercept/…)
+}
+
+// Once-per-team-turn flags, cleared when a team's turn ends.
+function _clearTurnFlags(G) {
+    G.hasBlitzed     = false;
+    G.hasPassed      = false;
+    G.hasHandedOff   = false;
+    G.hasFouled      = false;
+    G.hasThrownMate  = false;
+    G.blitzFromProne = false;
+}
+
 function cancelActivation(G) {
     if (!G.activated) return null;
     if (!canStillCancel(G)) return null;
@@ -111,22 +204,9 @@ function cancelActivation(G) {
         G.hasBlitzed     = false;
         G.blitz          = null;
     }
-    G.securingBall       = false;
-    G.fouling            = false;
-    G.pvTargeting        = false;
-    G.stabbing           = false;
-    G.throwTeamMate      = null;
-    G.animalSavagery     = null;
-    G.targeting          = null;
-    G.argueCallPending   = null;
-    G.handingOff         = false;
-    G.passing            = false;
-    G.hasPassReroll      = false;
-    G.passRerollChoice   = null;
-    G.interceptionChoice = null;
-    G.pendingReroll      = null;
-    G.divingTackle       = null;
-    G.activated          = null;
+    _clearActionState(G);
+    G.securingBall = false;
+    G.activated    = null;
     return `${name} — action cancelled`;
 }
 
@@ -135,24 +215,7 @@ function endActivation(G) {
     const name = G.activated.name;
     G.activated.usedAction = true;
     G.activated    = null;
-    G.blitz              = null;
-    G.stoodUpFromProne   = false;
-    G.hasDodged          = false;
-    G.asRolled           = false;
-    G.fouling            = false;
-    G.pvTargeting        = false;
-    G.stabbing           = false;
-    G.throwTeamMate      = null;
-    G.animalSavagery     = null;
-    G.targeting          = null;
-    G.argueCallPending   = null;
-    G.handingOff         = false;
-    G.passing            = false;
-    G.hasPassReroll      = false;
-    G.passRerollChoice   = null;
-    G.interceptionChoice = null;
-    G.pendingReroll      = null;
-    G.divingTackle       = null;
+    _clearActionState(G);
 
     if (G.phase === 'kickoff_charge') {
         G.hasBlitzed = false;  // each charge activation gets its own blitz allowance
@@ -188,26 +251,9 @@ function endTurn(G) {
     const justFinished = G.active;
     G.active         = G.active === 'home' ? 'away' : 'home';
     G.sel            = null;
-    G.hasBlitzed     = false;
-    G.hasPassed      = false;
-    G.hasHandedOff   = false;
-    G.hasFouled      = false;
-    G.hasThrownMate  = false;
-    G.hasDodged      = false;
-    G.asRolled       = false;
-    G.blitzFromProne = false;
-    G.securingBall       = false;
-    G.fouling            = false;
-    G.animalSavagery     = null;
-    G.targeting          = null;
-    G.argueCallPending   = null;
-    G.handingOff         = false;
-    G.passing            = false;
-    G.hasPassReroll      = false;
-    G.passRerollChoice   = null;
-    G.interceptionChoice = null;
-    G.pendingReroll      = null;
-    G.divingTackle       = null;
+    G.securingBall   = false;
+    _clearTurnFlags(G);
+    _clearActionState(G);
     // A half's opening team — the receiver of that half's FIRST kickoff — is
     // fixed for the whole half. It does NOT change when a touchdown swaps the
     // kicker/receiver roles (resetAfterTouchdown sets kicker = scorer). The turn
@@ -293,27 +339,9 @@ function startHalfTime(G) {
     G.activated          = null;
     G.sel                = null;
     G.block              = null;
-    G.blitz              = null;
-    G.hasBlitzed         = false;
-    G.hasPassed          = false;
-    G.hasHandedOff       = false;
-    G.hasFouled          = false;
-    G.hasThrownMate      = false;
-    G.hasDodged          = false;
-    G.asRolled           = false;
-    G.blitzFromProne     = false;
-    G.stoodUpFromProne   = false;
     G.securingBall       = false;
-    G.fouling            = false;
-    G.throwTeamMate      = null;
-    G.animalSavagery     = null;
-    G.targeting          = null;
-    G.argueCallPending   = null;
-    G.handingOff         = false;
-    G.passRerollChoice   = null;
-    G.interceptionChoice = null;
-    G.pendingReroll      = null;
-    G.divingTackle       = null;
+    _clearActionState(G);
+    _clearTurnFlags(G);
     G.rerolls            = { ...G.startingRerolls };
     G.leaderRerollUsed   = { home: false, away: false };
     G.ball               = { col: -1, row: -1, carrier: null };
@@ -446,26 +474,9 @@ function resetAfterTouchdown(G, scoringSide) {
     G.activated          = null;
     G.sel                = null;
     G.block              = null;
-    G.blitz              = null;
-    G.hasBlitzed         = false;
-    G.hasPassed          = false;
-    G.hasHandedOff       = false;
-    G.hasFouled          = false;
-    G.hasThrownMate      = false;
-    G.hasDodged          = false;
-    G.asRolled           = false;
-    G.blitzFromProne     = false;
-    G.stoodUpFromProne   = false;
     G.securingBall       = false;
-    G.fouling            = false;
-    G.throwTeamMate      = null;
-    G.animalSavagery     = null;
-    G.targeting          = null;
-    G.argueCallPending   = null;
-    G.passRerollChoice   = null;
-    G.interceptionChoice = null;
-    G.pendingReroll      = null;
-    G.divingTackle       = null;
+    _clearActionState(G);
+    _clearTurnFlags(G);
 
     // Scoring team kicks off the next drive; both sides set up again
     G.kicker    = scoringSide;

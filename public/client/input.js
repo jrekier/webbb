@@ -426,7 +426,7 @@ function _onTap(clientX, clientY) {
     // In states where a tap picks a target (pass, intercept), delay the action
     // by 260 ms so a quick second tap can show the tooltip instead of firing
     // an accidental game action.
-    const needsDelay = G.passing === 'targeting' || !!G.interceptionChoice || G.throwTeamMate?.phase === 'targeting';
+    const needsDelay = G.passing === 'targeting' || G.pending?.kind === 'intercept' || G.throwTeamMate?.phase === 'targeting';
     if (needsDelay) {
         if (_pendingTap) { clearTimeout(_pendingTap.timer); _pendingTap = null; }
         _pendingTap = { timer: setTimeout(() => {
@@ -809,9 +809,9 @@ function _debugState() {
         blitz:     G.blitz  ? (G.blitz.phase  ?? G.blitz)  : undefined,
         block:     G.block  ? (G.block.phase  ?? G.block)  : undefined,
         confirm:   G.confirm?.prompt,
-        pendingReroll:  G.pendingReroll?.label ?? (G.pendingReroll ? '(set)' : undefined),
-        passReroll:     G.passRerollChoice   ? true : undefined,
-        interception:   G.interceptionChoice ? true : undefined,
+        pendingReroll:  G.pending?.kind === 'reroll'     ? (G.pending.label ?? '(set)') : undefined,
+        passReroll:     G.pending?.kind === 'passReroll' ? true : undefined,
+        interception:   G.pending?.kind === 'intercept'  ? true : undefined,
         animalSavagery: G.animalSavagery?.phase,
         passing:    G.passing    || undefined,
         fouling:    G.fouling    || undefined,
@@ -853,7 +853,7 @@ function clickPlayer(player) {
     G.sel = player;
 
     // Interception choice — non-active player taps a highlighted interceptor.
-    if (G.interceptionChoice && G.interceptionChoice.interceptorIds.includes(player.id)
+    if (G.pending?.kind === 'intercept' && G.pending.interceptorIds.includes(player.id)
             && (!NET.online || NET.side !== G.active)) {
         G.confirm = {
             prompt: `Use ${player.name} to intercept?`,
@@ -1111,7 +1111,7 @@ function onClickThrow() {
 }
 
 function onClickNoIntercept() {
-    if (!G.interceptionChoice) return;
+    if (G.pending?.kind !== 'intercept') return;
     if (NET.online) sendAction({ type: 'CHOOSE_INTERCEPTOR', playerId: null });
     else { const msg = chooseInterceptor(G, null); if (msg) log(msg); }
 }
@@ -1290,9 +1290,9 @@ function onClickEndTurn() {
 function updateButtons() {
     // Bribe — fouling team may spend a bribe before the argue-call step.
     const myTurnNow = !NET.online || NET.side === G.active;
-    if (G.bribePending && !G.confirm
-            && (!NET.online || NET.side === G.bribePending.side)) {
-        const left = G.bribes?.[G.bribePending.side] || 0;
+    if (G.pending?.kind === 'bribe' && !G.confirm
+            && (!NET.online || NET.side === G.pending.side)) {
+        const left = G.bribes?.[G.pending.side] || 0;
         G.confirm = {
             prompt: `Spend a bribe? (${left} left — roll 2+ to avoid ejection)`,
             onYes: () => {
@@ -1307,8 +1307,8 @@ function updateButtons() {
     }
 
     // Argue the call — fouling team decides whether to challenge the referee.
-    if (G.argueCallPending && !G.confirm
-            && (!NET.online || NET.side === G.argueCallPending.side)) {
+    if (G.pending?.kind === 'argue' && !G.confirm
+            && (!NET.online || NET.side === G.pending.side)) {
         G.confirm = {
             prompt: 'Ref spotted the foul! Argue the call?',
             onYes: () => {
@@ -1323,16 +1323,16 @@ function updateButtons() {
     }
 
     // Pass reroll choice — active player decides whether to spend the Pass skill.
-    if (G.passRerollChoice && myTurnNow && !G.confirm) {
-        const isFumble = G.passRerollChoice.isFumble;
+    if (G.pending?.kind === 'passReroll' && myTurnNow && !G.confirm) {
+        const isFumble = G.pending.isFumble;
         G.confirm = {
             prompt: isFumble ? 'Fumble — use Pass skill to reroll?' : 'Inaccurate — use Pass skill to reroll?',
             onYes: () => {
-                if (NET.online) { G.passRerollChoice = null; sendAction({ type: 'PASS_REROLL', use: true }); }
+                if (NET.online) { G.pending = null; sendAction({ type: 'PASS_REROLL', use: true }); }
                 else { const m = resolvePassReroll(G, true);  if (m) log(m); }
             },
             onNo: () => {
-                if (NET.online) { G.passRerollChoice = null; sendAction({ type: 'PASS_REROLL', use: false }); }
+                if (NET.online) { G.pending = null; sendAction({ type: 'PASS_REROLL', use: false }); }
                 else { const m = resolvePassReroll(G, false); if (m) log(m); }
             },
         };
@@ -1341,20 +1341,20 @@ function updateButtons() {
     // Reroll — active coach decides whether to reroll a failed roll. Pro (the
     // player's own gated reroll) is offered first; declining it falls through to
     // a team reroll if one is available.
-    if (G.pendingReroll && myTurnNow && !G.confirm) {
-        const pr    = G.pendingReroll;
+    if (G.pending?.kind === 'reroll' && myTurnNow && !G.confirm) {
+        const pr    = G.pending;
         const label = pr.label ?? 'roll';
-        const prompt = pr.kind === 'pro'
+        const prompt = pr.source === 'pro'
             ? `${G.players.find(p => p.id === pr.playerId)?.name ?? 'Player'} — use Pro? (3+ to reroll the ${label})`
             : `Reroll ${label}? (${teamRerollsLeft(G, pr.side)} left)`;
         G.confirm = {
             prompt,
             onYes: () => {
-                if (NET.online) { G.pendingReroll = null; sendAction({ type: 'TEAM_REROLL' }); }
+                if (NET.online) { G.pending = null; sendAction({ type: 'TEAM_REROLL' }); }
                 else { const m = useTeamReroll(G); if (m) log(m); }
             },
             onNo: () => {
-                if (NET.online) { G.pendingReroll = null; sendAction({ type: 'DECLINE_TEAM_REROLL' }); }
+                if (NET.online) { G.pending = null; sendAction({ type: 'DECLINE_TEAM_REROLL' }); }
                 else { const m = declineTeamReroll(G); if (m) log(m); }
             },
         };
@@ -1441,7 +1441,7 @@ function updateButtons() {
 
     // Diving Tackle — a marking defender may dive to add −2 to an opponent's dodge.
     if (gc.canUseDivingTackle && !G.confirm) {
-        const dt = G.players.find(p => p.id === G.divingTackle.dtId);
+        const dt = G.players.find(p => p.id === G.pending.dtId);
         G.confirm = {
             prompt: `${dt?.name} — use Diving Tackle? (−2 fails the dodge; ${dt?.name} dives in prone)`,
             onYes: () => {

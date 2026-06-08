@@ -343,8 +343,8 @@ function _openWheel(player, px, py) {
     const gc = getGameContext(G, player, NET);
 
     // The non-active side can still tap an interceptor candidate.
-    const canIntercept = G.interceptionChoice
-        && G.interceptionChoice.interceptorIds.includes(player.id)
+    const canIntercept = G.pending?.kind === 'intercept'
+        && G.pending.interceptorIds.includes(player.id)
         && (!NET.online || NET.side !== G.active);
 
     if (!gc.myTurn && !canIntercept) return false;

@@ -169,11 +169,11 @@ const ROOM_SNAPSHOT_TTL_MS = 6 * 60 * 60 * 1000;   // discard snapshots older th
 const ROOM_RESTORE_GRACE_MS = 5 * 60 * 1000;       // window for players to reconnect after a restart
 
 function persistRoom(room) {
-    // Only snapshot a started game, and never mid-suspension: G.pendingReroll
-    // holds function closures that don't survive JSON. Skipping it means the
-    // saved snapshot is always a clean, resolvable state (the player just
-    // re-attempts the interrupted roll after a restart).
-    if (!roomsDb || !room.G || room.G.pendingReroll) return;
+    // Only snapshot a started game, and never mid-reroll: G.pending (kind
+    // 'reroll') holds function closures that don't survive JSON. Skipping it
+    // means the saved snapshot is always a clean, resolvable state (the player
+    // just re-attempts the interrupted roll after a restart).
+    if (!roomsDb || !room.G || room.G.pending?.kind === 'reroll') return;
     try {
         const data = JSON.stringify({
             id: room.id, tokens: room.tokens,

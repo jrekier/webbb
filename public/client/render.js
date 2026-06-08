@@ -820,7 +820,7 @@ function drawHighlights() {
         canPreview && G.sel && !G.sel.usedAction && G.sel.side === G.active
         && G.sel.status !== 'stunned' && !G.block ? G.sel : null
     );
-    if (mover && G.phase !== 'setup' && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && G.throwTeamMate?.phase !== 'targeting' && !G.interceptionChoice) {
+    if (mover && G.phase !== 'setup' && !G.block && G.blitz !== 'targeting' && G.passing !== 'targeting' && G.throwTeamMate?.phase !== 'targeting' && G.pending?.kind !== 'intercept') {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
                 const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, mover, c, r);
@@ -1473,7 +1473,7 @@ function drawPassTargetingOverlay() {
     if (!G.activated || !ctx) return;
     const p = G.activated;
     const inTargeting        = G.passing === 'targeting' && p.hasBall;
-    const inInterceptionChoice = !!G.interceptionChoice;
+    const inInterceptionChoice = G.pending?.kind === 'intercept';
     if (!inTargeting && !inInterceptionChoice) return;
 
     // Drawn in world space (inside ctx.save/translate/restore in render()).
@@ -1567,7 +1567,7 @@ function drawPassTargetingOverlay() {
         idealTgt  = passHover;
         actualTgt = null; // not yet known
     } else if (inInterceptionChoice) {
-        const ic = G.interceptionChoice;
+        const ic = G.pending;
         idealTgt  = { col: ic.declaredCol, row: ic.declaredRow };
         actualTgt = { col: ic.actualCol,   row: ic.actualRow   };
     }
@@ -1640,7 +1640,7 @@ function drawPassTargetingOverlay() {
 
             // Interceptor highlights along the actual trajectory
             const interceptorList = G.players.filter(pl =>
-                G.interceptionChoice.interceptorIds.includes(pl.id));
+                G.pending.interceptorIds.includes(pl.id));
             for (const ip of interceptorList) {
                 ctx.fillStyle   = 'rgba(255,140,0,0.35)';
                 ctx.fillRect(ip.col * CELL, ip.row * CELL, CELL, CELL);

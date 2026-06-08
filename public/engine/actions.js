@@ -16,6 +16,55 @@ if (typeof module !== 'undefined') {
           rollArmourAndInjury, rollInjury, rollCrowdInjury } = require('./dice.js');
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// GAME FLOW — IN-PLAY ACTION LIFECYCLE   (while G.phase === 'play')
+// (For the phase machine that gets us into 'play', see core.js.)
+//
+// One activation runs:
+//     activate ─▶ choose a MODE ─▶ resolve ─▶ (maybe SUSPEND for a coach
+//                 decision ─▶ resume) ─▶ end
+//
+// activatePlayer / activateMover / activateBlitz / declareX set G.activated and
+// one MODE below; the player then moves (movePlayer) and/or taps a target. The
+// pre-activation trait gauntlet (_traitChecks) can abort the activation outright.
+//
+// MODES — the active coach's multi-step action (one at a time):
+//     G.blitz          move-then-block    activateBlitz → setBlitzTarget → blitzBlock
+//     G.passing        pass               declarePass  → throwBall
+//     G.handingOff     hand-off           declareHandoff → doHandoff
+//     G.fouling        foul               declareFoul  → executeFoul
+//     G.stabbing       Stab               declareStab  → executeStab
+//     G.pvTargeting    Projectile Vomit   declarePV    → executePV
+//     G.securingBall   Secure the Ball    secureBall   → doSecureRoll
+//     G.throwTeamMate  Throw Team-Mate    declareTTM   → pickTTMMissile → throwTeamMate
+//     G.animalSavagery berserk redirect   (set by the trait check) → resolveASHit
+//     (a plain Move sets only G.activated; a plain Block sets G.block directly.)
+//
+// SUSPEND → RESUME — resolution pauses to ask a coach yes/no/pick. Some belong to
+// the DEFENDING coach; who may answer is gated by the canUse*/can* flags in
+// truth.js (getGameContext). Each is resumed by the named resolver:
+//     G.block.phase        block sub-machine:
+//                            pick-face → pick-push → follow-up, with reaction
+//                            branches wrestle / fend / stand-firm / strip-ball /
+//                            juggernaut / pro-pick-die.
+//                            pickBlockFace, _startPush, pickPushSquare,
+//                            resolveFollowUp, resolveWrestle, resolveFend,
+//                            resolveStandFirm, resolveStripBall, resolveJuggernaut,
+//                            declareProBlock / proBlockRerollDie, rerollBlockDice
+//     G.pending = { kind, side, … } — the one suspended coach decision (only one
+//                  is ever active; G.pending.side is who may answer). By kind:
+//        'reroll'       Pro/team reroll on a failed roll  useTeamReroll/declineTeamReroll
+//        'passReroll'   passer's Pass-skill reroll        resolvePassReroll
+//        'intercept'    defender picks an interceptor     chooseInterceptor
+//        'divingTackle' defender's Diving Tackle on a dodge   resolveDivingTackle
+//        'argue'        appeal an ejected foul            resolveArgueCall
+//        'bribe'        bribe the ref on an ejected foul  resolveBribe
+//
+// END — endActivation (player done, team plays on) or endTurn (turnover / scored).
+// Both clear the MODE and SUSPEND fields (see core.js endActivation/endTurn). A
+// touchdown routes through checkTouchdown → endScoringTurn.
+// ════════════════════════════════════════════════════════════════════════════
+
 // ── pn ────────────────────────────────────────────────────────────
 // Tagged player name for rich log rendering. Side drives the color.
 function pn(p) { return `[[${p.side}:${p.name.replace(/[\[\]]/g, '')}]]`; }
@@ -857,10 +906,10 @@ function executeFoul(G, targetId) {
             return msg + ` ${pn(att)} ejected (coach already sent off). TURNOVER`;
         }
         if ((G.bribes?.[att.side] || 0) > 0) {
-            G.bribePending = { attId: att.id, side: att.side };
+            G.pending = { kind: 'bribe', attId: att.id, side: att.side };
             return msg + ' Use a bribe?';
         }
-        G.argueCallPending = { attId: att.id, side: att.side };
+        G.pending = { kind: 'argue', attId: att.id, side: att.side };
         return msg + ' Argue the call?';
     }
 
@@ -868,14 +917,14 @@ function executeFoul(G, targetId) {
 }
 
 // ── resolveArgueCall ──────────────────────────────────────────────
-// Called after executeFoul suspends into G.argueCallPending.
+// Called after executeFoul suspends into G.pending (kind 'argue').
 // use=true: roll 1d6 — 6 cancels ejection, 1-5 upholds it and ejects the coach.
 // use=false: accept the ejection without risking the coach.
 
 function resolveArgueCall(G, use) {
-    if (!G.argueCallPending) return null;
-    const { attId, side } = G.argueCallPending;
-    G.argueCallPending = null;
+    if (G.pending?.kind !== 'argue') return null;
+    const { attId, side } = G.pending;
+    G.pending = null;
     const att = G.players.find(p => p.id === attId);
     if (!att) return null;
 
@@ -903,9 +952,9 @@ function resolveArgueCall(G, use) {
 // use=false: decline the bribe, go straight to argue the call.
 
 function resolveBribe(G, use) {
-    if (!G.bribePending) return null;
-    const { attId, side } = G.bribePending;
-    G.bribePending = null;
+    if (G.pending?.kind !== 'bribe') return null;
+    const { attId, side } = G.pending;
+    G.pending = null;
     const att = G.players.find(p => p.id === attId);
     if (!att) return null;
 
@@ -916,12 +965,12 @@ function resolveBribe(G, use) {
             return `Bribe accepted — rolled ${roll}! ${pn(att)} stays on the pitch.`;
         }
         // Bribe wasted — fall through to argue
-        G.argueCallPending = { attId, side };
+        G.pending = { kind: 'argue', attId, side };
         return `Bribe wasted — rolled ${roll}! Argue the call?`;
     }
 
     // Declined — go straight to argue
-    G.argueCallPending = { attId, side };
+    G.pending = { kind: 'argue', attId, side };
     return 'Bribe declined. Argue the call?';
 }
 
@@ -1395,7 +1444,7 @@ function _doFumble(G, p, msg) {
 
 // ── _continueThrow ────────────────────────────────────────────────
 // Shared second half of a throw: pre-scatter if inaccurate, check
-// interceptors, then resolve or suspend into interceptionChoice.
+// interceptors, then resolve or suspend into G.pending (kind 'intercept').
 // Called by throwBall and resolvePassReroll to avoid duplication.
 
 function _continueThrow(G, p, targetCol, targetRow, accurate, msg) {
@@ -1424,8 +1473,9 @@ function _continueThrow(G, p, targetCol, targetRow, accurate, msg) {
 
     const interceptors = getInterceptors(G, p, actualCol, actualRow);
     if (interceptors.length > 0) {
-        G.passing            = false;
-        G.interceptionChoice = {
+        G.passing = false;
+        G.pending = {
+            kind: 'intercept', side: p.side === 'home' ? 'away' : 'home',
             declaredCol: targetCol, declaredRow: targetRow,
             actualCol,   actualRow,
             accurate,    scatterMsg,
@@ -1469,8 +1519,8 @@ function throwBall(G, targetCol, targetRow) {
 
     // Pass skill: offer one re-roll on Fumble or Inaccurate (player's choice)
     if ((isFumble || !accurate) && p.skills?.includes('Pass') && !G.hasPassReroll) {
-        G.passing          = false;
-        G.passRerollChoice = { targetCol, targetRow, target, msg, isFumble };
+        G.passing = false;
+        G.pending = { kind: 'passReroll', side: p.side, targetCol, targetRow, target, msg, isFumble };
         return msg + (isFumble ? `Fumble` : `Inaccurate`) + ` — Pass skill available.`;
     }
 
@@ -1485,13 +1535,13 @@ function throwBall(G, targetCol, targetRow) {
 }
 
 // ── resolvePassReroll ─────────────────────────────────────────────
-// Called after throwBall suspends into G.passRerollChoice.
+// Called after throwBall suspends into G.pending (kind 'passReroll').
 // use=true: spend the Pass skill reroll. use=false: accept the result.
 
 function resolvePassReroll(G, use) {
-    if (!G.passRerollChoice) return null;
-    const { targetCol, targetRow, target, msg: prevMsg, isFumble } = G.passRerollChoice;
-    G.passRerollChoice = null;
+    if (G.pending?.kind !== 'passReroll') return null;
+    const { targetCol, targetRow, target, msg: prevMsg, isFumble } = G.pending;
+    G.pending = null;
     const p = G.activated;
     if (!p) return null;
 
@@ -1544,14 +1594,14 @@ function _resolveInaccurateAtLanding(G, p, actualCol, actualRow, msg) {
 }
 
 // ── chooseInterceptor ─────────────────────────────────────────────
-// Called after throwBall suspends into G.interceptionChoice.
+// Called after throwBall suspends into G.pending (kind 'intercept').
 // interceptorId: a player id (attempt interception) or null (decline).
 
 function chooseInterceptor(G, interceptorId) {
-    if (!G.interceptionChoice) return null;
+    if (G.pending?.kind !== 'intercept') return null;
     const { declaredCol, declaredRow, actualCol, actualRow,
-            accurate, scatterMsg, interceptorIds } = G.interceptionChoice;
-    G.interceptionChoice = null;
+            accurate, scatterMsg, interceptorIds } = G.pending;
+    G.pending = null;
     const p = G.activated;
     if (!p) return null;
 
@@ -2016,8 +2066,8 @@ function _finishMove(G, p, col, row, needsrush, msg) {
     }
     if (pickupMsg) {
         msg += ' ' + pickupMsg;
-        // tryPickup may itself suspend into G.pendingReroll (team reroll on pickup).
-        if (pickupMsg.includes('TURNOVER') || G.pendingReroll) return msg;
+        // tryPickup may itself suspend into G.pending (team reroll on pickup).
+        if (pickupMsg.includes('TURNOVER') || G.pending) return msg;
     }
 
     const tdMsg = checkTouchdown(G, p);
@@ -2089,8 +2139,8 @@ function _dodgeSucceeded(G, p, col, row, needsrush, roll, target, msg) {
         const dts = _divingTacklers(G, p);
         if (dts.length > 0) {
             const dt = dts[0];
-            G.divingTackle = {
-                side: dt.side, dtId: dt.id, moverId: p.id,
+            G.pending = {
+                kind: 'divingTackle', side: dt.side, dtId: dt.id, moverId: p.id,
                 col, row, needsrush, roll, target,
                 srcCol: p.col, srcRow: p.row, msg,
             };
@@ -2101,16 +2151,16 @@ function _dodgeSucceeded(G, p, col, row, needsrush, roll, target, msg) {
 }
 
 // ── resolveDivingTackle ───────────────────────────────────────────
-// Called after a successful dodge suspends into G.divingTackle.
+// Called after a successful dodge suspends into G.pending (kind 'divingTackle').
 // use=true : −2 is applied. Since it is only offered when that breaks the dodge,
 //            the dodger now fails — knocked down in the destination square
 //            (turnover) — and the diver is placed prone in the vacated source.
 // use=false: the dodge stands and the move finishes.
 
 function resolveDivingTackle(G, use) {
-    if (!G.divingTackle) return null;
-    const { dtId, moverId, col, row, needsrush, roll, target, srcCol, srcRow, msg } = G.divingTackle;
-    G.divingTackle = null;
+    if (G.pending?.kind !== 'divingTackle') return null;
+    const { dtId, moverId, col, row, needsrush, roll, target, srcCol, srcRow, msg } = G.pending;
+    G.pending = null;
     const dt = G.players.find(x => x.id === dtId);
     const p  = G.players.find(x => x.id === moverId);
     if (!p) return null;
@@ -2141,7 +2191,7 @@ function resolveDivingTackle(G, use) {
 
 function movePlayer(G, col, row) {
     if (!G.activated) return null;
-    if (G.divingTackle) return null;   // a dodge is suspended awaiting a Diving Tackle decision
+    if (G.pending?.kind === 'divingTackle') return null;   // a dodge is suspended awaiting a Diving Tackle decision
     const { allowed, needsrush, dodgerolltarget } = canMoveTo(G, G.activated, col, row);
     if (!allowed) return null;
 
@@ -2713,7 +2763,7 @@ function throwTeamMate(G, targetCol, targetRow) {
 
 // ── Team reroll resolution ────────────────────────────────────────
 // _resolveTeamReroll is generic: it dispatches entirely through the
-// closures stored in G.pendingReroll — no per-roll knowledge here.
+// closures stored in G.pending (kind 'reroll') — no per-roll knowledge here.
 
 // ── _offerReroll ──────────────────────────────────────────────────
 // Offers a reroll for a just-failed roll: the player's Pro (once per activation,
@@ -2727,8 +2777,9 @@ function _offerReroll(G, p, opts) {
     const teamAvail = !opts.rerolled && teamRerollsLeft(G, p.side) > 0;
     if (!proAvail && !teamAvail) return opts.onFail(G, '');
 
-    G.pendingReroll = {
-        kind:      proAvail ? 'pro' : 'team',
+    G.pending = {
+        kind:      'reroll',
+        source:    proAvail ? 'pro' : 'team',   // which reroll the coach is being offered
         label:     opts.label,
         side:      p.side,
         playerId:  p.id,
@@ -2747,13 +2798,13 @@ function _offerReroll(G, p, opts) {
 // Resolves a pending reroll (Pro or team) once the coach has decided.
 
 function _resolveTeamReroll(G, used) {
-    const pr = G.pendingReroll;
-    G.pendingReroll = null;
+    const pr = G.pending;
+    G.pending = null;
     if (!pr) return '';
 
     // ── Pro: a 3+ unlocks the reroll of the single die. Once Pro is attempted
     // (used), no other reroll source may be used on this die.
-    if (pr.kind === 'pro') {
+    if (pr.source === 'pro') {
         if (used) {
             const player = G.players.find(x => x.id === pr.playerId);
             if (player) player.usedPro = true;       // once per activation
@@ -2765,7 +2816,7 @@ function _resolveTeamReroll(G, used) {
         }
         // Pro declined (not attempted) — a team reroll may still be used.
         if (pr.teamAvail) {
-            G.pendingReroll = { ...pr, kind: 'team', proRoll: 0 };
+            G.pending = { ...pr, source: 'team', proRoll: 0 };
             return '';
         }
         return pr.onFail(G, '');
