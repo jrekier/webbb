@@ -49,6 +49,22 @@ function rollBlockDice(n) {
 // Returns { armorRoll, armorBroken, injuryRoll, outcome }.
 // outcome: 'stunned' | 'ko' | 'casualty' | null (armor held).
 
+// Maps an injury roll to an outcome using the standard table, accounting for the
+// victim's Stunty (frailer) and Thick Skull (shrugs off a KO into a Stun). The
+// crowd table differs and stays inline in rollCrowdInjury.
+function _injuryOutcome(injuryRoll, p) {
+    const thickSkull = p.skills?.includes('Thick Skull');
+    const stunty     = p.skills?.includes('Stunty');
+    if (stunty) {
+        if (injuryRoll <= 6) return 'stunned';
+        if (injuryRoll <= 8) return thickSkull ? 'stunned' : 'ko';
+        return 'casualty';
+    }
+    if (injuryRoll <= 7) return 'stunned';
+    if (injuryRoll <= 9) return thickSkull ? 'stunned' : 'ko';
+    return 'casualty';
+}
+
 function rollArmourAndInjury(p, attacker) {
     const d1a = d6();
     const d2a = d6();
@@ -67,19 +83,7 @@ function rollArmourAndInjury(p, attacker) {
     const d1i        = d6();
     const d2i        = d6();
     const injuryRoll = d1i + d2i + injuryBonus;
-    const thickSkull = p.skills?.includes('Thick Skull');
-    const stunty     = p.skills?.includes('Stunty');
-
-    let outcome;
-    if (stunty) {
-        if      (injuryRoll <= 6) outcome = 'stunned';
-        else if (injuryRoll <= 8) outcome = thickSkull ? 'stunned' : 'ko';
-        else                      outcome = 'casualty';
-    } else {
-        if      (injuryRoll <= 7) outcome = 'stunned';
-        else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
-        else                      outcome = 'casualty';
-    }
+    const outcome    = _injuryOutcome(injuryRoll, p);
 
     return { armorRoll, armorBroken: true, injuryRoll, outcome };
 }
@@ -92,18 +96,7 @@ function rollInjury(p) {
     const d1 = d6();
     const d2 = d6();
     const injuryRoll  = d1 + d2;
-    const thickSkull  = p.skills?.includes('Thick Skull');
-    const stunty      = p.skills?.includes('Stunty');
-    let outcome;
-    if (stunty) {
-        if      (injuryRoll <= 6) outcome = 'stunned';
-        else if (injuryRoll <= 8) outcome = thickSkull ? 'stunned' : 'ko';
-        else                      outcome = 'casualty';
-    } else {
-        if      (injuryRoll <= 7) outcome = 'stunned';
-        else if (injuryRoll <= 9) outcome = thickSkull ? 'stunned' : 'ko';
-        else                      outcome = 'casualty';
-    }
+    const outcome     = _injuryOutcome(injuryRoll, p);
     return { d1, d2, injuryRoll, outcome };
 }
 

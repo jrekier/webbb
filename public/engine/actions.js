@@ -11,7 +11,7 @@ if (typeof module !== 'undefined') {
           isInKickerHalf, isValidKickTarget, canMoveTo,
           markStunned, rollWeather } = require('./helpers.js');
     var { activatePlayer, endTurn, endActivation,
-          resetAfterTouchdown } = require('./core.js');
+          resetAfterTouchdown, endScoringTurn } = require('./core.js');
     var { d6, rush, dodge, BLOCK_FACES, rollBlockDice,
           rollArmourAndInjury, rollInjury, rollCrowdInjury } = require('./dice.js');
 }
@@ -19,6 +19,16 @@ if (typeof module !== 'undefined') {
 // ── pn ────────────────────────────────────────────────────────────
 // Tagged player name for rich log rendering. Side drives the color.
 function pn(p) { return `[[${p.side}:${p.name.replace(/[\[\]]/g, '')}]]`; }
+
+// ── _applyOutcome ─────────────────────────────────────────────────
+// Applies a broken-armour injury outcome to a player and returns the canonical
+// log label. Stunned routes through markStunned (so the recover-next-turn timing
+// is set); KO and Casualty leave the pitch.
+function _applyOutcome(p, outcome) {
+    if (outcome === 'stunned') { markStunned(p); return 'Stunned.'; }
+    if (outcome === 'ko')      { p.status = 'ko';       p.col = -1; p.row = -1; return "KO'd!"; }
+    p.status = 'casualty'; p.col = -1; p.row = -1; return 'CASUALTY!';
+}
 
 // ── knockDown ─────────────────────────────────────────────────────
 // Sets a player prone, drops the ball, rolls armour + injury.
@@ -39,23 +49,27 @@ function knockDown(G, p, { attacker } = {}) {
     if (!armorBroken) {
         return `AV ${armorRoll}/${p.av} — armour holds.`;
     }
-    if (outcome === 'stunned') {
-        markStunned(p);
-        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: Stunned.`;
-    }
-    if (outcome === 'ko') {
-        p.status = 'ko';
-        p.col    = -1;
-        return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: KO'd!`;
-    }
-    p.status = 'casualty';
-    p.col    = -1;
-    return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: CASUALTY!`;
+    return `AV ${armorRoll}/${p.av} broken! Inj ${injuryRoll}: ${_applyOutcome(p, outcome)}`;
 }
 
 // ── _boneHeadCheck / _reallyStupidCheck / _animalSavageryCheck ────
 // Pre-activation trait checks. Each returns { msg, abort } when the
 // trait fires, null when absent.
+
+// Shared cleanup when a pre-activation trait (Bone Head / Really Stupid /
+// Animal Savagery with no target) fails: the player is Distracted and their
+// activation is wasted. Clears ALL activation/targeting state — in particular
+// G.targeting, which a block declaration left set; leaving it would soft-lock
+// the UI in targeting mode with no active player.
+function _failTrait(G, p) {
+    p.distracted    = true;
+    p.usedAction    = true;
+    G.activated     = null;
+    G.block         = null;
+    G.blitz         = null;
+    G.targeting     = null;
+    G.throwTeamMate = null;
+}
 
 function _boneHeadCheck(G, p) {
     if (!p.skills?.includes('Bone Head')) return null;
@@ -64,12 +78,7 @@ function _boneHeadCheck(G, p) {
         p.distracted = false;
         return { msg: `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — OK!`, abort: false };
     }
-    p.distracted = true;
-    p.usedAction = true;
-    G.activated  = null;
-    G.block      = null;
-    G.blitz      = null;
-    G.throwTeamMate = null;
+    _failTrait(G, p);
     return { msg: `${pn(p)} [[skill:Bone Head]] (rolled ${roll}) — activation lost!`, abort: true };
 }
 
@@ -89,12 +98,7 @@ function _reallyStupidCheck(G, p) {
         p.distracted = false;
         return { msg: `${pn(p)} [[skill:Really Stupid]] (${ctx}, rolled ${roll}/${target}+) — OK!`, abort: false };
     }
-    p.distracted = true;
-    p.usedAction   = true;
-    G.activated    = null;
-    G.block        = null;
-    G.blitz        = null;
-    G.throwTeamMate = null;
+    _failTrait(G, p);
     return { msg: `${pn(p)} [[skill:Really Stupid]] (${ctx}, rolled ${roll}/${target}+) — too stupid to act!`, abort: true };
 }
 
@@ -114,12 +118,7 @@ function _animalSavageryCheck(G, p, isBlockOrBlitz) {
     );
 
     if (adjacentFriends.length === 0) {
-        p.distracted = true;
-        p.usedAction   = true;
-        G.activated    = null;
-        G.block        = null;
-        G.blitz        = null;
-        G.throwTeamMate = null;
+        _failTrait(G, p);
         return { msg: base + ' No adjacent teammate — activation lost.', abort: true };
     }
 
@@ -145,6 +144,22 @@ function resolveASHit(G, targetId) {
     return msg.trimEnd();
 }
 
+// ── _traitChecks ──────────────────────────────────────────────────
+// Runs the pre-activation trait gauntlet in order: Bone Head → Really Stupid →
+// Animal Savagery. Returns { abort, msg }: when abort is true the activation is
+// lost and msg is the full reason; otherwise msg is the prefix to prepend to the
+// action's log (and G.animalSavagery may have been set for the berserk redirect,
+// which the caller checks). isBlockOrBlitz feeds Animal Savagery's easier 2+ test.
+function _traitChecks(G, p, isBlockOrBlitz) {
+    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)                       : null;
+    if (bh?.abort) return { abort: true, msg: bh.msg };
+    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)                   : null;
+    if (rs?.abort) return { abort: true, msg: [bh?.msg, rs.msg].filter(Boolean).join(' ') };
+    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, isBlockOrBlitz) : null;
+    if (as?.abort) return { abort: true, msg: [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ') };
+    return { abort: false, msg: [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ') };
+}
+
 
 // ── declareBlock ─────────────────────────────────────────────────
 // Rolls block dice and sets G.block with phase 'pick-face'.
@@ -154,13 +169,9 @@ function resolveASHit(G, targetId) {
 // trigger Frenzy)" from "second block (Frenzy already spent)".
 
 function declareBlock(G, att, def) {
-    const bh = att.skills?.includes('Bone Head')      ? _boneHeadCheck(G, att)             : null;
-    if (bh?.abort) return bh.msg;
-    const rs = att.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, att)         : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = att.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, att, true) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, att, true);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     let { attStr, defStr } = countAssists(G, att, def);
     if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') {
@@ -273,7 +284,12 @@ function proBlockRerollDie(G, idx) {
 function _startPush(G, att, def) {
     G.block.phase       = 'pick-push';
     G.block.pushSquares = getPushSquares(G, att, def);
-    const falls = G.block.chosenFace.id !== 'PUSH';
+    // Whether the defender actually falls — Dodge turns Defender Stumbles into a
+    // plain push (unless the attacker has Tackle). Mirror pickPushSquare's logic
+    // so the message matches the outcome.
+    const id = G.block.chosenFace.id;
+    const falls = id === 'DEF_DOWN'
+        || (id === 'DEF_STUMBLES' && (!def.skills?.includes('Dodge') || att.skills?.includes('Tackle')));
     const prefix = `${pn(def)} is pushed back${falls ? ' and falls!' : '.'}  `;
     if (def.skills?.includes('Stand Firm') && !(att.skills?.includes('Juggernaut') && G.blitz)) {
         G.block.phase = 'stand-firm-choice';
@@ -288,9 +304,10 @@ function _startPush(G, att, def) {
 }
 
 // ── Both Down resolution (with optional Wrestle) ──────────────────
-// Wrestle lets either player, on a Both Down, place BOTH players prone with
-// no armour rolls (a turnover, since the active attacker goes down). It is
-// optional, so it is offered as a choice; it overrides the opponent's Block.
+// Wrestle lets either player, on a Both Down, place BOTH players prone with no
+// armour rolls. This is NOT a turnover — Placed Prone is distinct from a
+// Knock-down (see resolveWrestle). It is optional, so it is offered as a choice;
+// it overrides the opponent's Block.
 
 function _bothDown(G, att, def) {
     // Juggernaut (during a Blitz): the defender cannot use Wrestle against this
@@ -576,6 +593,7 @@ function resolveFollowUp(G, followUp) {
     // Frenzy second block: only on the first block, def still standing and adjacent
     // (if Fend denied the follow-up, att didn't move and is no longer adjacent — naturally blocked).
     if (!frenzy && att.skills?.includes('Frenzy') && def && def.col >= 0 && isStanding(def) && isAdjacent(att, def)) {
+        const pre = `${followMsg}${scatterMsg} `;
         if (G.blitz) {
             if (att.maLeft > 0) {
                 att.maLeft--;
@@ -583,13 +601,16 @@ function resolveFollowUp(G, followUp) {
                 const { roll, failed } = rush();
                 att.rushLeft--;
                 if (failed) {
-                    let injMsg = knockDown(G, att);
-                    if (!G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row) injMsg += ' ' + scatterBall(G);
-                    G.blitz = null;
-                    att.usedAction = true;
-                    G.activated = null;
-                    endTurn(G);
-                    return `${followMsg}${scatterMsg} — [[skill:Frenzy]] rush (rolled ${roll}) fails! ${injMsg} TURNOVER`;
+                    // Failed GFI for the second block — offer a reroll, like the first block.
+                    const failBase = pre + `— [[skill:Frenzy]] rush (rolled ${roll}) fails! `;
+                    const { roll: r2, failed: f2 } = rush();
+                    return _offerReroll(G, att, {
+                        rerolled: false, label: 'rush', secondFailed: f2, baseMsg: failBase,
+                        successMsg: `Team reroll: ${pn(att)} [[move:rushes]] (rolled ${r2}). `,
+                        failMsg:    `Team reroll: ${pn(att)} fails rush again (rolled ${r2}). `,
+                        onSuccess: (G, suffix) => _throwFrenzySecondBlock(G, att, def, pre + suffix),
+                        onFail:    (G, suffix) => _frenzyGfiTurnover(G, att, failBase + suffix),
+                    });
                 }
             } else {
                 // No MA left, no Rush available — second block impossible
@@ -597,17 +618,10 @@ function resolveFollowUp(G, followUp) {
                 G.targeting = null;   // clear blitz targeting so the coach isn't soft-locked
                 att.usedAction = true;
                 G.activated = null;
-                return `${followMsg}${scatterMsg} — no MA for [[skill:Frenzy]] second block.`;
+                return pre + `— no MA for [[skill:Frenzy]] second block.`;
             }
         }
-
-        const { attStr, defStr } = countAssists(G, att, def);
-        const { dice, chooser }  = blockDiceCount(attStr, defStr);
-        const rolls = rollBlockDice(dice);
-        // frenzy: true marks this as the Frenzy second block so resolveFollowUp won't spawn a third.
-        G.block = { att, def, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null, frenzy: true };
-        const maMsg = G.blitz ? ` · ${att.maLeft} MA left` : '';
-        return `${followMsg}${scatterMsg} [[skill:Frenzy]]! Second block — ${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d${maMsg}`;
+        return _throwFrenzySecondBlock(G, att, def, pre);
     }
 
     // Normal end of activation — a blitzer with movement (MA or a Rush) left
@@ -615,6 +629,26 @@ function resolveFollowUp(G, followUp) {
     const wasBlitz = G.blitz;
     G.blitz = null;
     return followMsg + _endNoTurnoverBlock(G, att, wasBlitz) + scatterMsg;
+}
+
+// Rolls the mandatory Frenzy second block once its movement cost (if any) is paid.
+function _throwFrenzySecondBlock(G, att, def, preMsg) {
+    const { attStr, defStr } = countAssists(G, att, def);
+    const { dice, chooser }  = blockDiceCount(attStr, defStr);
+    const rolls = rollBlockDice(dice);
+    G.hasBlocked = true;
+    // frenzy: true marks this as the second block so resolveFollowUp won't spawn a third.
+    G.block = { att, def, rolls, chooser, phase: 'pick-face', chosenFace: null, pushSquares: null, frenzy: true };
+    const maMsg = G.blitz ? ` · ${att.maLeft} MA left` : '';
+    return `${preMsg}[[skill:Frenzy]]! Second block — ${pn(att)} (ST${attStr}) [[block:blocks]] ${pn(def)} (ST${defStr}) · ${dice}d${maMsg}`;
+}
+
+// A failed Go For It taken for the Frenzy second block: attacker down, turnover.
+function _frenzyGfiTurnover(G, att, msg) {
+    let injMsg = knockDown(G, att);
+    if (!G.ball.carrier && G.ball.col === att.col && G.ball.row === att.row) injMsg += ' ' + scatterBall(G);
+    endTurn(G);   // clears the activation (blitz/targeting) and flips the turn
+    return `${msg}${injMsg} TURNOVER`;
 }
 
 // ── resolveStripBall ──────────────────────────────────────────────
@@ -767,13 +801,9 @@ function resolveStandFirm(G, use) {
 function declareFoul(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, false);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
     G.activated = p;
     G.sel       = p;
     G.fouling   = true;
@@ -806,17 +836,7 @@ function executeFoul(G, targetId) {
     if (roll >= def.av) {
         const { d1: di1, d2: di2, injuryRoll, outcome } = rollInjury(def);
         if (di1 === di2) spotted = true;
-        msg += `AV broken! Inj ${injuryRoll}: `;
-        if (outcome === 'stunned') {
-            markStunned(def);
-            msg += 'Stunned.';
-        } else if (outcome === 'ko') {
-            def.status = 'ko'; def.col = -1; def.row = -1;
-            msg += "KO'd!";
-        } else {
-            def.status = 'casualty'; def.col = -1; def.row = -1;
-            msg += 'CASUALTY!';
-        }
+        msg += `AV broken! Inj ${injuryRoll}: ${_applyOutcome(def, outcome)}`;
         if (!G.ball.carrier && G.ball.col === defCol && G.ball.row === defRow) {
             G.ball.col = defCol; G.ball.row = defRow;
             msg += ' ' + scatterBall(G);
@@ -912,13 +932,9 @@ function activateBlitz(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
     G.hasBlitzed = true;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)             : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)         : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, true) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, true);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     G.hasBlocked = false;   // fresh activation — no block thrown yet
     G.activated  = p;
@@ -1173,6 +1189,9 @@ function checkTouchdown(G, p) {
     G.score         = G.score || { home: 0, away: 0 };
     G.score[p.side] += 1;
     let msg = `TOUCHDOWN! ${p.side.toUpperCase()} scores! (${G.score.home}–${G.score.away})`;
+    // End the scoring team's turn (advances the turn counter; may end the half).
+    const endMsg = endScoringTurn(G, p.side);
+    if (endMsg) return `${msg} ${endMsg}`;   // half/game ended here — no fresh drive
     resetAfterTouchdown(G, p.side);
     if (G._koRollMsg) { msg += ` KO rolls: ${G._koRollMsg}.`; G._koRollMsg = null; }
     return msg;
@@ -1203,13 +1222,9 @@ function doSecureRoll(G, p) {
 function secureBall(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, false);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     G.activated    = p;
     G.sel          = p;
@@ -1312,13 +1327,9 @@ function _resolveAccuratePass(G, p, targetCol, targetRow, msg) {
 function declarePass(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, false);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     G.activated     = p;
     G.sel           = p;
@@ -1583,13 +1594,9 @@ function chooseInterceptor(G, interceptorId) {
 function declareHandoff(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, false);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     G.activated  = p;
     G.sel        = p;
@@ -1766,9 +1773,7 @@ function _applyKickoffEvent(G, aimCol, aimRow) {
         case 'Dodgy Snack': {
             const hr = d6(), ar = d6();
             msg += ` — HOME ${hr} vs AWAY ${ar}.`;
-            const affected = hr <= ar ? ['home'] : [];
-            if (ar <= hr) affected.push('away');
-            // Avoid duplicates when tied
+            // The lower roller suffers the dodgy snack; a tie hits both.
             const sides = hr === ar ? ['home', 'away'] : (hr < ar ? ['home'] : ['away']);
             for (const side of sides) {
                 const onPitch = G.players.filter(p => p.side === side && p.col >= 0 && p.status === 'active');
@@ -2212,13 +2217,9 @@ function activateMover(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
 
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, false);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
     const preMsg  = prefix ? prefix + ' ' : '';
 
     if (p.status !== 'prone') {
@@ -2266,13 +2267,9 @@ function activateMover(G, playerId) {
 function declarePV(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, false);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     G.activated   = p;
     G.sel         = p;
@@ -2316,20 +2313,7 @@ function executePV(G, targetId) {
         G.ball.row     = victim.row;
     }
 
-    msg += `AV ${armorRoll}/${victim.av} broken! Inj ${injuryRoll}: `;
-    if (outcome === 'stunned') {
-        victim.status = 'prone';
-        markStunned(victim);
-        msg += 'Stunned.';
-    } else if (outcome === 'ko') {
-        victim.status = 'ko';
-        victim.col    = -1;
-        msg += "KO'd!";
-    } else {
-        victim.status = 'casualty';
-        victim.col    = -1;
-        msg += 'CASUALTY!';
-    }
+    msg += `AV ${armorRoll}/${victim.av} broken! Inj ${injuryRoll}: ${_applyOutcome(victim, outcome)}`;
     if (hadBall) msg += ' ' + scatterBall(G);
     return msg;
 }
@@ -2344,13 +2328,9 @@ function executePV(G, targetId) {
 function declareStab(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, true)  : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, true);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     G.activated  = p;
     G.sel        = p;
@@ -2391,20 +2371,7 @@ function executeStab(G, targetId) {
         G.ball.row     = def.row;
     }
 
-    msg += `AV ${armorRoll}/${def.av} broken! Inj ${injuryRoll}: `;
-    if (outcome === 'stunned') {
-        def.status = 'prone';
-        markStunned(def);
-        msg += 'Stunned.';
-    } else if (outcome === 'ko') {
-        def.status = 'ko';
-        def.col    = -1;
-        msg += "KO'd!";
-    } else {
-        def.status = 'casualty';
-        def.col    = -1;
-        msg += 'CASUALTY!';
-    }
+    msg += `AV ${armorRoll}/${def.av} broken! Inj ${injuryRoll}: ${_applyOutcome(def, outcome)}`;
     if (hadBall) msg += ' ' + scatterBall(G);
     return msg;
 }
@@ -2418,13 +2385,9 @@ function executeStab(G, targetId) {
 function declareTTM(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
-    const bh = p.skills?.includes('Bone Head')      ? _boneHeadCheck(G, p)              : null;
-    if (bh?.abort) return bh.msg;
-    const rs = p.skills?.includes('Really Stupid')   ? _reallyStupidCheck(G, p)          : null;
-    if (rs?.abort) return [bh?.msg, rs.msg].filter(Boolean).join(' ');
-    const as = p.skills?.includes('Animal Savagery') ? _animalSavageryCheck(G, p, false) : null;
-    if (as?.abort) return [bh?.msg, rs?.msg, as.msg].filter(Boolean).join(' ');
-    const prefix = [bh?.msg, rs?.msg, as?.msg].filter(Boolean).join(' ');
+    const t = _traitChecks(G, p, false);
+    if (t.abort) return t.msg;
+    const prefix = t.msg;
 
     G.activated = p;
     G.sel       = p;

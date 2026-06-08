@@ -208,12 +208,18 @@ function endTurn(G) {
     G.interceptionChoice = null;
     G.pendingReroll      = null;
     G.divingTackle       = null;
-    // Turn increments when the receiver becomes active again (completing a full round).
-    if (G.active === G.receiver) G.turn += 1;
+    // A half's opening team — the receiver of that half's FIRST kickoff — is
+    // fixed for the whole half. It does NOT change when a touchdown swaps the
+    // kicker/receiver roles (resetAfterTouchdown sets kicker = scorer). The turn
+    // counter ticks each time that opener starts a turn, so every side still gets
+    // exactly TURNS turns per half no matter how many touchdowns are scored.
+    // (Counting off the mutable G.receiver handed teams extra turns after a score.)
+    const firstHalfKicker = G.firstHalfReceiver === 'home' ? 'away' : 'home';
+    const halfOpener      = G.half === 1 ? G.firstHalfReceiver : firstHalfKicker;
+    if (G.active === halfOpener) G.turn += 1;
 
     // The kicker goes second, so they finish each round last.
     // Half 1 ends after both teams complete TURNS turns (kicker finishes turn TURNS).
-    const firstHalfKicker = G.firstHalfReceiver === 'home' ? 'away' : 'home';
     if (G.half === 1 && justFinished === firstHalfKicker && G.turn > TURNS) {
         return startHalfTime(G);
     }
@@ -223,6 +229,27 @@ function endTurn(G) {
     }
 
     return `Turn ${G.turn} · ${G.active.toUpperCase()}`;
+}
+
+// ── endScoringTurn ────────────────────────────────────────────────
+// A touchdown ends the scoring team's turn. Account for it exactly like a normal
+// end-of-turn: the conceding team acts next, so the turn counter ticks when that
+// team is the half's opener, and the half/game may end right here — a score on
+// the last turn goes to half-time / full-time, NOT a fresh drive. Returns the
+// half/game-end message when the half ended (startHalfTime/startGameOver have
+// already run), or null when the half continues and the caller starts a new drive.
+function endScoringTurn(G, scoringSide) {
+    const conceding       = scoringSide === 'home' ? 'away' : 'home';
+    const firstHalfKicker = G.firstHalfReceiver === 'home' ? 'away' : 'home';
+    const halfOpener      = G.half === 1 ? G.firstHalfReceiver : firstHalfKicker;
+    if (conceding === halfOpener) G.turn += 1;
+    if (G.half === 1 && scoringSide === firstHalfKicker && G.turn > TURNS) {
+        return startHalfTime(G);
+    }
+    if (G.half === 2 && scoringSide === G.firstHalfReceiver && G.turn > TURNS * 2) {
+        return startGameOver(G);
+    }
+    return null;
 }
 
 // ── startHalfTime ────────────────────────────────────────────────
@@ -508,8 +535,11 @@ function validateSetup(G, side) {
         errors.push(`You must field all ${mustField} available players.`);
     if (onPitch.length > 7)
         errors.push('You cannot have more than 7 players on the pitch.');
-    if (onPitch.filter(p => p.row === losRow).length < 3)
-        errors.push('At least 3 players must be on the line of scrimmage.');
+    // Normally 3 on the line, but a depleted team that can field fewer than 3
+    // just puts all of them on the line (otherwise setup could never be confirmed).
+    const losNeeded = Math.min(3, mustField);
+    if (onPitch.filter(p => p.row === losRow).length < losNeeded)
+        errors.push(`At least ${losNeeded} player${losNeeded === 1 ? '' : 's'} must be on the line of scrimmage.`);
     if (onPitch.filter(p => p.col <= 1).length > 2)
         errors.push('Max 2 players in the left wide zone (cols 0–1).');
     if (onPitch.filter(p => p.col >= 9).length > 2)
@@ -672,7 +702,7 @@ if (typeof module !== 'undefined') {
         activatePlayer, cancelActivation, endActivation, endTurn,
         fixReferences,
         FORMATION_HOME, FORMATION_AWAY, initFormations,
-        resetAfterTouchdown, startHalfTime, startGameOver,
+        resetAfterTouchdown, startHalfTime, startGameOver, endScoringTurn,
         initToss, chooseTossResult,
         moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, validateSetup, confirmSetup,
         moveSolidDefencePlayer, demoteSolidDefencePlayer,

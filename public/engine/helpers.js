@@ -144,33 +144,26 @@ function countAssists(G, att, def) {
         p.side === side && isStanding(p) && !p.distracted && p.id !== att.id && p.id !== def.id
     );
 
-    const attAssists = friends(att.side).filter(helper => {
-        if (!isAdjacent(helper, def)) return false;
-        // Guard grants an assist even when marked — unless an adjacent opponent
-        // switches it off with Defensive (during this helper's own turn).
+    // An assisting helper counts unless it is itself marked by an enemy other
+    // than the blocked player. Guard grants the assist even when marked — unless
+    // an adjacent opponent switches it off with Defensive during the helper's own
+    // turn. `target` is the player being blocked; `markSide` is the team that can
+    // mark the helper off.
+    const sideAssists = (helpers, target, markSide) => helpers.filter(helper => {
+        if (!isAdjacent(helper, target)) return false;
         if (helper.skills?.includes('Guard')
             && !(G.active === helper.side && G.players.some(e =>
                 e.side !== helper.side && isStanding(e) && !e.distracted
                 && e.skills?.includes('Defensive') && isAdjacent(e, helper))))
             return true;
         return !G.players.some(enemy =>
-            enemy.side === def.side && isStanding(enemy) && !enemy.distracted
-            && enemy.id !== def.id && isAdjacent(helper, enemy)
+            enemy.side === markSide && isStanding(enemy) && !enemy.distracted
+            && enemy.id !== target.id && isAdjacent(helper, enemy)
         );
     }).length;
 
-    const defAssists = friends(def.side).filter(helper => {
-        if (!isAdjacent(helper, att)) return false;
-        if (helper.skills?.includes('Guard')
-            && !(G.active === helper.side && G.players.some(e =>
-                e.side !== helper.side && isStanding(e) && !e.distracted
-                && e.skills?.includes('Defensive') && isAdjacent(e, helper))))
-            return true;
-        return !G.players.some(enemy =>
-            enemy.side === att.side && isStanding(enemy) && !enemy.distracted
-            && enemy.id !== att.id && isAdjacent(helper, enemy)
-        );
-    }).length;
+    const attAssists = sideAssists(friends(att.side), def, def.side);
+    const defAssists = sideAssists(friends(def.side), att, att.side);
 
     return {
         attStr: att.st + attAssists,
