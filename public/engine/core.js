@@ -18,7 +18,7 @@ if (typeof module !== 'undefined') {
 // The game advances through the phases below; each arrow names the function that
 // makes the transition. A "drive" is one kickoff-to-score/turnover sequence; a
 // half is several drives. The in-play action lifecycle (what happens during
-// 'play') is documented at the top of actions.js.
+// 'play') is documented at the top of resolve.js.
 //
 //   toss                       initToss picks the coin-toss winner
 //     │  chooseTossResult('kick' | 'receive')
@@ -54,7 +54,7 @@ if (typeof module !== 'undefined') {
 // ── createInitialState ────────────────────────────────────────────
 
 // The whole game state object, G. Field groups (see the flow docs above and in
-// actions.js for how they're driven):
+// resolve.js for how they're driven):
 //   • progress      — phase, half, turn, active, score, kicker/receiver, setupSide
 //   • team resources— rerolls, bribes, cheerleaders, coaches, fanFactor, apothecary
 //   • current action— activated, sel, and the MODE flags (block, blitz, passing,
@@ -149,7 +149,7 @@ function activatePlayer(G, playerId) {
 // through these helpers so the lifecycle functions (endActivation / cancel /
 // endTurn / half-time / touchdown) can't each forget a different field — the
 // class of bug behind stale-targeting freezes. See the action-lifecycle map at
-// the top of actions.js for what each field drives.
+// the top of resolve.js for what each field drives.
 
 // Action/decision state tied to the CURRENT activation: the multi-step action
 // MODE flags and the suspend/resume coach-decision channels. (G.block is owned by
@@ -632,7 +632,7 @@ function swapReservePlayer(G, reserveId, pitchId) {
 
 // ── Kickoff event — position helpers ─────────────────────────────
 // These modify player positions during interactive kickoff events.
-// The actual scatter/resolution lives in actions.js (resolveKickScatter).
+// The actual scatter/resolution lives in kickoff.js (resolveKickScatter).
 
 // ── moveSolidDefencePlayer ────────────────────────────────────────
 // Move a kicker's on-pitch player within their own half during Solid Defence.

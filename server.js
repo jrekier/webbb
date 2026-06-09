@@ -110,37 +110,6 @@ function loadTeamDef(filename) {
 const DEFAULT_HOME = loadTeamDef('team-humans.json');
 const DEFAULT_AWAY = loadTeamDef('team-orcs.json');
 
-// ── Lobby ─────────────────────────────────────────────────────────
-// Clients in the lobby are waiting to create or join a room.
-
-const lobby = new Set();  // WebSocket connections currently in the lobby
-
-function enterLobby(ws) {
-    lobby.add(ws);
-    sendLobbyState(ws);
-}
-
-function leaveLobby(ws) {
-    lobby.delete(ws);
-}
-
-function lobbySnapshot() {
-    // Only expose what the lobby needs to display
-    return Array.from(rooms.values()).map(r => ({
-        id:     r.id,
-        status: r.G ? 'playing' : 'waiting',
-    }));
-}
-
-function sendLobbyState(ws) {
-    ws.send(JSON.stringify({ type: 'LOBBY_UPDATE', rooms: lobbySnapshot() }));
-}
-
-function broadcastLobbyUpdate() {
-    const msg = JSON.stringify({ type: 'LOBBY_UPDATE', rooms: lobbySnapshot() });
-    for (const ws of lobby) ws.send(msg);
-}
-
 // ── Room manager ──────────────────────────────────────────────────
 // Each room is fully isolated: own game state, own sockets.
 
@@ -250,10 +219,8 @@ function createRoom(ws, authToken, preassignedRoomId) {
     const room      = { id, home: ws, away: null, G: null, lastLogMsg: null, tokens: { home: homeToken, away: null },
                         homeTeamDef: verifyAuthToken(authToken) || null, awayTeamDef: null };
     rooms.set(id, room);
-    leaveLobby(ws);
     ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id, token: homeToken }));
     console.log(`Room ${id} created`);
-    broadcastLobbyUpdate();
 
     // If the away player connected first (race condition), complete their join now.
     const pending = pendingJoins.get(id);
@@ -272,12 +239,10 @@ function _doJoinRoom(ws, room, authToken) {
     room.away        = ws;
     room.tokens.away = awayToken;
     room.awayTeamDef = verifyAuthToken(authToken) || null;
-    leaveLobby(ws);
     // Tell away player their side before START arrives so NET.side is set in time
     ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId: room.id, token: awayToken }));
     console.log(`Room ${room.id}: away joined — starting game`);
     startGame(room);
-    broadcastLobbyUpdate();
 }
 
 function joinRoom(ws, roomId, authToken) {
@@ -342,7 +307,6 @@ function destroyRoom(room) {
     rooms.delete(room.id);
     unpersistRoom(room.id);
     console.log(`Room ${room.id} destroyed`);
-    broadcastLobbyUpdate();
 }
 
 // ── Game initialisation ───────────────────────────────────────────
@@ -418,7 +382,6 @@ wss.on('connection', (ws) => {
         let msg;
         try { msg = JSON.parse(raw); } catch { return; }
 
-        if (msg.type === 'ENTER_LOBBY') { enterLobby(ws);                                    return; }
         if (msg.type === 'CREATE_ROOM') { createRoom(ws, msg.authToken, msg.roomId);         return; }
         if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId, msg.authToken);          return; }
         if (msg.type === 'RECONNECT') {
@@ -495,7 +458,6 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        leaveLobby(ws);
         const room = roomOf(ws);
         if (!room) return;
         const side = sideOf(room, ws);

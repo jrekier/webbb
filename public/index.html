@@ -115,26 +115,6 @@
   <button class="ts-back-btn" onclick="showScreen('welcome');">← Back</button>
 </div>
 
-<!-- ── Lobby screen ────────────────────────────────────────── -->
-<div id="screen-lobby" class="screen hidden">
-  <div id="lobby-inner">
-    <h1>Lobby</h1>
-
-    <section class="lobby-section">
-      <div class="lobby-section-title">Open games</div>
-      <div id="lobby-waiting-list"></div>
-      <button class="lobby-create-btn" onclick="onClickCreateRoom();">+ New game</button>
-    </section>
-
-    <section class="lobby-section">
-      <div class="lobby-section-title">In progress</div>
-      <div id="lobby-playing-list"></div>
-    </section>
-
-    <button class="lobby-back-btn" onclick="showScreen('welcome');">← Back</button>
-  </div>
-</div>
-
 <!-- ── Waiting screen ─────────────────────────────────────── -->
 <div id="screen-waiting" class="screen hidden">
   <h2>Waiting for opponent…</h2>
@@ -285,7 +265,13 @@
 <script src="engine/helpers.js"></script>
 <script src="engine/core.js"></script>
 <script src="engine/dice.js"></script>
-<script src="engine/actions.js"></script>
+<!-- resolution layer (split from the former actions.js) -->
+<script src="engine/resolve.js"></script>
+<script src="engine/block.js"></script>
+<script src="engine/move.js"></script>
+<script src="engine/pass.js"></script>
+<script src="engine/kickoff.js"></script>
+<script src="engine/special.js"></script>
 <script src="engine/teams.js"></script>
 <script src="engine/truth.js"></script>
 <script src="client/sprites.js"></script>
@@ -293,7 +279,6 @@
 <script src="client/input.js"></script>
 <script src="client/network.js"></script>
 <script src="client/game.js"></script>
-<script src="client/lobby.js"></script>
 <script src="client/welcome.js"></script>
 
 <script>

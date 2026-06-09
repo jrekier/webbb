@@ -113,13 +113,3 @@ function onClickStartLocalGame() {
     const away = _allTeams[_selectedAwayKey];
     startGame(home, away);
 }
-
-// ── Online game ───────────────────────────────────────────────────
-
-function onClickOnline() {
-    connect().then(() => enterLobby());
-}
-
-function onClickCreateRoom() {
-    sendAction({ type: 'CREATE_ROOM' });
-}

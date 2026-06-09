@@ -1,7 +1,8 @@
 // helpers.js
 // Read-only queries, game constants, and small player-state helpers.
 // No dice rolls. Works identically in browser and Node.js.
-// Everything in this file is a building block used by core.js and actions.js.
+// Everything in this file is a building block used by core.js and the
+// resolution layer (resolve.js + the block/move/pass/kickoff/special modules).
 
 var COLS  = 11;
 var ROWS  = 20;

@@ -83,8 +83,9 @@ function _hideReconnecting() {
 }
 
 // ── connect ───────────────────────────────────────────────────────
-// Opens a WebSocket connection to the server.
-// Does NOT create or join a room — call createRoom() or joinRoom() after.
+// Opens a WebSocket connection to the server. On open it auto-resumes a saved
+// session (RECONNECT); the bbauth entry flow (welcome.js) sends CREATE_ROOM /
+// JOIN_ROOM with its token after connecting.
 
 function connect() {
     return new Promise((resolve, reject) => {
@@ -107,16 +108,6 @@ function connect() {
             reject(err);
         };
     });
-}
-
-// ── createRoom / joinRoom ─────────────────────────────────────────
-
-function createRoom() {
-    sendAction({ type: 'CREATE_ROOM', authToken: window._authToken || null });
-}
-
-function joinRoom(roomId) {
-    sendAction({ type: 'JOIN_ROOM', roomId, authToken: window._authToken || null });
 }
 
 // ── reconnect token helpers ───────────────────────────────────────
@@ -145,10 +136,6 @@ function netReceive(msg) {
     console.log('Received:', msg.type);
 
     switch (msg.type) {
-
-        case 'LOBBY_UPDATE':
-            onLobbyUpdate(msg.rooms);
-            break;
 
         case 'ROOM_CREATED':
             NET.side   = msg.side;
