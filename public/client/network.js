@@ -9,6 +9,14 @@ var NET = {
     ws:     null,
 };
 
+// When we're embedded in the bbauth wrapper (an iframe), tell the parent when
+// the match ends so a refresh of the wrapper page won't try to resume a
+// finished game. No-op when running standalone.
+function _notifyParent(type) {
+    try { if (window.parent && window.parent !== window) window.parent.postMessage({ source: 'webbb', type }, '*'); }
+    catch {}
+}
+
 // ── Auto-reconnect ────────────────────────────────────────────────
 // When the WebSocket drops mid-game we keep retrying (with exponential
 // backoff + jitter, capped) for as long as a saved session exists. The
@@ -84,8 +92,8 @@ function _hideReconnecting() {
 
 // ── connect ───────────────────────────────────────────────────────
 // Opens a WebSocket connection to the server. On open it auto-resumes a saved
-// session (RECONNECT); the bbauth entry flow (welcome.js) sends CREATE_ROOM /
-// JOIN_ROOM with its token after connecting.
+// session (RECONNECT); the bbauth entry flow (welcome.js) sends ATTACH with its
+// token after connecting, claiming its slot in a pre-registered room.
 
 function connect() {
     return new Promise((resolve, reject) => {
@@ -137,20 +145,15 @@ function netReceive(msg) {
 
     switch (msg.type) {
 
-        case 'ROOM_CREATED':
+        case 'ATTACHED':
+            // We've claimed our pre-registered slot. The opponent may or may not
+            // have attached yet, so wait until START arrives (it follows once both
+            // sides are present). Whoever attaches first sees the waiting screen briefly.
             NET.side   = msg.side;
             NET.roomId = msg.roomId;
             NET.online = true;
             localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side, token: msg.token }));
-            onRoomReady(msg.side);  // home waits for opponent
-            break;
-
-        case 'ROOM_JOINED':
-            NET.side   = msg.side;
-            NET.roomId = msg.roomId;
-            NET.online = true;
-            localStorage.setItem('bbReconnect', JSON.stringify({ roomId: msg.roomId, side: msg.side, token: msg.token }));
-            // away player goes straight to game when START arrives — no waiting screen
+            onRoomReady(msg.side);
             break;
 
         case 'START':
@@ -161,6 +164,7 @@ function netReceive(msg) {
             _reconnectSucceeded();   // healthy traffic — clear overlay, reset backoff
             if (msg.logMsg) log(msg.logMsg);
             const prevActive    = G.active;
+            const prevPhase     = G.phase;
             const prevSetupSide = G.setupSide;
             const testMode      = G.testMode;
             Object.assign(G, msg.G);
@@ -181,6 +185,7 @@ function netReceive(msg) {
             } else {
                 document.getElementById('toss-overlay').style.display = 'none';
             }
+            if (G.phase === 'gameover' && prevPhase !== 'gameover') _notifyParent('gameover');
             break;
         }
 
@@ -222,10 +227,16 @@ function netReceive(msg) {
             console.warn('Reconnect failed:', msg.msg);
             // Mid-game the grace may mean the "Reconnecting…" overlay hasn't
             // appeared yet — surface it so the terminal message is visible. On a
-            // cold load with a stale token there's no game, so stay hidden and
-            // just drop the token silently.
-            if (typeof homeTeamDef !== 'undefined' && homeTeamDef) _showReconnecting(true);
-            _endOverlay('Could not reconnect', 'The session has ended.');
+            // cold load (e.g. the bbauth wrapper re-embedded us, or a stale token)
+            // there's no game to show, so tell the wrapper the session is over and
+            // fall back to the welcome screen instead of hanging.
+            if (typeof homeTeamDef !== 'undefined' && homeTeamDef) {
+                _showReconnecting(true);
+                _endOverlay('Could not reconnect', 'The session has ended.');
+            } else {
+                _notifyParent('ended');
+                showScreen('welcome');
+            }
             break;
 
         case 'ERROR':
@@ -247,4 +258,5 @@ function _endOverlay(title, sub) {
     const s   = document.getElementById('reconnect-sub');
     if (msg) msg.textContent = title;
     if (s)   s.textContent   = sub || 'The session has ended.';
+    _notifyParent('ended');   // wrapper can drop its resume marker — this game is over
 }

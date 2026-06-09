@@ -59,6 +59,11 @@ const httpServer = http.createServer((req, res) => {
     try { pathname = new URL(req.url, 'http://localhost').pathname; }
     catch { res.writeHead(400); res.end('Bad request'); return; }
 
+    // Internal server-to-server endpoint (bbauth pre-registers a match here).
+    if (req.method === 'POST' && pathname === '/internal/match') {
+        return handleInternalMatch(req, res);
+    }
+
     const filePath = pathname === '/' ? '/index.html' : pathname;
     const fullPath = path.resolve(PUB_DIR, '.' + filePath);
     if (!fullPath.startsWith(PUB_DIR + path.sep)) {
@@ -86,9 +91,10 @@ const httpServer = http.createServer((req, res) => {
 });
 
 // ── Auth token verification ───────────────────────────────────────
-// Verifies a token issued by bbauth and returns the teamDef, or null.
+// Verifies a token issued by bbauth and returns its full payload
+// ({ userId, username, teamDef }), or null.
 
-function verifyAuthToken(raw) {
+function verifyAuthPayload(raw) {
     if (!raw || !process.env.SHARED_SECRET) return null;
     try {
         const [payload, sig] = raw.split('.');
@@ -96,8 +102,28 @@ function verifyAuthToken(raw) {
         if (sig !== expected) return null;
         const data = JSON.parse(Buffer.from(payload, 'base64').toString('utf8'));
         if (data.exp < Math.floor(Date.now() / 1000)) return null;
-        return data.teamDef || null;
+        return data;
     } catch { return null; }
+}
+
+function verifyAuthToken(raw) {
+    return verifyAuthPayload(raw)?.teamDef || null;
+}
+
+// ── Internal server-to-server channel (bbauth ↔ webbb) ────────────
+// Mirrors the play-token handshake in the other direction: bodies are signed
+// with the shared secret so neither service trusts an unsigned internal call.
+
+function signBody(rawBody) {
+    return crypto.createHmac('sha256', process.env.SHARED_SECRET || '').update(rawBody).digest('hex');
+}
+
+function verifyBodySig(rawBody, sig) {
+    if (!sig || !process.env.SHARED_SECRET) return false;
+    const expected = signBody(rawBody);
+    // timingSafeEqual throws on length mismatch — guard it
+    return expected.length === sig.length &&
+        crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
 }
 
 // ── Default teams ─────────────────────────────────────────────────
@@ -136,6 +162,7 @@ try {
 
 const ROOM_SNAPSHOT_TTL_MS = 6 * 60 * 60 * 1000;   // discard snapshots older than 6h on boot
 const ROOM_RESTORE_GRACE_MS = 5 * 60 * 1000;       // window for players to reconnect after a restart
+const ROOM_REGISTER_TTL_MS  = 5 * 60 * 1000;       // drop a registered room if no game ever starts
 
 function persistRoom(room) {
     // Only snapshot a started game, and never mid-reroll: G.pending (kind
@@ -146,8 +173,11 @@ function persistRoom(room) {
     try {
         const data = JSON.stringify({
             id: room.id, tokens: room.tokens,
+            homeUserId: room.homeUserId, awayUserId: room.awayUserId,
+            homeUsername: room.homeUsername, awayUsername: room.awayUsername,
             homeTeamDef: room.homeTeamDef, awayTeamDef: room.awayTeamDef,
             homeTeam: room.homeTeam, awayTeam: room.awayTeam, G: room.G,
+            reported: room.reported,
         });
         roomsDb.prepare(`INSERT INTO rooms (id, data, updated) VALUES (?, ?, ?)
                          ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated = excluded.updated`)
@@ -170,13 +200,16 @@ function loadPersistedRooms() {
             fixReferences(s.G);   // re-link player object refs lost in the JSON round-trip
             const room = {
                 id: s.id, home: null, away: null, G: s.G, tokens: s.tokens,
+                homeUserId: s.homeUserId, awayUserId: s.awayUserId,
+                homeUsername: s.homeUsername, awayUsername: s.awayUsername,
                 homeTeamDef: s.homeTeamDef, awayTeamDef: s.awayTeamDef,
                 homeTeam: s.homeTeam, awayTeam: s.awayTeam,
-                lastLogMsg: null, reconnectTimer: null,
+                lastLogMsg: null, reconnectTimer: null, reported: !!s.reported,
             };
-            // If nobody reconnects after the restart, clean the room up.
+            // If nobody reconnects after the restart, the game is abandoned.
             room.reconnectTimer = setTimeout(() => {
                 console.log(`Room ${room.id}: no reconnect after restart — destroying`);
+                reportResult(room, 'abandoned');
                 destroyRoom(room);
             }, ROOM_RESTORE_GRACE_MS);
             rooms.set(s.id, room);
@@ -184,11 +217,6 @@ function loadPersistedRooms() {
         if (saved.length) console.log(`Restored ${saved.length} active game(s) from disk`);
     } catch (e) { console.warn('loadPersistedRooms failed:', e.message); }
 }
-
-// Joins that arrived before the room was created (race condition:
-// away player connects faster than home player).
-// roomId → { ws, authToken, timer }
-const pendingJoins = new Map();
 
 function generateRoomId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -210,56 +238,84 @@ function _releaseFromRoom(ws) {
     if (side) old[side] = null;
 }
 
-function createRoom(ws, authToken, preassignedRoomId) {
-    _releaseFromRoom(ws);  // drop any stale room association (e.g. from auto-reconnect)
-    const id = (preassignedRoomId && !rooms.has(preassignedRoomId))
-        ? preassignedRoomId
-        : generateRoomId();
-    const homeToken = generateToken();
-    const room      = { id, home: ws, away: null, G: null, lastLogMsg: null, tokens: { home: homeToken, away: null },
-                        homeTeamDef: verifyAuthToken(authToken) || null, awayTeamDef: null };
+// ── Match registration ────────────────────────────────────────────
+// bbauth pre-registers the match (POST /internal/match) before redirecting
+// either browser, so the room always exists before either player attaches —
+// no create/join race. Each slot's team and userId are fixed here; ATTACH
+// later just maps an authenticated userId to its slot.
+
+function registerMatch({ roomId, home, away }) {
+    const id = roomId && !rooms.has(roomId) ? roomId : (roomId || generateRoomId());
+    const existing = rooms.get(id);
+    if (existing) return existing;   // idempotent: a retried registration is a no-op
+    const room = {
+        id, home: null, away: null, G: null, lastLogMsg: null,
+        tokens: { home: null, away: null },
+        homeUserId: home.userId, awayUserId: away.userId,
+        homeUsername: home.username, awayUsername: away.username,
+        homeTeamDef: home.teamDef || null, awayTeamDef: away.teamDef || null,
+        reconnectTimer: null, registrationTimer: null, reported: false,
+    };
     rooms.set(id, room);
-    ws.send(JSON.stringify({ type: 'ROOM_CREATED', side: 'home', roomId: id, token: homeToken }));
-    console.log(`Room ${id} created`);
-
-    // If the away player connected first (race condition), complete their join now.
-    const pending = pendingJoins.get(id);
-    if (pending) {
-        pendingJoins.delete(id);
-        clearTimeout(pending.timer);
-        _doJoinRoom(pending.ws, room, pending.authToken);
-    }
-
+    // If neither player ever attaches, don't leak the empty room forever.
+    room.registrationTimer = setTimeout(() => {
+        if (!room.G) {
+            console.log(`Room ${id}: registered but never started — dropping`);
+            if (room.home) room.home.send(JSON.stringify({ type: 'ERROR', msg: 'Opponent never joined' }));
+            if (room.away) room.away.send(JSON.stringify({ type: 'ERROR', msg: 'Opponent never joined' }));
+            destroyRoom(room);
+        }
+    }, ROOM_REGISTER_TTL_MS);
+    console.log(`Room ${id} registered — ${home.username} (home) vs ${away.username} (away)`);
     return room;
 }
 
-function _doJoinRoom(ws, room, authToken) {
-    if (room.away) return ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room is full' }));
-    const awayToken  = generateToken();
-    room.away        = ws;
-    room.tokens.away = awayToken;
-    room.awayTeamDef = verifyAuthToken(authToken) || null;
-    // Tell away player their side before START arrives so NET.side is set in time
-    ws.send(JSON.stringify({ type: 'ROOM_JOINED', side: 'away', roomId: room.id, token: awayToken }));
-    console.log(`Room ${room.id}: away joined — starting game`);
-    startGame(room);
+function handleInternalMatch(req, res) {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1e6) req.destroy(); });
+    req.on('end', () => {
+        if (!verifyBodySig(body, req.headers['x-bb-signature'])) {
+            res.writeHead(401); res.end('Bad signature'); return;
+        }
+        let data;
+        try { data = JSON.parse(body); } catch { res.writeHead(400); res.end('Bad JSON'); return; }
+        if (!data.roomId || !data.home || !data.away) { res.writeHead(400); res.end('Missing fields'); return; }
+        try {
+            registerMatch(data);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, roomId: data.roomId }));
+        } catch (e) {
+            console.error('registerMatch failed:', e.message);
+            res.writeHead(500); res.end('Registration failed');
+        }
+    });
 }
 
-function joinRoom(ws, roomId, authToken) {
-    _releaseFromRoom(ws);  // drop any stale room association
+// A player's browser attaches to its pre-registered slot. The play token
+// identifies the userId, which we map to the home/away slot fixed at
+// registration. Once both slots are attached, the game starts.
+function attachToRoom(ws, roomId, authToken) {
+    _releaseFromRoom(ws);  // drop any stale room association (e.g. from auto-reconnect)
     const room = rooms.get(roomId);
-    if (room) return _doJoinRoom(ws, room, authToken);
+    if (!room) { ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' })); return; }
 
-    // Room doesn't exist yet — home player may still be loading.
-    // Queue the join for up to 8 seconds before giving up.
-    const existing = pendingJoins.get(roomId);
-    if (existing) clearTimeout(existing.timer);
-    const timer = setTimeout(() => {
-        pendingJoins.delete(roomId);
-        ws.send(JSON.stringify({ type: 'ERROR', msg: 'Room not found' }));
-    }, 8000);
-    pendingJoins.set(roomId, { ws, authToken, timer });
-    console.log(`Room ${roomId}: JOIN queued (room not yet created)`);
+    const payload = verifyAuthPayload(authToken);
+    if (!payload) { ws.send(JSON.stringify({ type: 'ERROR', msg: 'Invalid token' })); return; }
+
+    const side = payload.userId === room.homeUserId ? 'home'
+               : payload.userId === room.awayUserId ? 'away'
+               : null;
+    if (!side) { ws.send(JSON.stringify({ type: 'ERROR', msg: 'You are not in this match' })); return; }
+
+    room[side] = ws;
+    if (!room.tokens[side]) room.tokens[side] = generateToken();
+    ws.send(JSON.stringify({ type: 'ATTACHED', side, roomId: room.id, token: room.tokens[side] }));
+    console.log(`Room ${room.id}: ${side} (${payload.username}) attached`);
+
+    // Game already running (rare: a second attach for the same slot) — resync.
+    if (room.G) { ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G, homeTeam: room.homeTeam, awayTeam: room.awayTeam })); return; }
+
+    if (room.home && room.away) startGame(room);
 }
 
 function roomOf(ws) {
@@ -304,9 +360,42 @@ function reconnectToRoom(ws, roomId, side, token) {
 }
 
 function destroyRoom(room) {
+    clearTimeout(room.registrationTimer);
+    clearTimeout(room.reconnectTimer);
     rooms.delete(room.id);
     unpersistRoom(room.id);
     console.log(`Room ${room.id} destroyed`);
+}
+
+// ── Result reporting ──────────────────────────────────────────────
+// Tell bbauth how a match ended (signed, mirroring the play-token handshake).
+// Fired once per room: on the final whistle (status 'completed') or when an
+// in-progress game is abandoned (a disconnected player never returns →
+// forfeit). A room with no homeUserId is a local/unauth game — nothing to report.
+
+function reportResult(room, status) {
+    if (room.reported || !room.G || !room.homeUserId) return;
+    const base = process.env.BBAUTH_URL;
+    if (!base) return;
+    room.reported = true;
+
+    const score = room.G.score || { home: 0, away: 0 };
+    let winner;
+    if (status === 'abandoned' && room.home && !room.away)      winner = 'home';   // away forfeited
+    else if (status === 'abandoned' && room.away && !room.home) winner = 'away';   // home forfeited
+    else winner = score.home > score.away ? 'home' : score.away > score.home ? 'away' : 'draw';
+
+    const body = JSON.stringify({
+        roomId: room.id, status, score, winner,
+        home: { userId: room.homeUserId }, away: { userId: room.awayUserId },
+    });
+    fetch(`${base}/api/internal/match-result`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-BB-Signature': signBody(body) },
+        body,
+    })
+        .then(r => { if (!r.ok) console.warn(`match-result ${room.id}: bbauth returned ${r.status}`); })
+        .catch(e => console.warn(`match-result ${room.id} failed:`, e.message));
 }
 
 // ── Game initialisation ───────────────────────────────────────────
@@ -316,6 +405,7 @@ function colourEq(a, b) {
 }
 
 function startGame(room) {
+    clearTimeout(room.registrationTimer);   // game is starting — no longer "registered but idle"
     initFormations();
 
     room.G = createInitialState();
@@ -382,8 +472,7 @@ wss.on('connection', (ws) => {
         let msg;
         try { msg = JSON.parse(raw); } catch { return; }
 
-        if (msg.type === 'CREATE_ROOM') { createRoom(ws, msg.authToken, msg.roomId);         return; }
-        if (msg.type === 'JOIN_ROOM')   { joinRoom(ws, msg.roomId, msg.authToken);          return; }
+        if (msg.type === 'ATTACH')      { attachToRoom(ws, msg.roomId, msg.authToken);       return; }
         if (msg.type === 'RECONNECT') {
             if (msg.side !== 'home' && msg.side !== 'away') return;
             reconnectToRoom(ws, msg.roomId, msg.side, msg.token);
@@ -451,6 +540,7 @@ wss.on('connection', (ws) => {
             }
             broadcast(room, { type: 'UPDATE', G: room.G, logMsg: room.lastLogMsg });
             room.lastLogMsg = null;
+            if (room.G.phase === 'gameover') reportResult(room, 'completed');
         } catch (err) {
             console.error(`Room ${room.id}: action ${msg.type} threw —`, err.stack || err.message);
             try { ws.send(JSON.stringify({ type: 'ERROR', msg: 'That action failed on the server.' })); } catch {}
@@ -475,6 +565,7 @@ wss.on('connection', (ws) => {
         clearTimeout(room.reconnectTimer);
         room.reconnectTimer = setTimeout(() => {
             console.log(`Room ${room.id}: reconnect timeout — destroying`);
+            reportResult(room, 'abandoned');   // forfeit to whoever is still here (no-op if already completed)
             if (room.home) room.home.send(JSON.stringify({ type: 'ERROR', msg: 'Opponent did not reconnect' }));
             if (room.away) room.away.send(JSON.stringify({ type: 'ERROR', msg: 'Opponent did not reconnect' }));
             destroyRoom(room);

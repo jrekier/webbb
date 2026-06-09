@@ -26,7 +26,6 @@ function showScreen(name) {
             window._authTeamDef = payload.teamDef;
             window._authToken   = raw;
             window._authRoomId  = params.get('roomId') || null;
-            window._authAction  = params.get('action') || null;  // 'create' | 'join'
         }
     } catch (e) {
         console.warn('Could not parse auth token:', e);
@@ -58,23 +57,18 @@ function startApp(allTeams) {
     _allTeams = allTeams;
     _initTeamLogos();
 
-    // If redirected from bbauth with an action, skip the welcome screen and go straight in.
-    // Clear any stale reconnect token first — it must not race with the new CREATE/JOIN.
-    if (window._authAction === 'create' || window._authAction === 'join') {
+    // If redirected from bbauth with a pre-registered room, skip the welcome
+    // screen and attach to our slot. The token identifies which side we are, so
+    // there is no create/join distinction — the room already exists server-side.
+    // Clear any stale reconnect token first — it must not race with the new ATTACH.
+    if (window._authRoomId && window._authToken) {
         // Consume the one-time auth params from the URL. Otherwise a page reload
-        // would re-run CREATE/JOIN (the room is now full/in-game → it fails and
-        // drops the session) instead of silently reconnecting. The values are
+        // would re-run ATTACH instead of silently reconnecting. The values are
         // already captured in window._auth* above.
         history.replaceState(null, '', location.pathname);
         _clearReconnectToken();
         connect()
-            .then(() => {
-                if (window._authAction === 'create') {
-                    sendAction({ type: 'CREATE_ROOM', authToken: window._authToken, roomId: window._authRoomId });
-                } else {
-                    sendAction({ type: 'JOIN_ROOM', roomId: window._authRoomId, authToken: window._authToken });
-                }
-            })
+            .then(() => sendAction({ type: 'ATTACH', roomId: window._authRoomId, authToken: window._authToken }))
             .catch(() => showScreen('welcome'));
         return;
     }
