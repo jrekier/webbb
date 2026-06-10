@@ -57,6 +57,18 @@ function startApp(allTeams) {
     _allTeams = allTeams;
     _initTeamLogos();
 
+    // Spectate mode: opened by the bbauth lobby as ?spectate=ROOMID. Connect and
+    // ask to watch — no token, no team, read-only (see the SPECTATING handler).
+    const spectateRoom = new URLSearchParams(location.search).get('spectate');
+    if (spectateRoom) {
+        NET.spectator = true;
+        showScreen('reconnecting');   // neutral hold screen until the snapshot arrives
+        connect()
+            .then(() => sendAction({ type: 'SPECTATE', roomId: spectateRoom }))
+            .catch(() => showScreen('welcome'));
+        return;
+    }
+
     // If redirected from bbauth with a pre-registered room, skip the welcome
     // screen and attach to our slot. The token identifies which side we are, so
     // there is no create/join distinction — the room already exists server-side.

@@ -206,6 +206,7 @@ function loadPersistedRooms() {
                 homeTeam: s.homeTeam, awayTeam: s.awayTeam,
                 lastLogMsg: null, reconnectTimer: null, reported: !!s.reported,
                 log: s.log || [],
+                spectators: new Set(),
                 // Seed turn tracking from the restored state so the first
                 // post-restore broadcast doesn't re-emit a turn-start marker.
                 _logPrevActive: s.G?.active ?? null, _logPrevPhase: s.G?.phase ?? null,
@@ -260,6 +261,7 @@ function registerMatch({ roomId, home, away }) {
         homeTeamDef: home.teamDef || null, awayTeamDef: away.teamDef || null,
         reconnectTimer: null, registrationTimer: null, reported: false,
         log: [],   // play-by-play history, so a reconnecting client can rebuild it
+        spectators: new Set(),   // read-only watchers; receive broadcasts, never act
     };
     rooms.set(id, room);
     // If neither player ever attaches, don't leak the empty room forever.
@@ -323,6 +325,20 @@ function attachToRoom(ws, roomId, authToken) {
     if (room.home && room.away) startGame(room);
 }
 
+// A read-only watcher joins a game. Spectators receive the current snapshot and
+// all subsequent broadcasts, but are never a player slot and can't act.
+function spectateRoom(ws, roomId) {
+    const room = rooms.get(roomId);
+    if (!room || !room.G) { ws.send(JSON.stringify({ type: 'ERROR', msg: 'Game not found' })); return; }
+    ws._spectateRoomId = roomId;   // remembered so we can detach on close
+    room.spectators.add(ws);
+    console.log(`Room ${roomId}: spectator joined (${room.spectators.size} watching)`);
+    ws.send(JSON.stringify({
+        type: 'SPECTATING', G: room.G,
+        homeTeam: room.homeTeam, awayTeam: room.awayTeam, log: room.log,
+    }));
+}
+
 function roomOf(ws) {
     for (const room of rooms.values()) {
         if (room.home === ws || room.away === ws) return room;
@@ -367,6 +383,7 @@ function broadcast(room, msg) {
     const text = JSON.stringify(msg);
     if (room.home) room.home.send(text);
     if (room.away) room.away.send(text);
+    if (room.spectators) for (const sp of room.spectators) { if (sp.readyState === 1) sp.send(text); }
     persistRoom(room);      // snapshot the latest state so it survives a restart
     reportLiveState(room);  // feed the bbauth lobby's "ongoing games" view
 }
@@ -395,6 +412,11 @@ function reconnectToRoom(ws, roomId, side, token) {
 function destroyRoom(room) {
     clearTimeout(room.registrationTimer);
     clearTimeout(room.reconnectTimer);
+    // Let any spectators know the game is over, then drop them.
+    if (room.spectators) {
+        for (const sp of room.spectators) { try { sp.send(JSON.stringify({ type: 'ERROR', msg: 'The game has ended.' })); } catch {} }
+        room.spectators.clear();
+    }
     rooms.delete(room.id);
     unpersistRoom(room.id);
     console.log(`Room ${room.id} destroyed`);
@@ -536,11 +558,15 @@ wss.on('connection', (ws) => {
         try { msg = JSON.parse(raw); } catch { return; }
 
         if (msg.type === 'ATTACH')      { attachToRoom(ws, msg.roomId, msg.authToken);       return; }
+        if (msg.type === 'SPECTATE')    { spectateRoom(ws, msg.roomId);                      return; }
         if (msg.type === 'RECONNECT') {
             if (msg.side !== 'home' && msg.side !== 'away') return;
             reconnectToRoom(ws, msg.roomId, msg.side, msg.token);
             return;
         }
+
+        // Spectators are read-only — ignore any game messages they send.
+        if (ws._spectateRoomId) return;
 
         // ── In-game messages ──
 
@@ -611,6 +637,13 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
+        // Spectators aren't a player slot — detach them and stop here.
+        if (ws._spectateRoomId) {
+            const r = rooms.get(ws._spectateRoomId);
+            if (r) { r.spectators.delete(ws); console.log(`Room ${r.id}: spectator left (${r.spectators.size} watching)`); }
+            return;
+        }
+
         const room = roomOf(ws);
         if (!room) return;
         const side = sideOf(room, ws);

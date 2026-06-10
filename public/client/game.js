@@ -33,7 +33,15 @@ function startGame(homeTeam, awayTeam) {
     showScreen('game');
     initFormations();
     buildPitch();
-    setupInput();
+    // Spectators are read-only: wire no input, and flag the body so the board
+    // can show a "spectating" banner / suppress any interactive affordances.
+    if (NET.spectator) {
+        document.body.classList.add('spectating');
+        const banner = document.getElementById('spectate-banner');
+        if (banner) banner.classList.remove('hidden');
+    } else {
+        setupInput();
+    }
     prewarmSprites(homeTeamDef);
     prewarmSprites(awayTeamDef);
     loadSpriteSheet();

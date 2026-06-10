@@ -1206,3 +1206,21 @@ canvas {
 @media (min-width: 1400px) {
     :root { --sidebar-w: 260px; }
 }
+
+/* ── Spectator badge ──────────────────────────────────────────────── */
+#spectate-banner {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    background: rgba(20, 20, 20, 0.85);
+    color: #f0ead8;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 0.08em;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.9rem;
+    border: 1px solid #c08a2a;
+    border-top: none;
+    pointer-events: none;
+}

@@ -3,10 +3,11 @@
 // Knows nothing about game logic or rendering beyond calling into game.js.
 
 var NET = {
-    online: false,
-    side:   null,
-    roomId: null,
-    ws:     null,
+    online:    false,
+    side:      null,
+    roomId:    null,
+    ws:        null,
+    spectator: false,   // read-only watcher: receives state, never acts
 };
 
 // When we're embedded in the bbauth wrapper (an iframe), tell the parent when
@@ -189,6 +190,24 @@ function netReceive(msg) {
                 document.getElementById('toss-overlay').style.display = 'none';
             }
             if (G.phase === 'gameover' && prevPhase !== 'gameover') _notifyParent('gameover');
+            break;
+        }
+
+        case 'SPECTATING': {
+            // Joined a game as a read-only watcher: build the board from the
+            // snapshot and replay the log, then ride subsequent UPDATE broadcasts.
+            NET.online = true;
+            NET.spectator = true;
+            NET.side = null;
+            if (!homeTeamDef) startGame(msg.homeTeam, msg.awayTeam);
+            Object.assign(G, msg.G);
+            fixReferences(G);
+            if (Array.isArray(msg.log)) {
+                const logEl = document.getElementById('log');
+                if (logEl) logEl.innerHTML = '';
+                msg.log.forEach(e => (typeof e === 'string' ? log(e) : log(e.msg, e.type)));
+            }
+            render();
             break;
         }
 
