@@ -367,7 +367,8 @@ function broadcast(room, msg) {
     const text = JSON.stringify(msg);
     if (room.home) room.home.send(text);
     if (room.away) room.away.send(text);
-    persistRoom(room);   // snapshot the latest state so it survives a restart
+    persistRoom(room);      // snapshot the latest state so it survives a restart
+    reportLiveState(room);  // feed the bbauth lobby's "ongoing games" view
 }
 
 function reconnectToRoom(ws, roomId, side, token) {
@@ -428,6 +429,35 @@ function reportResult(room, status) {
     })
         .then(r => { if (!r.ok) console.warn(`match-result ${room.id}: bbauth returned ${r.status}`); })
         .catch(e => console.warn(`match-result ${room.id} failed:`, e.message));
+}
+
+// Push a live snapshot (score / turn / half / active / phase) to bbauth so the
+// lobby can show ongoing games and mark players "in game". Best-effort and
+// deduped: only fires when the summary actually changes, so a whole game is a
+// handful of POSTs. Skipped for local/unauth games (no homeUserId).
+function reportLiveState(room) {
+    if (!room.G || !room.homeUserId) return;
+    const base = process.env.BBAUTH_URL;
+    if (!base) return;
+
+    const G = room.G;
+    const summary = {
+        score: G.score || { home: 0, away: 0 },
+        turn:  G.turn ?? null,
+        half:  G.half ?? null,
+        active: G.active ?? null,
+        phase: G.phase,
+    };
+    const key = JSON.stringify(summary);
+    if (room._liveSummary === key) return;   // nothing meaningful changed
+    room._liveSummary = key;
+
+    const body = JSON.stringify({ roomId: room.id, ...summary });
+    fetch(`${base}/api/internal/match-update`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-BB-Signature': signBody(body) },
+        body,
+    }).catch(() => {});   // lobby liveness is non-critical — never let it disrupt the game
 }
 
 // ── Game initialisation ───────────────────────────────────────────
