@@ -177,7 +177,7 @@ function persistRoom(room) {
             homeUsername: room.homeUsername, awayUsername: room.awayUsername,
             homeTeamDef: room.homeTeamDef, awayTeamDef: room.awayTeamDef,
             homeTeam: room.homeTeam, awayTeam: room.awayTeam, G: room.G,
-            reported: room.reported,
+            reported: room.reported, log: room.log,
         });
         roomsDb.prepare(`INSERT INTO rooms (id, data, updated) VALUES (?, ?, ?)
                          ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated = excluded.updated`)
@@ -205,6 +205,10 @@ function loadPersistedRooms() {
                 homeTeamDef: s.homeTeamDef, awayTeamDef: s.awayTeamDef,
                 homeTeam: s.homeTeam, awayTeam: s.awayTeam,
                 lastLogMsg: null, reconnectTimer: null, reported: !!s.reported,
+                log: s.log || [],
+                // Seed turn tracking from the restored state so the first
+                // post-restore broadcast doesn't re-emit a turn-start marker.
+                _logPrevActive: s.G?.active ?? null, _logPrevPhase: s.G?.phase ?? null,
             };
             // If nobody reconnects after the restart, the game is abandoned.
             room.reconnectTimer = setTimeout(() => {
@@ -255,6 +259,7 @@ function registerMatch({ roomId, home, away }) {
         homeUsername: home.username, awayUsername: away.username,
         homeTeamDef: home.teamDef || null, awayTeamDef: away.teamDef || null,
         reconnectTimer: null, registrationTimer: null, reported: false,
+        log: [],   // play-by-play history, so a reconnecting client can rebuild it
     };
     rooms.set(id, room);
     // If neither player ever attaches, don't leak the empty room forever.
@@ -313,7 +318,7 @@ function attachToRoom(ws, roomId, authToken) {
     console.log(`Room ${room.id}: ${side} (${payload.username}) attached`);
 
     // Game already running (rare: a second attach for the same slot) — resync.
-    if (room.G) { ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G, homeTeam: room.homeTeam, awayTeam: room.awayTeam })); return; }
+    if (room.G) { ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G, homeTeam: room.homeTeam, awayTeam: room.awayTeam, log: room.log })); return; }
 
     if (room.home && room.away) startGame(room);
 }
@@ -332,6 +337,33 @@ function sideOf(room, ws) {
 }
 
 function broadcast(room, msg) {
+    // Keep a play-by-play history so a reconnecting client can rebuild the log
+    // panel (the log is otherwise client-side only and resets on reload).
+    // Entries are { msg, type? }; `type` carries the CSS class for styled lines
+    // such as the turn-start markers.
+    if (room.log) {
+        if (msg.logMsg) room.log.push({ msg: msg.logMsg });
+
+        // Turn-start marker: emitted server-side (rather than in the client's
+        // render()) so it lands at the right spot in the history and survives a
+        // reconnect. Fires when play begins (kickoff / after a TD) or when the
+        // active side changes (end of turn or turnover) — exactly the client's
+        // old condition, but now part of the authoritative log.
+        const G = room.G;
+        if (G && G.phase === 'play') {
+            const enteredPlay = room._logPrevPhase !== 'play';
+            const sideChanged = !enteredPlay && room._logPrevActive != null && G.active !== room._logPrevActive;
+            if (enteredPlay || sideChanged) {
+                const marker = { msg: `Turn ${G.turn} · ${G.active.toUpperCase()}`, type: 'turn-marker-' + G.active };
+                room.log.push(marker);
+                msg.turnMarker = marker;   // live clients render it; render() no longer does (online)
+            }
+            room._logPrevActive = G.active;
+        }
+        if (G) room._logPrevPhase = G.phase;
+
+        if (room.log.length > 1000) room.log.splice(0, room.log.length - 1000);
+    }
     const text = JSON.stringify(msg);
     if (room.home) room.home.send(text);
     if (room.away) room.away.send(text);
@@ -353,7 +385,7 @@ function reconnectToRoom(ws, roomId, side, token) {
     // Clear the countdown and reattach
     clearTimeout(room.reconnectTimer);
     room[side] = ws;
-    ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G, homeTeam: room.homeTeam, awayTeam: room.awayTeam }));
+    ws.send(JSON.stringify({ type: 'RECONNECTED', G: room.G, homeTeam: room.homeTeam, awayTeam: room.awayTeam, log: room.log }));
     const other = side === 'home' ? room.away : room.home;
     console.log(`Room ${roomId}: ${side} reconnected — other slot: ${other ? 'present (readyState=' + other.readyState + ')' : 'empty'}`);
     if (other && other.readyState === 1) other.send(JSON.stringify({ type: 'OPPONENT_RECONNECTED', G: room.G }));
@@ -406,6 +438,7 @@ function colourEq(a, b) {
 
 function startGame(room) {
     clearTimeout(room.registrationTimer);   // game is starting — no longer "registered but idle"
+    room.log = [];   // fresh play-by-play for the new game
     initFormations();
 
     room.G = createInitialState();

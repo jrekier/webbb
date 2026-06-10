@@ -79,7 +79,10 @@ function render() {
 
     // Log a turn-start marker when play begins (kickoff / after TD) or when
     // the active side changes mid-play (end of turn or turnover).
-    if (G.phase === 'play') {
+    // Local play only: online games author this server-side (see broadcast in
+    // server.js) so it sits in the right place in the history and survives a
+    // reconnect — generating it here too would duplicate it and mis-order it.
+    if (!NET.online && G.phase === 'play') {
         const enteredPlay = _renderPrevPhase !== 'play';
         const sideChanged = !enteredPlay && _renderPrevActive !== null && G.active !== _renderPrevActive;
         if (enteredPlay || sideChanged) {

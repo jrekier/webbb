@@ -163,6 +163,9 @@ function netReceive(msg) {
         case 'UPDATE': {
             _reconnectSucceeded();   // healthy traffic — clear overlay, reset backoff
             if (msg.logMsg) log(msg.logMsg);
+            // Server-authored turn-start marker (online): logged here, after the
+            // action line, in the same order it's stored in the room history.
+            if (msg.turnMarker) log(msg.turnMarker.msg, msg.turnMarker.type);
             const prevActive    = G.active;
             const prevPhase     = G.phase;
             const prevSetupSide = G.setupSide;
@@ -206,6 +209,19 @@ function netReceive(msg) {
             }
             Object.assign(G, msg.G);
             fixReferences(G);
+            // Rebuild the play-by-play from the server's history (the log is
+            // otherwise client-side only and would come back empty). Clear first
+            // so a warm reconnect doesn't duplicate lines already on screen.
+            if (Array.isArray(msg.log)) {
+                const logEl = document.getElementById('log');
+                if (logEl) logEl.innerHTML = '';
+                msg.log.forEach(e => {
+                    // Entries are { msg, type? }; tolerate plain strings from
+                    // older snapshots.
+                    if (typeof e === 'string') log(e);
+                    else log(e.msg, e.type);
+                });
+            }
             render();
             _reconnectSucceeded();
             break;

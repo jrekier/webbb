@@ -73,11 +73,22 @@ function startApp(allTeams) {
         return;
     }
 
-    showScreen('welcome');
-
-    // Attempt silent reconnect in background if a saved session exists
-    const saved = loadReconnectToken();
-    if (saved) connect().catch(() => {});
+    // Auto-resume a live game only when we're embedded in the bbauth wrapper
+    // (the iframe-reload resume path). Loaded top-level/standalone — e.g. opening
+    // http://localhost:3000 directly during dev — show the welcome screen instead
+    // of trapping the user in a leftover game they can't leave. A live socket that
+    // drops mid-game still reconnects on its own (see network.js onclose).
+    const saved    = loadReconnectToken();
+    const embedded = window.parent !== window;
+    if (saved && embedded) {
+        // Show a hold state while rejoining rather than flashing the welcome menu.
+        // RECONNECTED swaps us into the game; a failed reconnect (room gone) falls
+        // back to welcome via the RECONNECT_FAILED handler / connect rejection.
+        showScreen('reconnecting');
+        connect().catch(() => showScreen('welcome'));
+    } else {
+        showScreen('welcome');
+    }
 }
 
 // ── Local game — team selection ───────────────────────────────────
