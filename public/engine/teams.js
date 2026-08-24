@@ -3,7 +3,7 @@
 // No DOM, no canvas, no rendering — works identically in browser and Node.js.
 
 if (typeof module !== 'undefined') {
-    var { checkSkillSpelling } = require('./helpers.js');
+    var { checkSkillSpelling, checkTeamRuleSpelling } = require('./helpers.js');
 }
 
 // ── loadTeamFromJSON ──────────────────────────────────────────────
@@ -27,6 +27,7 @@ function loadTeamFromJSON(json) {
 // Builds individual player objects from a team definition.
 
 function buildRosterFromTeam(teamDef, side, startId, formation) {
+    checkTeamRuleSpelling(teamDef.specialRules, teamDef.name || side);
     return teamDef.players.map((p, i) => {
         checkSkillSpelling(p.skills, `${teamDef.name || side} ${p.name}`);
         const [col, row] = formation[i] || [-1, -1];  // beyond 7: start in reserve

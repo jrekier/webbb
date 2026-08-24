@@ -3,7 +3,7 @@
 // Stab, and Throw Team-Mate.
 
 if (typeof module !== 'undefined') {
-    var { COLS, ROWS, countAssists, countTackleZones, isAdjacent, isStanding, markStunned, sqLabel } = require('./helpers.js');
+    var { COLS, ROWS, countAssists, countTackleZones, hasTeamRule, isAdjacent, isStanding, markStunned, sqLabel } = require('./helpers.js');
     var { rollArmourAndInjury, rollCrowdInjury, rollInjury } = require('./dice.js');
     var { endActivation, endTurn } = require('./core.js');
     var { _applyOutcome, _traitChecks, checkTouchdown, pn, scatterBall, throwIn } = require('./resolve.js');
@@ -80,8 +80,16 @@ function executeFoul(G, targetId) {
 
 // ── resolveArgueCall ──────────────────────────────────────────────
 // Called after executeFoul suspends into G.pending (kind 'argue').
-// use=true: roll 1d6 — 6 cancels ejection, 1-5 upholds it and ejects the coach.
+// use=true: roll 1d6 against the Argue the Call table —
+//     1    the player is sent off AND the coach may not argue again this game
+//     2-5  the player is sent off; the coach keeps the right to argue later
+//     6    the referee relents and the player stays on the pitch
+//   Only a 1 costs the coach the argument: a 2-5 is an ordinary sending-off.
 // use=false: accept the ejection without risking the coach.
+//
+// Bribery and Corruption lets a team re-roll a natural 1 here, once per game.
+// It is applied automatically: a 1 is the worst result on the table, so there
+// is never a reason to decline beyond hoarding it for a later foul.
 
 function resolveArgueCall(G, use) {
     if (G.pending?.kind !== 'argue') return null;
@@ -91,15 +99,28 @@ function resolveArgueCall(G, use) {
     if (!att) return null;
 
     if (use) {
-        const roll = Math.floor(Math.random() * 6) + 1;
-        if (roll === 6) {
-            return `Argue the call — rolled ${roll}: ejection overruled! ${pn(att)} stays on the pitch.`;
+        let roll   = Math.floor(Math.random() * 6) + 1;
+        let prefix = `Argue the call — rolled ${roll}`;
+
+        if (roll === 1 && hasTeamRule(G, side, 'Bribery and Corruption')
+                       && !G.corruptionRerollUsed[side]) {
+            G.corruptionRerollUsed[side] = true;
+            roll = Math.floor(Math.random() * 6) + 1;
+            prefix += `: Bribery and Corruption re-rolls it — ${roll}`;
         }
-        // Upheld — coach ejected too
-        G.coachEjected[side] = true;
+
+        if (roll === 6) {
+            return `${prefix}: ejection overruled! ${pn(att)} stays on the pitch.`;
+        }
+
         att.status = 'casualty'; att.col = -1; att.row = -1;
         endTurn(G);
-        return `Argue the call — rolled ${roll}: upheld! ${pn(att)} ejected! ${side.toUpperCase()} coach sent off for the rest of the game. TURNOVER`;
+        if (roll === 1) {
+            // Only here does the coach lose the right to argue again.
+            G.coachEjected[side] = true;
+            return `${prefix}: upheld! ${pn(att)} ejected! ${side.toUpperCase()} coach sent off for the rest of the game. TURNOVER`;
+        }
+        return `${prefix}: upheld! ${pn(att)} ejected. TURNOVER`;
     }
 
     // Accept the call

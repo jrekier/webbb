@@ -58,6 +58,9 @@ function startGame(homeTeam, awayTeam) {
         G.assistantCoaches = { home: homeTeamDef.assistantCoaches || 0, away: awayTeamDef.assistantCoaches || 0 };
         G.fanFactor       = { home: homeTeamDef.fanFactor       || 0, away: awayTeamDef.fanFactor       || 0 };
         G.apothecary      = { home: !!homeTeamDef.apothecary,         away: !!awayTeamDef.apothecary         };
+        G.teamValue       = { home: homeTeamDef.tv || 0, away: awayTeamDef.tv || 0 };
+        G.specialRules    = { home: homeTeamDef.specialRules || [], away: awayTeamDef.specialRules || [] };
+        G.inducements     = { home: homeTeamDef.inducements  || {}, away: awayTeamDef.inducements  || {} };
         G.treasury        = { home: homeTeamDef.treasury        || 0, away: awayTeamDef.treasury        || 0 };
         const winner = initToss(G);
         showTossOverlay(winner);

@@ -9,6 +9,8 @@
     "assistantCoaches": 2,
     "fanFactor": 6,
     "apothecary": true,
+    "tv": 995000,
+    "specialRules": ["Brawlin' Brutes","Team Captain"],
     "players": [
         { "name": "Snikt",    "pos": "Goblin Lineman", "ma": 6, "st": 2, "ag": 3, "pa": 3, "av": 8, "skills": ["Dodge", "Right Stuff", "Stunty"],
           "sprite": { "sheet": "assets/sprites/goblin.gif", "base": { "x":  0, "y":   0, "w": 19, "h": 24 }, "armour": { "x": 39, "y":   0, "w": 19, "h": 22 } } },          

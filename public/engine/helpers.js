@@ -53,6 +53,30 @@ function checkSkillSpelling(skills, who) {
     }
 }
 
+// ── Team special rules ────────────────────────────────────────────
+// Rules a whole team carries, as opposed to a skill a player carries. Same
+// drift hazard as skills: bbauth writes these strings, the engine matches them
+// exactly, so a spelling slip would silently do nothing.
+var TEAM_RULE_CATALOGUE = {
+    'Bribery and Corruption': true,   // engine acts on it (Argue the Call re-roll)
+    'Team Captain':           false,  // valid, not yet implemented
+    "Brawlin' Brutes":        false,  // league SPP only — never our business
+};
+
+function checkTeamRuleSpelling(rules, who) {
+    if (!rules) return;
+    for (const r of rules) {
+        if (!(r in TEAM_RULE_CATALOGUE)) {
+            console.warn(`⚠ Unrecognized team special rule "${r}" on ${who} — check spelling against the engine catalogue; it will be silently ignored.`);
+        }
+    }
+}
+
+// Does `side` have the named special rule this game?
+function hasTeamRule(G, side, rule) {
+    return !!(G.specialRules?.[side] || []).includes(rule);
+}
+
 // ── sqLabel ───────────────────────────────────────────────────────
 // Human-readable square label: col → letter (A–K), row → 1-based number.
 // e.g. sqLabel(0, 0) → "A1",  sqLabel(10, 19) → "K20"
@@ -317,6 +341,7 @@ if (typeof module !== 'undefined') {
     module.exports = {
         COLS, ROWS, TURNS,
         SKILL_CATALOGUE, ALL_SKILLS, checkSkillSpelling,
+        TEAM_RULE_CATALOGUE, checkTeamRuleSpelling, hasTeamRule,
         sqLabel,
         playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
         leaderRerollAvailable, teamRerollsLeft,

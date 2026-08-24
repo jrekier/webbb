@@ -9,6 +9,8 @@
     "assistantCoaches": 2,
     "fanFactor": 6,
     "apothecary": true,
+    "tv": 1045000,
+    "specialRules": ["Team Captain"],
     "players": [
         { "name": "Aldric",     "pos": "Lineman", "ma": 6, "st": 3, "ag": 3, "pa": 4, "av": 9, "skills": [],
           "sprite": { "sheet": "assets/sprites/human.gif", "base": { "x":  0, "y":  0, "w": 25, "h": 26 }, "armour": { "x": 26, "y":  0, "w": 23, "h": 26 } } },

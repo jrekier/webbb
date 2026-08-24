@@ -9,6 +9,8 @@
     "assistantCoaches": 2,
     "fanFactor": 6,
     "apothecary": true,
+    "tv": 1235000,
+    "specialRules": ["Brawlin' Brutes","Bribery and Corruption"],
     "players": [
         { "name": "Durgin",   "pos": "Dwarf Lineman", "ma": 4, "st": 3, "ag": 4, "pa": 5, "av": 10, "skills": ["Block", "Defensive", "Thick Skull"],
           "sprite": { "sheet": "assets/sprites/dwarf.gif", "base": { "x": 0, "y":   0, "w": 22, "h": 25 }, "armour": { "x": 24, "y":   0, "w": 21, "h": 25 } } },

@@ -9,6 +9,8 @@
     "assistantCoaches": 2,
     "fanFactor": 6,
     "apothecary": true,
+    "tv": 1090000,
+    "specialRules": [],
     "players": [
         { "name": "Skritch",   "pos": "Skaven Clanrat", "ma": 7, "st": 3, "ag": 3, "pa": 4, "av": 8, "skills": [],
           "sprite": { "sheet": "assets/sprites/skaven.gif", "base": { "x":  0, "y":  0, "w": 23, "h": 25 }, "armour": { "x": 34, "y":  0, "w": 24, "h": 25 } } },

@@ -520,6 +520,11 @@ function startGame(room) {
     room.G.assistantCoaches = { home: room.homeTeam.assistantCoaches || 0, away: room.awayTeam.assistantCoaches || 0 };
     room.G.fanFactor       = { home: room.homeTeam.fanFactor       || 0, away: room.awayTeam.fanFactor       || 0 };
     room.G.apothecary      = { home: !!room.homeTeam.apothecary,         away: !!room.awayTeam.apothecary         };
+    // TV is computed by bbauth (which owns the price list) and rides in on the
+    // team def, so webbb never needs a price list of its own.
+    room.G.teamValue       = { home: room.homeTeam.tv || 0, away: room.awayTeam.tv || 0 };
+    room.G.specialRules    = { home: room.homeTeam.specialRules || [], away: room.awayTeam.specialRules || [] };
+    room.G.inducements     = { home: room.homeTeam.inducements  || {}, away: room.awayTeam.inducements  || {} };
     initToss(room.G);  // sets phase='toss', picks tossWinner
 
     console.log(`Room ${room.id}: game started — ${room.G.players.length} players`);

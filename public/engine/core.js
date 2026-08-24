@@ -56,7 +56,8 @@ if (typeof module !== 'undefined') {
 // The whole game state object, G. Field groups (see the flow docs above and in
 // resolve.js for how they're driven):
 //   • progress      — phase, half, turn, active, score, kicker/receiver, setupSide
-//   • team resources— rerolls, bribes, cheerleaders, coaches, fanFactor, apothecary
+//   • team resources— rerolls, bribes, cheerleaders, coaches, fanFactor,
+//                     apothecary, teamValue, specialRules
 //   • current action— activated, sel, and the MODE flags (block, blitz, passing,
 //                     handingOff, fouling, stabbing, pvTargeting, securingBall,
 //                     throwTeamMate, animalSavagery, targeting)
@@ -91,6 +92,9 @@ function createInitialState() {
         assistantCoaches:   { home: 0, away: 0 },
         fanFactor:          { home: 0, away: 0 },
         apothecary:         { home: false, away: false },
+        // Team Value in gold, as built. Inducements and petty cash are worked
+        // out from the difference between the two sides.
+        teamValue:          { home: 0, away: 0 },
         // The single suspended coach decision, or null. Shape: { kind, side, … }.
         // kind ∈ reroll | passReroll | intercept | divingTackle | argue | bribe.
         // Only one is ever active at a time (the game pauses until it's answered).
@@ -102,6 +106,13 @@ function createInitialState() {
         hasThrownMate:      false,
         fouling:            false,
         coachEjected:       { home: false, away: false },
+        // What each team bought as inducements, for display. The effects are
+        // already folded into the resource counters above by bbauth.
+        inducements:        { home: {}, away: {} },
+        // Team special rules carried from the roster (see TEAM_RULE_CATALOGUE).
+        specialRules:       { home: [], away: [] },
+        // Bribery and Corruption is once per game — never reset at half time.
+        corruptionRerollUsed: { home: false, away: false },
         handingOff:         false,
         hasDodged:          false,
         asRolled:           false,
