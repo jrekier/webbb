@@ -3,19 +3,28 @@
 // Stab, and Throw Team-Mate.
 
 if (typeof module !== 'undefined') {
-    var { COLS, ROWS, countAssists, countTackleZones, hasTeamRule, isAdjacent, isStanding, markStunned, sqLabel } = require('./helpers.js');
+    var { COLS, ROWS, countAssists, countTackleZones, hasDesperate, hasTeamRule, isAdjacent, isStanding, markStunned, recordAction, spendDesperate, sqLabel } = require('./helpers.js');
     var { rollArmourAndInjury, rollCrowdInjury, rollInjury } = require('./dice.js');
     var { endActivation, endTurn } = require('./core.js');
     var { _applyOutcome, _traitChecks, checkTouchdown, pn, scatterBall, throwIn } = require('./resolve.js');
 }
 
-function declareFoul(G, playerId) {
+// `grudge` declares this as a Grudge Match foul: legal even though the team has
+// already fouled this turn, and the fouler cannot be Sent-off for it. The flag
+// rides on G until executeFoul resolves it.
+function declareFoul(G, playerId, grudge = false) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
     const t = _traitChecks(G, p, false);
     if (t.abort) return t.msg;
     const prefix = t.msg;
+    if (grudge) {
+        if (!hasDesperate(G, p.side, 'grudgeMatch')) return null;
+        spendDesperate(G, p.side, 'grudgeMatch');
+        G.grudgeFoul = true;
+    }
     G.activated = p;
+    recordAction(G, p, 'Foul');
     G.sel       = p;
     G.fouling   = true;
     if (G.animalSavagery) return prefix;
@@ -47,6 +56,9 @@ function executeFoul(G, targetId) {
     if (roll >= def.av) {
         const { d1: di1, d2: di2, injuryRoll, outcome } = rollInjury(def);
         if (di1 === di2) spotted = true;
+        // Under Scrutiny — the DEFENDER's team prayed, so the fouler is spotted
+        // automatically whenever armour breaks, doubles or not.
+        if ((G.prayers?.[def.side] || []).includes('underScrutiny')) spotted = true;
         msg += `AV broken! Inj ${injuryRoll}: ${_applyOutcome(def, outcome)}`;
         if (!G.ball.carrier && G.ball.col === defCol && G.ball.row === defRow) {
             G.ball.col = defCol; G.ball.row = defRow;
@@ -59,6 +71,14 @@ function executeFoul(G, targetId) {
     G.fouling   = false;
     G.hasFouled = true;
     endActivation(G);
+
+    // Grudge Match — this foul is off the books: the player cannot be Sent-off
+    // for it, whatever the dice said.
+    if (G.grudgeFoul) {
+        G.grudgeFoul = false;
+        msg += ' Grudge Match — no sending-off for this one.';
+        spotted = false;
+    }
 
     if (spotted) {
         msg += ' Ref spots the foul!';
@@ -168,6 +188,7 @@ function declarePV(G, playerId) {
     const prefix = t.msg;
 
     G.activated   = p;
+    recordAction(G, p, 'Vomit');
     G.sel         = p;
     G.blitz       = null;
     G.pvTargeting = true;
@@ -229,6 +250,7 @@ function declareStab(G, playerId) {
     const prefix = t.msg;
 
     G.activated  = p;
+    recordAction(G, p, 'Stab');
     G.sel        = p;
     G.blitz      = null;
     G.stabbing   = true;
@@ -286,6 +308,7 @@ function declareTTM(G, playerId) {
     const prefix = t.msg;
 
     G.activated = p;
+    recordAction(G, p, 'TTM');
     G.sel       = p;
     G.throwTeamMate = { phase: 'pick-missile' };
     G.targeting     = true;

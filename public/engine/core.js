@@ -5,6 +5,7 @@
 
 if (typeof module !== 'undefined') {
     var { COLS, ROWS, TURNS,
+        hasDesperate, spendDesperate, recordAction,
           playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
           hasMovedYet, canStillCancel,
           isValidSetupSquare,
@@ -106,6 +107,19 @@ function createInitialState() {
         hasThrownMate:      false,
         fouling:            false,
         coachEjected:       { home: false, away: false },
+        // Blitzer's Best Kegs: +1 each to this team's KO recovery rolls.
+        kegs:               { home: 0, away: 0 },
+        // Halfling Master Chef: 3D6 at the start of each half.
+        masterChef:         { home: false, away: false },
+        // Prayers to Nuffle that act on the whole match (the player buffs are
+        // already baked into the players by bbauth). Desperate Measures are
+        // carried for display — none are wired to a trigger yet.
+        prayers:            { home: [], away: [] },
+        // Desperate Measures held, and which have been spent. Each is offered
+        // at its own trigger (a prompt) or declared from the action wheel —
+        // nothing is armed in advance.
+        desperateMeasures:  { home: [], away: [] },
+        desperateUsed:      { home: {}, away: {} },
         // What each team bought as inducements, for display. The effects are
         // already folded into the resource counters above by bbauth.
         inducements:        { home: {}, away: {} },
@@ -145,7 +159,7 @@ function activatePlayer(G, playerId) {
     const p = G.players.find(p => p.id === playerId);
     if (!p) return null;
     if (p.side !== G.active) return null;
-    if (p.usedAction) return null;
+    if (p.usedAction && !(p.razzleLeft > 0)) return null;   // Razzle-dazzle buys one more
     if (G.activated) return null;
     if (p.col < 0) return null;
     if (p.status === 'stunned' || p.status === 'ko' || p.status === 'casualty') return null;
@@ -238,7 +252,17 @@ function endActivation(G) {
     return `${name} done`;
 }
 
-function endTurn(G) {
+// `voluntary` is true only when the coach ends their own turn from the UI.
+// Every other caller is a turnover, which is what Sports Espionage keys off.
+function endTurn(G, voluntary = false) {
+    // Sports Espionage triggers on a turnover, which is not a moment a coach can
+    // plan for — so it is offered as a decision rather than armed in advance.
+    // Noted here (before the side switches) and asked at the very end, once the
+    // turnover has fully resolved: the re-rolls are gained *afterwards*, and
+    // cannot re-roll the dice that caused it.
+    const espionageSide = (!voluntary && hasDesperate(G, G.active, 'sportsEspionage'))
+        ? G.active : null;
+
     if (G.phase === 'kickoff_charge') {
         // Turnover during Charge! — end the charge immediately
         if (G.activated) { G.activated.usedAction = true; G.activated = null; }
@@ -251,6 +275,8 @@ function endTurn(G) {
     for (const p of G.players) {
         if (p.side === G.active) {
             p.usedAction = false;
+            p.actionsThisTurn = [];
+            p.razzleLeft = 0;       // declared but unused Razzle-dazzle is lost
             p.usedPro    = false;   // Pro resets each turn (once per activation)
             p.maLeft     = p.ma;
             p.rushLeft     = 2;
@@ -285,7 +311,23 @@ function endTurn(G) {
         return startGameOver(G);
     }
 
+    if (espionageSide && G.phase === 'play' && !G.pending) {
+        G.pending = { kind: 'sportsEspionage', side: espionageSide };
+    }
     return `Turn ${G.turn} · ${G.active.toUpperCase()}`;
+}
+
+// ── resolveSportsEspionage ────────────────────────────────────────
+// Answer to the prompt raised by endTurn. Declining keeps the Desperate Measure
+// for a later turnover — it is only spent when actually used.
+function resolveSportsEspionage(G, use) {
+    if (G.pending?.kind !== 'sportsEspionage') return null;
+    const { side } = G.pending;
+    G.pending = null;
+    if (!use) return `${side.toUpperCase()} keeps Sports Espionage in reserve.`;
+    spendDesperate(G, side, 'sportsEspionage');
+    G.rerolls[side] = (G.rerolls[side] || 0) + 2;
+    return `Sports Espionage — ${side.toUpperCase()} gains two Team Re-rolls.`;
 }
 
 // ── endScoringTurn ────────────────────────────────────────────────
@@ -313,6 +355,42 @@ function endScoringTurn(G, scoringSide) {
 // KO roll for each KO'd player (4+ returns to dugout/reserves).
 // Roles swap: half-1 receiver now kicks. Reset to setup.
 
+// ── rollMasterChef ────────────────────────────────────────────────
+// At the start of each half, a team with a Halfling Master Chef rolls 3D6. For
+// each 4+ they gain a Team Re-roll for the half and the opposition loses one.
+// Re-rolls are restored per half from G.startingRerolls, so the chef's swing is
+// applied to both that and the live count.
+function rollMasterChef(G) {
+    const msgs = [];
+    for (const side of ['home', 'away']) {
+        if (!G.masterChef?.[side]) continue;
+        const other = side === 'home' ? 'away' : 'home';
+        const rolls = [0, 0, 0].map(() => Math.floor(Math.random() * 6) + 1);
+        const gained = rolls.filter(r => r >= 4).length;
+        if (gained) {
+            G.rerolls[side]  += gained;
+            G.rerolls[other]  = Math.max(0, G.rerolls[other] - gained);
+        }
+        msgs.push(`${side.toUpperCase()} Master Chef rolls ${rolls.join(', ')} — ${
+            gained ? `steals ${gained} re-roll${gained > 1 ? 's' : ''}` : 'nothing doing'}.`);
+    }
+    return msgs;
+}
+
+// ── declareRazzle ─────────────────────────────────────────────────
+// Razzle-dazzle, declared from the action wheel as the player is activated: it
+// buys this player one extra Action this activation. The pair may not repeat an
+// Action, and only one of them may contain a Move (see actionAllowed).
+function declareRazzle(G, playerId) {
+    const p = G.players.find(x => x.id === playerId);
+    if (!p || p.side !== G.active) return null;
+    if (!hasDesperate(G, p.side, 'razzleDazzle')) return null;
+    if (p.usedAction || p.razzleLeft > 0) return null;
+    spendDesperate(G, p.side, 'razzleDazzle');
+    p.razzleLeft = 1;
+    return `Razzle-dazzle! ${p.name} may declare two Actions this activation.`;
+}
+
 function startHalfTime(G) {
     // Drive-scoped illness (Dodgy Snack) expires at half-time too.
     for (const p of G.players) {
@@ -325,13 +403,17 @@ function startHalfTime(G) {
     for (const p of G.players) {
         if (p.status === 'ko') {
             const roll = Math.floor(Math.random() * 6) + 1;
-            if (roll >= 4) {
+            // Blitzer's Best Kegs — +1 per keg to this team's recovery rolls.
+            const kegs = G.kegs?.[p.side] || 0;
+            const total = roll + kegs;
+            const shown = kegs ? `${roll}+${kegs}` : `${roll}`;
+            if (total >= 4) {
                 p.status = 'active';
                 // Place off-pitch until setup positions them.
                 p.col = -1; p.row = -1;
-                koMsgs.push(`${p.name} recovers (rolled ${roll})`);
+                koMsgs.push(`${p.name} recovers (rolled ${shown})`);
             } else {
-                koMsgs.push(`${p.name} stays KO (rolled ${roll})`);
+                koMsgs.push(`${p.name} stays KO (rolled ${shown})`);
             }
         }
     }
@@ -359,8 +441,13 @@ function startHalfTime(G) {
     G.phase              = 'setup';
     G.setupSide          = G.kicker;
 
-    const koSummary = koMsgs.length ? ` KO rolls: ${koMsgs.join(', ')}.` : '';
-    return `HALF TIME!${koSummary} Half 2: ${G.kicker.toUpperCase()} kicks off — set up your team.`;
+    // Master Chef rolls after the per-half re-roll reset — before it, the reset
+    // would wipe the very re-rolls it just stole.
+    const chefMsgs = rollMasterChef(G);
+
+    const koSummary   = koMsgs.length   ? ` KO rolls: ${koMsgs.join(', ')}.` : '';
+    const chefSummary = chefMsgs.length ? ` ${chefMsgs.join(' ')}` : '';
+    return `HALF TIME!${koSummary}${chefSummary} Half 2: ${G.kicker.toUpperCase()} kicks off — set up your team.`;
 }
 
 // ── startGameOver ────────────────────────────────────────────────
@@ -524,7 +611,10 @@ function chooseTossResult(G, choice) {
     G.firstHalfReceiver  = G.receiver;
     G.phase              = 'setup';
     G.setupSide          = G.kicker;
-    return `${G.kicker.toUpperCase()} kicks off — set up your team.`;
+    // Master Chef rolls at the start of each half — this is the first one.
+    const chefMsgs = rollMasterChef(G);
+    const chefSummary = chefMsgs.length ? `${chefMsgs.join(' ')} ` : '';
+    return `${chefSummary}${G.kicker.toUpperCase()} kicks off — set up your team.`;
 }
 
 // ── moveSetupPlayer ───────────────────────────────────────────────
@@ -728,6 +818,6 @@ if (typeof module !== 'undefined') {
         initToss, chooseTossResult,
         moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, validateSetup, confirmSetup,
         moveSolidDefencePlayer, demoteSolidDefencePlayer,
-        kickoffQuickSnapMove,
+        kickoffQuickSnapMove, resolveSportsEspionage, declareRazzle,
     };
 }

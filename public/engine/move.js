@@ -3,10 +3,10 @@
 // Secure-the-Ball action.
 
 if (typeof module !== 'undefined') {
-    var { canMoveTo, isAdjacent, isStanding, sqLabel } = require('./helpers.js');
+    var { canMoveTo, countTackleZones, hasDesperate, isAdjacent, isStanding, recordAction, rushMod, spendDesperate, sqLabel } = require('./helpers.js');
     var { dodge, rush } = require('./dice.js');
     var { activatePlayer, endActivation, endTurn } = require('./core.js');
-    var { _offerReroll, _traitChecks, checkTouchdown, knockDown, pn, scatterBall, tryPickup } = require('./resolve.js');
+    var { _offerReroll, _traitChecks, checkTouchdown, checkTrapdoor, knockDown, pn, scatterBall, tryPickup } = require('./resolve.js');
 }
 
 function doSecureRoll(G, p) {
@@ -35,6 +35,7 @@ function secureBall(G, playerId) {
     const prefix = t.msg;
 
     G.activated    = p;
+    recordAction(G, p, 'Secure');
     G.sel          = p;
     G.securingBall = true;
     if (G.animalSavagery) return prefix;
@@ -67,6 +68,31 @@ function _finishMove(G, p, col, row, needsrush, msg) {
     else            p.rushLeft -= 1;
     G.stoodUpFromProne = false;
     G.sel = p;
+
+    // Entering a square can drop you straight through the pitch.
+    const trap = checkTrapdoor(G, p);
+    if (trap) {
+        msg += ' ' + trap;
+        if (p.col < 0) { endActivation(G); return msg; }   // fell through
+    }
+
+    // Discarded Banana Skin — this player has just stepped into a Tackle Zone of
+    // the opposing coach, who may spring it. Their decision, so the move
+    // suspends here, before any pickup or touchdown, and resumes either way.
+    const foe = p.side === 'home' ? 'away' : 'home';
+    if (hasDesperate(G, foe, 'bananaSkin') && countTackleZones(G, p.side, p.col, p.row) > 0) {
+        G.pending = { kind: 'bananaSkin', side: foe, moverId: p.id, msg };
+        return msg + ` ${pn(p)} steps into a tackle zone — Banana Skin?`;
+    }
+
+    return _finishMoveAfterEntry(G, p, msg);
+}
+
+// ── _finishMoveAfterEntry ─────────────────────────────────────────
+// The rest of a move once the square has been entered and any reaction to that
+// entry (Banana Skin) has been settled: end the activation if the player is
+// spent, then pickup and touchdown.
+function _finishMoveAfterEntry(G, p, msg) {
     // Don't auto-end if a declared action that costs no MA still needs resolving.
     if (p.maLeft + p.rushLeft === 0 && !G.passing && !G.handingOff && !G.fouling) endActivation(G);
 
@@ -85,6 +111,39 @@ function _finishMove(G, p, col, row, needsrush, msg) {
     const tdMsg = checkTouchdown(G, p);
     if (tdMsg) return msg + ' ' + tdMsg;
     return msg;
+}
+
+// ── resolveBananaSkin ─────────────────────────────────────────────
+// Answer to the prompt raised in _finishMove. Yes: the mover is PLACED Prone —
+// no armour roll — and their activation ends, which is only a turnover if they
+// were carrying the ball. No: the move carries on as though nothing happened,
+// and the Desperate Measure is kept for a later chance.
+function resolveBananaSkin(G, use) {
+    if (G.pending?.kind !== 'bananaSkin') return null;
+    const { side, moverId, msg } = G.pending;
+    G.pending = null;
+    const p = G.players.find(x => x.id === moverId);
+    if (!p) return null;
+
+    if (!use) return _finishMoveAfterEntry(G, p, msg);
+
+    spendDesperate(G, side, 'bananaSkin');
+    p.status = 'prone';
+    const hadBall = p.hasBall;
+    if (hadBall) {
+        p.hasBall = false;
+        G.ball.carrier = null;
+        G.ball.col = p.col;
+        G.ball.row = p.row;
+    }
+    endActivation(G);
+    let out = `${msg} Discarded Banana Skin — ${pn(p)} slips and is placed prone!`;
+    if (hadBall) {
+        out += ' ' + scatterBall(G);
+        endTurn(G);
+        out += ' TURNOVER';
+    }
+    return out;
 }
 
 // Resolves one dodge: the roll, the Dodge-skill free reroll, and a possible
@@ -216,7 +275,7 @@ function movePlayer(G, col, row) {
         const rushesNeeded = Math.max(0, 3 - p.maLeft);
         const rolls = [];
         for (let i = 0; i < rushesNeeded; i++) {
-            const { roll, failed } = rush();
+            const { roll, failed } = rush(rushMod(G, p));
             rolls.push(roll);
             if (failed) {
                 let injMsg = knockDown(G, p);
@@ -235,13 +294,13 @@ function movePlayer(G, col, row) {
 
     // Rush for regular movement
     if (needsrush) {
-        const { roll: rushroll, failed: rushFailed } = rush();
+        const { roll: rushroll, failed: rushFailed } = rush(rushMod(G, p));
         if (rushFailed) {
             msg += `${pn(p)} fails rush (rolled ${rushroll}). `;
             // True once any reroll (skill or team) has been used/offered on this roll.
             // No skill auto-rerolls rush yet, but the flag is ready for future skills (e.g. Sprint).
             // Pre-roll the second attempt now so _resolveTeamReroll needs no dice knowledge.
-            const { roll: r2, failed: f2 } = rush();
+            const { roll: r2, failed: f2 } = rush(rushMod(G, p));
             const msgBeforeReroll = msg;
             return _offerReroll(G, p, {
                 rerolled: false, label: 'rush', secondFailed: f2, baseMsg: msg,
@@ -296,12 +355,13 @@ function activateMover(G, playerId) {
 
     G.hasBlocked = false;   // fresh activation — no block thrown yet
     G.activated = p;
+    recordAction(G, p, 'Move');
     G.sel       = p;
 
     const rushesNeeded = Math.max(0, 3 - p.maLeft);
     const rolls = [];
     for (let i = 0; i < rushesNeeded; i++) {
-        const { roll, failed } = rush();
+        const { roll, failed } = rush(rushMod(G, p));
         rolls.push(roll);
         if (failed) {
             let injMsg = knockDown(G, p);
@@ -327,5 +387,6 @@ function activateMover(G, playerId) {
 // or as a blitz replacement (clears G.blitz in either case).
 
 if (typeof module !== 'undefined') {
-    module.exports = { doSecureRoll, secureBall, _moveTurnover, _finishMove, _checkDodge, _divingTacklers, _dodgeSucceeded, resolveDivingTackle, movePlayer, activateMover };
+    module.exports = {
+        resolveBananaSkin, doSecureRoll, secureBall, _moveTurnover, _finishMove, _checkDodge, _divingTacklers, _dodgeSucceeded, resolveDivingTackle, movePlayer, activateMover };
 }

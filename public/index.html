@@ -169,11 +169,21 @@
       <div class="section-title">Player Editor</div>
       <div id="player-editor-name"></div>
       <div id="player-editor-stats"></div>
+      <div id="player-editor-status"></div>
       <div class="skill-chips" id="skill-chips"></div>
       <div id="player-editor-add">
         <select id="skill-select"></select>
         <button id="btn-add-skill" onclick="addSkillToSelected()">+ Add</button>
       </div>
+    </div>
+
+    <!-- Debug only: grant the match-scoped inducements that are otherwise
+         bought in bbauth and rolled at launch, so they can be exercised in a
+         local hot-seat game without going through the staging room. -->
+    <div class="section" id="section-debug-match" style="display:none;">
+      <div class="section-title">Inducements (debug)</div>
+      <div id="debug-match-side"></div>
+      <div id="debug-match-body"></div>
     </div>
 
     <div class="section" id="section-log">

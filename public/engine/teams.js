@@ -43,6 +43,9 @@ function buildRosterFromTeam(teamDef, side, startId, formation) {
             av:         p.av,
             skills:        p.skills        || [],
             specialSkills: p.specialSkills || [],
+            // Skills granted by a Prayer to Nuffle rather than the roster —
+            // the action wheel colours these differently.
+            prayerSkills:  p.prayerSkills  || [],
             injuries:      p.injuries      || null,
             illnesses:     p.illnesses     || null,
             maLeft:     p.ma,

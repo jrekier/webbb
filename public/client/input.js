@@ -1129,6 +1129,29 @@ function onClickStab() {
     else { const msg = declareStab(G, G.sel.id); if (msg) log(msg); render(); }
 }
 
+// Razzle-dazzle — declared as the player activates, buying them a second Action.
+// The wheel reopens straight away so the coach can pick that first Action
+// without a second right-click.
+function onClickRazzle() {
+    const p = G.sel;
+    if (!p) return;
+    const w = wheelState;
+    if (NET.online) sendAction({ type: 'RAZZLE_DECLARE', playerId: p.id });
+    else { const m = declareRazzle(G, p.id); if (m) log(m); }
+    wheelState = null;
+    render();
+    if (w && !NET.online) { _openWheel(p, w.cx, w.cy); render(); }
+}
+
+// Grudge Match — a second foul in a turn that has already used one. Declared
+// from the action wheel like any other action; the measure is spent on declare.
+function onClickGrudgeFoul() {
+    const p = G.sel;
+    if (!p) return;
+    if (NET.online) sendAction({ type: 'GRUDGE_FOUL_DECLARE', playerId: p.id });
+    else { const m = declareFoul(G, p.id, true); if (m) log(m); render(); }
+}
+
 function onClickRerollBlock() {
     if (NET.online) sendAction({ type: 'BLOCK_REROLL' });
     else { const msg = rerollBlockDice(G); if (msg) log(msg); render(); }
@@ -1273,7 +1296,7 @@ function onClickEndTurn() {
         prompt: 'End your turn?',
         onYes: () => {
             if (NET.online) sendAction({ type: 'END_TURN' });
-            else { endTurn(G); render(); }
+            else { endTurn(G, true); render(); }
         },
     };
     render();
@@ -1297,6 +1320,56 @@ function updateButtons() {
             onNo: () => {
                 if (NET.online) sendAction({ type: 'BRIBE', use: false });
                 else { const m = resolveBribe(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Sports Espionage — the team that just suffered a turnover may cash in two
+    // Team Re-rolls. Declining keeps it for a later turnover.
+    if (G.pending?.kind === 'sportsEspionage' && !G.confirm
+            && (!NET.online || NET.side === G.pending.side)) {
+        G.confirm = {
+            prompt: 'Turnover! Use Sports Espionage for two Team Re-rolls?',
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'SPORTS_ESPIONAGE', use: true });
+                else { const m = resolveSportsEspionage(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'SPORTS_ESPIONAGE', use: false });
+                else { const m = resolveSportsEspionage(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Set Piece — the throwing coach decides, before the dice.
+    if (G.pending?.kind === 'setPiece' && !G.confirm
+            && (!NET.online || NET.side === G.pending.side)) {
+        G.confirm = {
+            prompt: 'Use Set Piece? (Accurate on 2+, and the catch is 2+)',
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'SET_PIECE', use: true });
+                else { const m = resolveSetPiece(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'SET_PIECE', use: false });
+                else { const m = resolveSetPiece(G, false); if (m) log(m); }
+            },
+        };
+    }
+
+    // Discarded Banana Skin — the DEFENDING coach reacts to an opponent
+    // stepping into one of their tackle zones.
+    if (G.pending?.kind === 'bananaSkin' && !G.confirm
+            && (!NET.online || NET.side === G.pending.side)) {
+        G.confirm = {
+            prompt: 'Opponent steps into your tackle zone — use the Banana Skin?',
+            onYes: () => {
+                if (NET.online) sendAction({ type: 'BANANA_SKIN', use: true });
+                else { const m = resolveBananaSkin(G, true);  if (m) log(m); }
+            },
+            onNo: () => {
+                if (NET.online) sendAction({ type: 'BANANA_SKIN', use: false });
+                else { const m = resolveBananaSkin(G, false); if (m) log(m); }
             },
         };
     }

@@ -61,6 +61,10 @@ function startGame(homeTeam, awayTeam) {
         G.teamValue       = { home: homeTeamDef.tv || 0, away: awayTeamDef.tv || 0 };
         G.specialRules    = { home: homeTeamDef.specialRules || [], away: awayTeamDef.specialRules || [] };
         G.inducements     = { home: homeTeamDef.inducements  || {}, away: awayTeamDef.inducements  || {} };
+        G.kegs            = { home: homeTeamDef.kegs || 0,    away: awayTeamDef.kegs || 0 };
+        G.masterChef      = { home: !!homeTeamDef.masterChef, away: !!awayTeamDef.masterChef };
+        G.prayers         = { home: homeTeamDef.prayers || [], away: awayTeamDef.prayers || [] };
+        G.desperateMeasures = { home: homeTeamDef.desperateMeasures || [], away: awayTeamDef.desperateMeasures || [] };
         G.treasury        = { home: homeTeamDef.treasury        || 0, away: awayTeamDef.treasury        || 0 };
         const winner = initToss(G);
         showTossOverlay(winner);
@@ -132,6 +136,59 @@ function toggleDebugMode() {
     render();
 }
 
+// ── Debug: match-scoped inducements ───────────────────────────────
+// Prayers, Desperate Measures, Kegs and the Master Chef are normally bought in
+// bbauth and rolled at launch, which makes them slow to exercise. In debug mode
+// they can be granted straight into G here, so a local hot-seat game can test
+// every effect without a staging room, a second browser, or lucky dice.
+var _debugSide = 'home';
+
+function debugSetSide(side) { _debugSide = side; render(); }
+
+function _debugPush(side) {
+    if (NET.online) sendAction({
+        type: 'DEBUG_SET_MATCH', side,
+        prayers:           G.prayers[side],
+        desperateMeasures: G.desperateMeasures[side],
+        desperateUsed:     G.desperateUsed[side],
+        kegs:              G.kegs[side],
+        masterChef:        G.masterChef[side],
+        bribes:            G.bribes[side],
+    });
+    render();
+}
+
+function debugTogglePrayer(side, key) {
+    const list = G.prayers[side] || (G.prayers[side] = []);
+    const i = list.indexOf(key);
+    if (i >= 0) list.splice(i, 1); else list.push(key);
+    _debugPush(side);
+}
+
+function debugToggleDesperate(side, key) {
+    const list = G.desperateMeasures[side] || (G.desperateMeasures[side] = []);
+    const i = list.indexOf(key);
+    if (i >= 0) {
+        list.splice(i, 1);
+    } else {
+        list.push(key);
+    }
+    // Granting always hands back a fresh, unspent one.
+    if (G.desperateUsed?.[side]) delete G.desperateUsed[side][key];
+    _debugPush(side);
+}
+
+function debugBump(side, field, delta, max) {
+    const cur = G[field][side] || 0;
+    G[field][side] = Math.max(0, Math.min(max, cur + delta));
+    _debugPush(side);
+}
+
+function debugToggleFlag(side, field) {
+    G[field][side] = !G[field][side];
+    _debugPush(side);
+}
+
 function addSkillToSelected() {
     const p = G.sel;
     if (!p) return;
@@ -141,6 +198,20 @@ function addSkillToSelected() {
     if (!p.skills) p.skills = [];
     if (!p.skills.includes(skill)) p.skills.push(skill);
     if (NET.online) sendAction({ type: 'DEBUG_SET_SKILLS', playerId: p.id, skills: p.skills });
+    render();
+}
+
+// Debug: force the selected player into a given status. A KO'd player leaves
+// the pitch, as they would after a real injury; standing one up again puts them
+// back where they were only if they still have a square, so a KO'd player has to
+// be dragged back on (debug mode already allows that).
+function setStatusOfSelected(status) {
+    const p = G.sel;
+    if (!p) return;
+    p.status = status;
+    if (status === 'stunned') p.stunnedThisTurn = true;
+    if (status === 'ko') { p.col = -1; p.row = -1; if (p.hasBall) { p.hasBall = false; G.ball.carrier = null; } }
+    if (NET.online) sendAction({ type: 'DEBUG_SET_STATUS', playerId: p.id, status });
     render();
 }
 

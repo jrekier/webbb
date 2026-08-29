@@ -2,7 +2,7 @@
 // The passing game: the Pass action, Hand-off, and interception.
 
 if (typeof module !== 'undefined') {
-    var { COLS, ROWS, countTackleZones, isAdjacent, isStanding, sqLabel } = require('./helpers.js');
+    var { COLS, ROWS, countTackleZones, hasDesperate, isAdjacent, isStanding, recordAction, spendDesperate, sqLabel } = require('./helpers.js');
     var { d6 } = require('./dice.js');
     var { endActivation, endTurn } = require('./core.js');
     var { _catchAtSquare, _offerReroll, _scatterNTimes, _traitChecks, pn, scatterBall } = require('./resolve.js');
@@ -43,6 +43,7 @@ function declarePass(G, playerId) {
     const prefix = t.msg;
 
     G.activated     = p;
+    recordAction(G, p, 'Pass');
     G.sel           = p;
     G.passing       = true;
     G.hasPassReroll = false;
@@ -171,10 +172,28 @@ function throwBall(G, targetCol, targetRow) {
                 : dist <= 9 ? { label: 'Long Pass',   mod: 2 }
                 :             { label: 'Long Bomb',   mod: 3 };
 
-    const tzs     = countTackleZones(G, p.side, p.col, p.row);
-    const target  = Math.min(p.pa + range.mod + tzs, 6);
+    // Set Piece — offered as the throw is lined up, before any dice. The coach
+    // decides per pass; declining keeps it for a later one.
+    if (hasDesperate(G, p.side, 'setPiece') && !G.setPieceAsked) {
+        G.pending = { kind: 'setPiece', side: p.side, targetCol, targetRow };
+        return `${pn(p)} lines up a ${range.label} — use Set Piece?`;
+    }
+
+    const tzs = countTackleZones(G, p.side, p.col, p.row);
+
+    // A Set Piece throw is Accurate on a 2+, and the catch that follows is
+    // automatic on a 2+ (see _catchAtSquare).
+    const setPiece = !!G.setPieceThrow;
+    if (setPiece) {
+        G.setPieceThrow = false;
+        G.setPieceCatch = p.side;   // the receiving side catches on 2+
+    }
+
+    const target  = setPiece ? 2 : Math.min(p.pa + range.mod + tzs, 6);
     const rawRoll = Math.floor(Math.random() * 6) + 1;
-    const msg     = `${pn(p)} [[skill:throws]] a ${range.label} (PA ${p.pa}+, +${range.mod + tzs} mods → ${target}+): rolled ${rawRoll}. `;
+    const msg     = setPiece
+        ? `${pn(p)} [[skill:throws]] a ${range.label} — Set Piece, ${target}+: rolled ${rawRoll}. `
+        : `${pn(p)} [[skill:throws]] a ${range.label} (PA ${p.pa}+, +${range.mod + tzs} mods → ${target}+): rolled ${rawRoll}. `;
 
     const isFumble = rawRoll === 1;
     const accurate = !isFumble && (rawRoll === 6 || rawRoll >= target);
@@ -194,6 +213,24 @@ function throwBall(G, targetCol, targetRow) {
 
     if (isFumble) return _doFumble(G, p, msg);
     return _continueThrow(G, p, targetCol, targetRow, accurate, msg);
+}
+
+// ── resolveSetPiece ───────────────────────────────────────────────
+// Answer to the prompt raised in throwBall. Either way the throw then proceeds;
+// `setPieceAsked` stops it being offered twice for the same pass.
+function resolveSetPiece(G, use) {
+    if (G.pending?.kind !== 'setPiece') return null;
+    const { side, targetCol, targetRow } = G.pending;
+    G.pending = null;
+
+    if (use) {
+        spendDesperate(G, side, 'setPiece');
+        G.setPieceThrow = true;
+    }
+    G.setPieceAsked = true;
+    const msg = throwBall(G, targetCol, targetRow);
+    G.setPieceAsked = false;
+    return (use ? 'Set Piece! ' : '') + (msg || '');
 }
 
 // ── resolvePassReroll ─────────────────────────────────────────────
@@ -311,6 +348,7 @@ function declareHandoff(G, playerId) {
     const prefix = t.msg;
 
     G.activated  = p;
+    recordAction(G, p, 'Handoff');
     G.sel        = p;
     G.handingOff = true;
     if (G.animalSavagery) return prefix;
@@ -346,5 +384,6 @@ function doHandoff(G, receiverId) {
 // ── Kickoff event table ───────────────────────────────────────────
 
 if (typeof module !== 'undefined') {
-    module.exports = { _checkPassTurnover, _resolveAccuratePass, declarePass, _ptSegDist, getInterceptors, _doFumble, _continueThrow, throwBall, resolvePassReroll, _offerPassReroll, _resolveInaccurateAtLanding, chooseInterceptor, declareHandoff, doHandoff };
+    module.exports = {
+        resolveSetPiece, _checkPassTurnover, _resolveAccuratePass, declarePass, _ptSegDist, getInterceptors, _doFumble, _continueThrow, throwBall, resolvePassReroll, _offerPassReroll, _resolveInaccurateAtLanding, chooseInterceptor, declareHandoff, doHandoff };
 }

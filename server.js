@@ -17,7 +17,7 @@ const {
     moveSetupPlayer, demoteToReserve, swapReservePlayer, swapSetupPlayers, confirmSetup, validateSetup,
     cancelActivation, endActivation, endTurn,
     moveSolidDefencePlayer, demoteSolidDefencePlayer,
-    kickoffQuickSnapMove, fixReferences,
+    kickoffQuickSnapMove, fixReferences, resolveSportsEspionage, declareRazzle,
 } = require('./public/engine/core.js');
 const {
     activateMover, movePlayer, resolveDivingTackle,
@@ -35,7 +35,7 @@ const {
     declareStab, executeStab,
     declareTTM, pickTTMMissile, throwTeamMate,
     useTeamReroll, declineTeamReroll,
-    resolveBribe,
+    resolveBribe, resolveSetPiece, resolveBananaSkin,
 } = require('./public/engine/actions.js');
 const TM = require('./public/engine/teams.js');
 const { getGameContext } = require('./public/engine/truth.js');
@@ -525,6 +525,10 @@ function startGame(room) {
     room.G.teamValue       = { home: room.homeTeam.tv || 0, away: room.awayTeam.tv || 0 };
     room.G.specialRules    = { home: room.homeTeam.specialRules || [], away: room.awayTeam.specialRules || [] };
     room.G.inducements     = { home: room.homeTeam.inducements  || {}, away: room.awayTeam.inducements  || {} };
+    room.G.kegs            = { home: room.homeTeam.kegs || 0,    away: room.awayTeam.kegs || 0 };
+    room.G.masterChef      = { home: !!room.homeTeam.masterChef, away: !!room.awayTeam.masterChef };
+    room.G.prayers         = { home: room.homeTeam.prayers || [], away: room.awayTeam.prayers || [] };
+    room.G.desperateMeasures = { home: room.homeTeam.desperateMeasures || [], away: room.awayTeam.desperateMeasures || [] };
     initToss(room.G);  // sets phase='toss', picks tossWinner
 
     console.log(`Room ${room.id}: game started — ${room.G.players.length} players`);
@@ -604,10 +608,12 @@ wss.on('connection', (ws) => {
         if (msg.type === 'DEBUG_MOVE_PLAYER') { handleDebugMovePlayer(room, msg); return; }
         if (msg.type === 'DEBUG_MOVE_BALL')   { handleDebugMoveBall(room, msg);   return; }
         if (msg.type === 'DEBUG_SET_SKILLS')  { handleDebugSetSkills(room, msg);  return; }
+        if (msg.type === 'DEBUG_SET_MATCH')   { handleDebugSetMatch(room, msg);   return; }
+        if (msg.type === 'DEBUG_SET_STATUS')  { handleDebugSetStatus(room, msg);  return; }
 
         // Reaction choices can belong to the defending (non-active) coach, so they
         // bypass the turn guard; each is then side-checked via gc in handleAction.
-        const turnFree = ['BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP', 'CHOOSE_INTERCEPTOR',
+        const turnFree = ['BANANA_SKIN', 'BLOCK_FACE', 'BLOCK_PUSH', 'FOLLOW_UP', 'CHOOSE_INTERCEPTOR',
                           'FEND', 'STAND_FIRM', 'STRIP_BALL', 'WRESTLE', 'JUGGERNAUT',
                           'DIVING_TACKLE'].includes(msg.type);
         if (!turnFree && side !== room.G.active) {
@@ -858,6 +864,39 @@ function handleDebugSetSkills(room, msg) {
     broadcast(room, { type: 'UPDATE', G });
 }
 
+// ── handleDebugSetStatus ──────────────────────────────────────────
+// Debug only: force a player's status, so states that normally need particular
+// dice (stunned, KO) can be reached directly.
+function handleDebugSetStatus(room, msg) {
+    const G = room.G;
+    const p = G.players.find(x => x.id === msg.playerId);
+    if (!p) return;
+    if (!['active', 'prone', 'stunned', 'ko', 'casualty'].includes(msg.status)) return;
+    p.status = msg.status;
+    if (msg.status === 'stunned') p.stunnedThisTurn = true;
+    if (msg.status === 'ko' || msg.status === 'casualty') {
+        p.col = -1; p.row = -1;
+        if (p.hasBall) { p.hasBall = false; G.ball.carrier = null; }
+    }
+    broadcast(room, { type: 'UPDATE', G });
+}
+
+// ── handleDebugSetMatch ───────────────────────────────────────────
+// Debug only: overwrite one side's match-scoped inducements. These are normally
+// bought in bbauth and rolled at launch, so without this they cannot be
+// exercised in an already-running game.
+function handleDebugSetMatch(room, msg) {
+    const G = room.G;
+    const side = msg.side === 'away' ? 'away' : 'home';
+    if (Array.isArray(msg.prayers))           G.prayers[side]           = msg.prayers;
+    if (Array.isArray(msg.desperateMeasures)) G.desperateMeasures[side] = msg.desperateMeasures;
+    if (msg.desperateUsed && typeof msg.desperateUsed === 'object') G.desperateUsed[side] = msg.desperateUsed;
+    if (Number.isInteger(msg.kegs))   G.kegs[side]   = Math.max(0, Math.min(2, msg.kegs));
+    if (Number.isInteger(msg.bribes)) G.bribes[side] = Math.max(0, Math.min(9, msg.bribes));
+    if (typeof msg.masterChef === 'boolean') G.masterChef[side] = msg.masterChef;
+    broadcast(room, { type: 'UPDATE', G });
+}
+
 // ── Action handler ────────────────────────────────────────────────
 
 function handleAction(room, msg, side) {
@@ -882,12 +921,17 @@ function handleAction(room, msg, side) {
         case 'MOVE':          room.lastLogMsg = movePlayer(G, msg.col, msg.row);     break;
         case 'CANCEL':        room.lastLogMsg = cancelActivation(G);                 break;
         case 'STOP':          room.lastLogMsg = endActivation(G);                    break;
-        case 'END_TURN':      endTurn(G); room.lastLogMsg = null; break;
+        case 'END_TURN':      endTurn(G, true); room.lastLogMsg = null; break;
         case 'SECURE_BALL':   if (!gc.canSecure)  return; room.lastLogMsg = secureBall(G, msg.playerId);         break;
-        case 'FOUL_DECLARE':        if (!gc.canFoul)    return; room.lastLogMsg = declareFoul(G, msg.playerId);           break;
+        case 'FOUL_DECLARE':        if (!gc.canFoul)      return; room.lastLogMsg = declareFoul(G, msg.playerId);         break;
+        case 'GRUDGE_FOUL_DECLARE': if (!gc.canGrudgeFoul) return; room.lastLogMsg = declareFoul(G, msg.playerId, true);   break;
+        case 'RAZZLE_DECLARE':      if (!gc.canRazzle)     return; room.lastLogMsg = declareRazzle(G, msg.playerId);       break;
         case 'DO_FOUL':             room.lastLogMsg = executeFoul(G, msg.targetId);           break;
         case 'ARGUE_CALL':          room.lastLogMsg = resolveArgueCall(G, msg.use);           break;
         case 'BRIBE':               room.lastLogMsg = resolveBribe(G, msg.use);              break;
+        case 'SPORTS_ESPIONAGE':    room.lastLogMsg = resolveSportsEspionage(G, msg.use);   break;
+        case 'SET_PIECE':           room.lastLogMsg = resolveSetPiece(G, msg.use);           break;
+        case 'BANANA_SKIN':         room.lastLogMsg = resolveBananaSkin(G, msg.use);         break;
         case 'HANDOFF_DECLARE':     if (!gc.canHandoff) return; room.lastLogMsg = declareHandoff(G, msg.playerId);       break;
         case 'DO_HANDOFF':          room.lastLogMsg = doHandoff(G, msg.receiverId);          break;
         case 'PASS_DECLARE':        if (!gc.canPass)    return; room.lastLogMsg = declarePass(G, msg.playerId);          break;

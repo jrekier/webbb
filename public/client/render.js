@@ -91,6 +91,7 @@ function render() {
         _renderPrevActive = G.active;
     }
     _renderPrevPhase = G.phase;
+    syncDebugMatchPanel();
     const cam = cameraY;
 
     const _isSetupLikePhase = G.phase === 'setup' || G.phase === 'kickoff_soliddefence';
@@ -397,6 +398,16 @@ function updatePlayerEditor() {
         `${p.name} (${p.side.toUpperCase()})`;
     document.getElementById('player-editor-stats').textContent =
         `MA${p.ma}  ST${p.st}  AG${p.ag}  AV${p.av}`;
+
+    // Status buttons — drop a player into any state without engineering the
+    // dice for it. KO is here too: it is the only way to reach a half-time
+    // recovery roll, which is what Blitzer's Best Kegs modifies.
+    document.getElementById('player-editor-status').innerHTML =
+        [['active', 'Stand'], ['prone', 'Prone'], ['stunned', 'Stunned'], ['ko', 'KO']]
+            .map(([st, label]) =>
+                `<button class="dbg-status${p.status === st ? ' dbg-status-on' : ''}"
+                         onclick="setStatusOfSelected('${st}')">${label}</button>`)
+            .join('');
 
     const chips = document.getElementById('skill-chips');
     chips.innerHTML = '';
@@ -725,6 +736,80 @@ function updateTeams() {
 }
 
 // ── Pitch ─────────────────────────────────────────────────────────
+// ── Debug panel: match-scoped inducements ─────────────────────────
+// Only the three team-wide Prayers act during a match; the other five are
+// player buffs baked into the roster by bbauth before kick-off, so they are
+// listed as a reminder that the Player Editor is the way to fake those.
+var DEBUG_PRAYERS_IN_PLAY = [
+    ['treacherousTrapdoor', 'Treacherous Trapdoor', 'trapdoors open on a 1'],
+    ['molesUnderPitch',     'Moles Under the Pitch', 'opposition rush at -1'],
+    ['underScrutiny',       'Under Scrutiny',        'opposition auto sent off'],
+];
+
+var DEBUG_DESPERATE = [
+    ['sportsEspionage', 'Sports Espionage', true],
+    ['grudgeMatch',     'Grudge Match',     true],
+    ['setPiece',        'Set Piece',        true],
+    ['bananaSkin',      'Banana Skin',      true],
+    ['razzleDazzle',    'Razzle-dazzle',    true],
+    ['youDope',         'You Dope!',        false],
+    ['hangover',        'Hangover',         false],
+    ['magicScroll',     'Magic Scroll',     false],
+];
+
+var DEBUG_TRIGGER_TIPS = {
+    sportsEspionage: 'Prompts on your next turnover',
+    setPiece:        'Prompts when you throw a pass',
+    bananaSkin:      'Prompts when an opponent enters your tackle zone',
+    grudgeMatch:     'Action wheel \u2192 Special, once you have already fouled',
+    razzleDazzle:    'Action wheel \u2192 Special, on an unactivated player',
+};
+
+function syncDebugMatchPanel() {
+    const section = document.getElementById('section-debug-match');
+    if (!section) return;
+    if (!G.testMode) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    const side = (typeof _debugSide !== 'undefined') ? _debugSide : 'home';
+    document.getElementById('debug-match-side').innerHTML =
+        ['home', 'away'].map(sd =>
+            `<button class="dbg-side${sd === side ? ' dbg-side-on' : ''}" onclick="debugSetSide('${sd}')">${sd.toUpperCase()}</button>`
+        ).join('');
+
+    const chk = on => on ? '\u2611' : '\u2610';
+    const held = G.desperateMeasures?.[side] || [];
+    const used = G.desperateUsed?.[side] || {};
+
+    let html = '<div class="dbg-group">Prayers to Nuffle</div>';
+    html += DEBUG_PRAYERS_IN_PLAY.map(([key, label, hint]) =>
+        `<div class="dbg-row" onclick="debugTogglePrayer('${side}','${key}')" title="${hint}">
+            <span class="dbg-chk">${chk((G.prayers?.[side] || []).includes(key))}</span>${label}</div>`
+    ).join('');
+    html += '<div class="dbg-note">The other five prayers are player buffs applied before kick-off \u2014 fake them with the Player Editor.</div>';
+
+    html += '<div class="dbg-group">Desperate Measures</div>';
+    html += DEBUG_DESPERATE.map(([key, label, wired]) => {
+        const tip = wired ? (DEBUG_TRIGGER_TIPS[key] || '') : 'Not wired to a trigger yet';
+        return `<div class="dbg-row${wired ? '' : ' dbg-unwired'}" onclick="debugToggleDesperate('${side}','${key}')"
+              title="${tip}">
+            <span class="dbg-chk">${chk(held.includes(key))}</span>${label}${
+            used[key] ? ' <em>spent</em>' : ''}${wired ? '' : ' <em>\u2014</em>'}</div>`;
+    }).join('');
+
+    html += '<div class="dbg-group">Other</div>';
+    html += `<div class="dbg-row"><span class="dbg-chk"></span>Kegs
+        <span class="dbg-step"><button onclick="debugBump('${side}','kegs',-1,2)">\u2212</button>
+        <b>${G.kegs?.[side] || 0}</b><button onclick="debugBump('${side}','kegs',1,2)">+</button></span></div>`;
+    html += `<div class="dbg-row"><span class="dbg-chk"></span>Bribes
+        <span class="dbg-step"><button onclick="debugBump('${side}','bribes',-1,9)">\u2212</button>
+        <b>${G.bribes?.[side] || 0}</b><button onclick="debugBump('${side}','bribes',1,9)">+</button></span></div>`;
+    html += `<div class="dbg-row" onclick="debugToggleFlag('${side}','masterChef')" title="rolls 3D6 at the start of each half">
+        <span class="dbg-chk">${chk(G.masterChef?.[side])}</span>Master Chef</div>`;
+
+    document.getElementById('debug-match-body').innerHTML = html;
+}
+
 function drawPitch() {
     // Horizontal mowed-grass stripes
     for (let r = 0; r < ROWS; r++) {
@@ -785,6 +870,35 @@ function drawPitch() {
             ctx.lineTo(x, y + arm);
             ctx.stroke();
         }
+    }
+
+    // Trapdoors — drawn only while a Treacherous Trapdoor prayer has them armed.
+    // Unarmed they are inert scenery, so showing them would just be a lie about
+    // which squares are dangerous.
+    if (typeof trapdoorsArmed === 'function' && trapdoorsArmed(G)) {
+        TRAPDOORS.forEach(({ col, row }) => {
+            const x = col * CELL, y = row * CELL;
+            const inset = CELL * 0.14;
+            // Dark opening
+            ctx.fillStyle = 'rgba(12,10,8,0.62)';
+            ctx.fillRect(x + inset, y + inset, CELL - inset * 2, CELL - inset * 2);
+            // Planked border
+            ctx.strokeStyle = 'rgba(196,150,64,0.85)';
+            ctx.lineWidth   = Math.max(1, Math.floor(CELL * 0.06));
+            ctx.strokeRect(x + inset, y + inset, CELL - inset * 2, CELL - inset * 2);
+            // Split down the middle: two doors
+            ctx.beginPath();
+            ctx.moveTo(x + CELL / 2, y + inset);
+            ctx.lineTo(x + CELL / 2, y + CELL - inset);
+            ctx.stroke();
+            // Hinges
+            ctx.fillStyle = 'rgba(196,150,64,0.85)';
+            const hs = Math.max(2, Math.floor(CELL * 0.09));
+            ctx.fillRect(x + inset, y + CELL * 0.3 - hs / 2, hs, hs);
+            ctx.fillRect(x + CELL - inset - hs, y + CELL * 0.3 - hs / 2, hs, hs);
+            ctx.fillRect(x + inset, y + CELL * 0.7 - hs / 2, hs, hs);
+            ctx.fillRect(x + CELL - inset - hs, y + CELL * 0.7 - hs / 2, hs, hs);
+        });
     }
 
     // End zone labels
@@ -2274,6 +2388,12 @@ function _cleanupPanelDrag() {
     _rosterLastPhase = null;
 }
 
+// Wheel entry colours by source. Ordinary actions are gold on blue/red; these
+// two mark where an entry comes from a Prayer to Nuffle or a Desperate Measure,
+// so an unusual option is never mistaken for a standard one.
+var WHEEL_PRAYER    = { color: '#6fe0d0', bg: 'rgba(8,72,68,0.92)' };   // Nuffle's blessing
+var WHEEL_DESPERATE = { color: '#ff9a40', bg: 'rgba(96,42,4,0.92)' };   // bought with gold
+
 // ── Action wheel ──────────────────────────────────────────────────────────────
 // _openWheel() is called by input.js on long-press. It reads the game context,
 // builds the action list, then sets wheelState so render.js draws the overlay.
@@ -2381,10 +2501,25 @@ function _buildSpecialActions(player, gc) {
     const actions = [];
     if (gc.canDeclarePV)
         actions.push({ label: 'Proj.\nVomit', color: '#80ff60', bg: 'rgba(20,70,20,0.92)', fn: onClickPV });
-    if (gc.canDeclareStab)
-        actions.push({ label: 'Stab', color: '#ff7070', bg: 'rgba(90,20,20,0.92)', fn: onClickStab });
+    if (gc.canDeclareStab) {
+        // A Stab granted by the Stiletto prayer wears Nuffle's colour, so a
+        // coach can tell a blessing from a natural trait at a glance.
+        const fromPrayer = player.prayerSkills?.includes('Stab');
+        actions.push(fromPrayer
+            ? { label: 'Stab', ...WHEEL_PRAYER, fn: onClickStab }
+            : { label: 'Stab', color: '#ff7070', bg: 'rgba(90,20,20,0.92)', fn: onClickStab });
+    }
     if (gc.canDeclareTTM)
         actions.push({ label: 'Throw\nMate', color: '#c0c0ff', bg: 'rgba(40,20,80,0.92)', fn: onClickTTM });
+
+    // ── Desperate Measures declared at activation ────────────────────────────
+    // The rest prompt at their own trigger; these two are announced.
+    // Grudge Foul only appears once a normal Foul is no longer available.
+    if (gc.canGrudgeFoul)
+        actions.push({ label: 'Grudge\nFoul', ...WHEEL_DESPERATE, fn: onClickGrudgeFoul });
+    if (gc.canRazzle)
+        actions.push({ label: 'Razzle\ndazzle', ...WHEEL_DESPERATE, fn: onClickRazzle });
+
     return actions;
 }
 

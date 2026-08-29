@@ -4,7 +4,7 @@
 // that a new action only needs to be added here.
 
 if (typeof module !== 'undefined') {
-    var { isStanding, canStillCancel, getBlockTargets, teamRerollsLeft } = require('./helpers.js');
+    var { actionAllowed, isStanding, canStillCancel, getBlockTargets, teamRerollsLeft } = require('./helpers.js');
 }
 
 function getGameContext(G, sel, NET) {
@@ -15,9 +15,13 @@ function getGameContext(G, sel, NET) {
 
     const chargeOk = G.phase !== 'kickoff_charge' || G.chargeMovesLeft > 0;
 
+    // Razzle-dazzle buys one extra declaration for a single player.
+    const razzleAgain = !!sel?.usedAction && (sel?.razzleLeft > 0);
+    const allow = key => !sel || actionAllowed(sel, key);
+
     const canDeclare = myTurn && sel
         && sel.side === G.active
-        && !sel.usedAction
+        && (!sel.usedAction || razzleAgain)
         && sel.col >= 0
         && noAction
         && !selStunned
@@ -26,36 +30,52 @@ function getGameContext(G, sel, NET) {
         && (!selProne || sel.maLeft + sel.rushLeft >= 3)
         && chargeOk;
 
-    const canBlitz = myTurn && sel
+    const canBlitz = myTurn && sel && allow('Blitz')
         && sel.side === G.active
-        && !sel.usedAction
+        && (!sel.usedAction || razzleAgain)
         && noAction
         && !selStunned
         && !G.hasBlitzed
         && G.players.some(p => p.side !== G.active && isStanding(p))
         && chargeOk;
 
-    const hasTargets = canDeclare && sel
+    const hasTargets = canDeclare && sel && allow('Block')
         && getBlockTargets(G, sel).length > 0;
 
-    const canSecure = canDeclare && !G.ball.carrier
+    const canSecure = canDeclare && allow('Secure') && !G.ball.carrier
         && !G.players.some(p =>
             p.side !== G.active && isStanding(p)
             && Math.abs(p.col - G.ball.col) <= 2 && Math.abs(p.row - G.ball.row) <= 2
         );
 
-    const canFoul = myTurn && sel && sel.side === G.active
-        && !sel.usedAction && noAction && !G.hasFouled
+    const foulReady = myTurn && sel && sel.side === G.active && allow('Foul')
+        && (!sel.usedAction || razzleAgain) && noAction
         && sel.status === 'active'
         && G.players.some(p => p.side !== G.active
             && (p.status === 'prone' || p.status === 'stunned') && p.col >= 0);
 
-    const canHandoff = myTurn && sel && sel.side === G.active
-        && !sel.usedAction && noAction && !G.hasHandedOff
+    const canFoul = foulReady && !G.hasFouled;
+
+    // Grudge Match buys a SECOND foul in a turn that has already used one, and
+    // the fouler cannot be Sent-off for it. Declared like any other action, so
+    // it is offered only when a normal foul is not available.
+    // Razzle-dazzle is announced as the player activates, before any Action.
+    const canRazzle = myTurn && sel && sel.side === G.active
+        && !sel.usedAction && !(sel.razzleLeft > 0) && noAction
+        && sel.col >= 0 && sel.status === 'active'
+        && (G.desperateMeasures?.[G.active] || []).includes('razzleDazzle')
+        && !G.desperateUsed?.[G.active]?.razzleDazzle;
+
+    const canGrudgeFoul = foulReady && G.hasFouled
+        && (G.desperateMeasures?.[G.active] || []).includes('grudgeMatch')
+        && !G.desperateUsed?.[G.active]?.grudgeMatch;
+
+    const canHandoff = myTurn && sel && sel.side === G.active && allow('Handoff')
+        && (!sel.usedAction || razzleAgain) && noAction && !G.hasHandedOff
         && sel.status !== 'stunned';
 
-    const canPass = myTurn && sel && sel.side === G.active
-        && !sel.usedAction && noAction && !G.hasPassed
+    const canPass = myTurn && sel && sel.side === G.active && allow('Pass')
+        && (!sel.usedAction || razzleAgain) && noAction && !G.hasPassed
         && sel.status !== 'stunned';
 
     const canThrow = myTurn && G.passing === true && G.activated && G.activated.hasBall;
@@ -69,17 +89,17 @@ function getGameContext(G, sel, NET) {
         && G.passing !== 'targeting' && G.throwTeamMate?.phase !== 'targeting';
 
     const hasPV = !!(sel?.specialSkills?.includes('Projectile Vomit') || sel?.skills?.includes('Projectile Vomit'));
-    const canDeclarePV = hasPV
+    const canDeclarePV = hasPV && allow('Vomit')
         && ((canDeclare && !selProne)
             || (myTurn && G.activated?.id === sel?.id && G.blitz?.phase === 'moving'));
 
     const hasStab = sel?.skills?.includes('Stab');
-    const canDeclareStab = hasStab
+    const canDeclareStab = hasStab && allow('Stab')
         && getBlockTargets(G, sel).length > 0
         && ((canDeclare && !selProne)
             || (myTurn && G.activated?.id === sel?.id && G.blitz?.phase === 'moving'));
 
-    const canDeclareTTM = canDeclare && !G.hasThrownMate
+    const canDeclareTTM = canDeclare && allow('TTM') && !G.hasThrownMate
         && !!sel?.skills?.includes('Throw Team-Mate');
 
     const canPickASTarget = myTurn && !!G.animalSavagery
@@ -155,6 +175,8 @@ function getGameContext(G, sel, NET) {
         hasTargets,
         canSecure,
         canFoul,
+        canGrudgeFoul,
+        canRazzle,
         canHandoff,
         canPass,
         canThrow,

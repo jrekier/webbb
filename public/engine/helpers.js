@@ -72,6 +72,85 @@ function checkTeamRuleSpelling(rules, who) {
     }
 }
 
+// ── Desperate Measures ────────────────────────────────────────────
+// Sevens-only inducements, each usable once per game. A coach ARMS one and it
+// then fires at its own trigger — the next pass for Set Piece, the next
+// turnover for Sports Espionage, and so on. Arming is free and reversible;
+// spending is not, and happens the moment the trigger fires.
+function desperateHeld(G, side) {
+    return (G.desperateMeasures?.[side] || []).filter(k => !G.desperateUsed?.[side]?.[k]);
+}
+
+function hasDesperate(G, side, key) {
+    return desperateHeld(G, side).includes(key);
+}
+
+function spendDesperate(G, side, key) {
+    if (!G.desperateUsed)   G.desperateUsed   = { home: {}, away: {} };
+    if (!G.desperateUsed[side]) G.desperateUsed[side] = {};
+    G.desperateUsed[side][key] = true;
+}
+
+// ── Declared actions (Razzle-dazzle) ──────────────────────────────
+// Every action a player can declare, and whether it CONTAINS a Move Action.
+// Razzle-dazzle lets one player declare two Actions in an activation, but
+// "may not declare the same Action twice, and may not declare two Actions that
+// both contain a Move Action" — so at most one of the pair may move.
+var ACTION_MOVES = {
+    Move: true, Blitz: true, Pass: true, Handoff: true, Foul: true,
+    Secure: true, TTM: true,
+    Block: false, Stab: false, Vomit: false,
+};
+
+// Record what a player just declared. Recording is harmless in normal play —
+// the list simply never reaches two entries.
+function recordAction(G, p, key) {
+    if (!p) return;
+    if (!p.actionsThisTurn) p.actionsThisTurn = [];
+    // A declaration made while already spent is the Razzle-dazzle extra.
+    if (p.usedAction && p.razzleLeft > 0) p.razzleLeft -= 1;
+    p.actionsThisTurn.push(key);
+}
+
+// May `p` still declare `key`? Only constrains a second declaration.
+function actionAllowed(p, key) {
+    const done = p?.actionsThisTurn || [];
+    if (!done.length) return true;
+    if (done.includes(key)) return false;                       // not the same twice
+    if (done.some(a => ACTION_MOVES[a]) && ACTION_MOVES[key]) return false;  // only one may move
+    return true;
+}
+
+// ── Trapdoors ─────────────────────────────────────────────────────
+// A Sevens pitch has two trapdoors, "one in each half, both positioned within a
+// Wide Zone". The rulebook gives no coordinates — they are printed on the board
+// — so these are read off the board art: each sits in a Wide Zone (cols 0-1 and
+// 9-10), five squares in from its own End Zone, and the pair is 180°
+// rotationally symmetric, i.e. diagonally opposite each other.
+var TRAPDOORS = [
+    { col: 1, row: 5  },   // away half (End Zone is row 0)
+    { col: 9, row: 14 },   // home half (End Zone is row 19)
+];
+
+function trapdoorAt(col, row) {
+    return TRAPDOORS.some(t => t.col === col && t.row === row);
+}
+
+// Trapdoors are inert scenery unless a Treacherous Trapdoor Prayer to Nuffle is
+// in effect — and then they open under EITHER team's players, not just the
+// opponent's. So one team praying arms them for everyone.
+function trapdoorsArmed(G) {
+    return ['home', 'away'].some(s => (G.prayers?.[s] || []).includes('treacherousTrapdoor'));
+}
+
+// Moles Under the Pitch — a Prayer to Nuffle that makes the OPPOSITION rush at
+// -1, so a player is penalised when the other side prayed for it. Lives here so
+// every rush call site (movement and blitz alike) uses the same rule.
+function rushMod(G, p) {
+    const other = p.side === 'home' ? 'away' : 'home';
+    return (G.prayers?.[other] || []).includes('molesUnderPitch') ? -1 : 0;
+}
+
 // Does `side` have the named special rule this game?
 function hasTeamRule(G, side, rule) {
     return !!(G.specialRules?.[side] || []).includes(rule);
@@ -341,7 +420,10 @@ if (typeof module !== 'undefined') {
     module.exports = {
         COLS, ROWS, TURNS,
         SKILL_CATALOGUE, ALL_SKILLS, checkSkillSpelling,
-        TEAM_RULE_CATALOGUE, checkTeamRuleSpelling, hasTeamRule,
+        TEAM_RULE_CATALOGUE, checkTeamRuleSpelling, hasTeamRule, rushMod,
+        TRAPDOORS, trapdoorAt, trapdoorsArmed,
+        desperateHeld, hasDesperate, spendDesperate,
+        ACTION_MOVES, recordAction, actionAllowed,
         sqLabel,
         playerAt, isStanding, isAdjacent, inTackleZoneOf, countTackleZones,
         leaderRerollAvailable, teamRerollsLeft,

@@ -3,16 +3,18 @@
 // Fend / Stand Firm / Strip Ball / Juggernaut / Pro), Frenzy, and the Blitz action.
 
 if (typeof module !== 'undefined') {
-    var { COLS, ROWS, blockDiceCount, countAssists, getPushSquares, isAdjacent, isStanding, looseBallAt, markStunned, playerAt, sqLabel, teamRerollsLeft } = require('./helpers.js');
+    var { COLS, ROWS, blockDiceCount, countAssists, getPushSquares, isAdjacent, isStanding, looseBallAt, markStunned, playerAt, recordAction, rushMod, sqLabel, teamRerollsLeft } = require('./helpers.js');
     var { d6, rollBlockDice, rollCrowdInjury, rush } = require('./dice.js');
     var { endActivation, endTurn } = require('./core.js');
-    var { _consumeTeamReroll, _offerReroll, _traitChecks, knockDown, pn, scatterBall, throwIn } = require('./resolve.js');
+    var { _consumeTeamReroll, _offerReroll, _traitChecks, checkTrapdoor, knockDown, pn, scatterBall, throwIn } = require('./resolve.js');
 }
 
 function declareBlock(G, att, def) {
     const t = _traitChecks(G, att, true);
     if (t.abort) return t.msg;
     const prefix = t.msg;
+    // A Blitz already recorded itself; a standalone Block records here.
+    if (!G.blitz) recordAction(G, att, 'Block');
 
     let { attStr, defStr } = countAssists(G, att, def);
     if (G.cheeringFansBonus === att.side || G.cheeringFansBonus === 'both') {
@@ -318,6 +320,8 @@ function pickPushSquare(G, col, row) {
     def.row = row;
 
     let msg = `${pn(def)} pushed to ${sqLabel(col,row)}.`;
+    // A push counts as entering the square, so the trapdoor may open.
+    msg += ' ' + checkTrapdoor(G, def);
 
     let ballDropped = false;
     if (
@@ -428,12 +432,12 @@ function resolveFollowUp(G, followUp) {
             if (att.maLeft > 0) {
                 att.maLeft--;
             } else if (att.rushLeft > 0) {
-                const { roll, failed } = rush();
+                const { roll, failed } = rush(rushMod(G, att));
                 att.rushLeft--;
                 if (failed) {
                     // Failed GFI for the second block — offer a reroll, like the first block.
                     const failBase = pre + `— [[skill:Frenzy]] rush (rolled ${roll}) fails! `;
-                    const { roll: r2, failed: f2 } = rush();
+                    const { roll: r2, failed: f2 } = rush(rushMod(G, att));
                     return _offerReroll(G, att, {
                         rerolled: false, label: 'rush', secondFailed: f2, baseMsg: failBase,
                         successMsg: `Team reroll: ${pn(att)} [[move:rushes]] (rolled ${r2}). `,
@@ -508,7 +512,7 @@ function resolveStripBall(G, use) {
             if (att.maLeft > 0) {
                 att.maLeft--;
             } else if (att.rushLeft > 0) {
-                const { roll, failed } = rush();
+                const { roll, failed } = rush(rushMod(G, att));
                 att.rushLeft--;
                 if (failed) {
                     let injMsg = knockDown(G, att);
@@ -638,6 +642,7 @@ function activateBlitz(G, playerId) {
 
     G.hasBlocked = false;   // fresh activation — no block thrown yet
     G.activated  = p;
+    recordAction(G, p, 'Blitz');
     G.blitz      = 'targeting';
     G.targeting  = true;
     if (p.status === 'prone') {
@@ -674,14 +679,14 @@ function blitzBlock(G, att, target) {
         return _throwBlitzBlock(G, att, target, '');
     }
     if (att.rushLeft > 0) {
-        const { roll, failed } = rush();
+        const { roll, failed } = rush(rushMod(G, att));
         att.rushLeft -= 1;
         if (!failed) {
             return _throwBlitzBlock(G, att, target, `${pn(att)} [[move:rushes]] to block (rolled ${roll}). `);
         }
         // Failed GFI — pre-roll the reroll attempt so _offerReroll needs no dice knowledge.
         const failBase = `${pn(att)} fails rush (rolled ${roll}). `;
-        const { roll: r2, failed: f2 } = rush();
+        const { roll: r2, failed: f2 } = rush(rushMod(G, att));
         return _offerReroll(G, att, {
             rerolled: false, label: 'rush', secondFailed: f2, baseMsg: failBase,
             successMsg: `Team reroll: ${pn(att)} [[move:rushes]] (rolled ${r2}). `,

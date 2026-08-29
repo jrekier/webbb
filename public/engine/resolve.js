@@ -4,9 +4,46 @@
 // pre-activation trait gauntlet. Every subsystem below calls down into these.
 
 if (typeof module !== 'undefined') {
-    var { COLS, ROWS, countTackleZones, isAdjacent, isStanding, markStunned, playerAt, sqLabel, teamRerollsLeft } = require('./helpers.js');
-    var { d6, rollArmourAndInjury } = require('./dice.js');
+    var { COLS, ROWS, countTackleZones, isAdjacent, isStanding, markStunned, playerAt, sqLabel, teamRerollsLeft, trapdoorAt, trapdoorsArmed } = require('./helpers.js');
+    var { d6, rollArmourAndInjury, rollCrowdInjury } = require('./dice.js');
     var { endScoringTurn, endTurn, resetAfterTouchdown } = require('./core.js');
+}
+
+
+// ── checkTrapdoor ─────────────────────────────────────────────────
+// Called whenever a player ENTERS a square, for any reason — walking, rushing,
+// being pushed, landing from a throw. If that square holds a trapdoor and a
+// Treacherous Trapdoor prayer has armed them, roll a D6: on a 1 the door swings
+// open and the player falls through, taking an injury as if pushed into the
+// crowd. A ball they were holding bounces from the square they fell out of.
+// Returns a message, or '' when nothing happened.
+function checkTrapdoor(G, p) {
+    if (!p || p.col < 0 || !trapdoorAt(p.col, p.row) || !trapdoorsArmed(G)) return '';
+
+    const roll = d6();
+    if (roll !== 1) return `${pn(p)} steps over the trapdoor (rolled ${roll}). `;
+
+    const col = p.col, row = p.row;
+    const hadBall = p.hasBall;
+    if (hadBall) { p.hasBall = false; G.ball.carrier = null; G.ball.col = col; G.ball.row = row; }
+
+    const { injuryRoll, outcome } = rollCrowdInjury(p);
+    let msg = `The trapdoor opens under ${pn(p)} (rolled ${roll})! Inj ${injuryRoll}: `;
+    if (outcome === 'stunned') {
+        markStunned(p);
+        msg += 'Stunned — placed in reserves.';
+    } else if (outcome === 'ko') {
+        p.status = 'ko';
+        msg += "KO'd!";
+    } else {
+        p.status = 'casualty';
+        msg += 'CASUALTY!';
+    }
+    p.col = -1;
+    p.row = -1;
+    // The ball is left behind on the pitch and bounces from that square.
+    if (hadBall) msg += ' ' + scatterBall(G);
+    return msg + ' ';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -426,8 +463,13 @@ function _catchAtSquare(G, col, row, bouncePenalty) {
     if (!lander) return ' Ball hits the ground. ' + scatterBall(G);
     if (!isStanding(lander)) return ` ${pn(lander)} is prone. ` + scatterBall(G);
 
+    // Set Piece — the receiving player catches on a 2+. Consumed by the first
+    // catch attempt after the throw, success or not.
+    const setPiece = G.setPieceCatch === lander.side;
+    if (G.setPieceCatch) G.setPieceCatch = null;
+
     const tzs    = countTackleZones(G, lander.side, col, row);
-    const target = Math.min(lander.ag + (bouncePenalty ? 1 : 0) + tzs, 6);
+    const target = setPiece ? 2 : Math.min(lander.ag + (bouncePenalty ? 1 : 0) + tzs, 6);
     const roll   = Math.floor(Math.random() * 6) + 1;
     let extra    = '';
     let result   = roll;
@@ -516,5 +558,6 @@ function useTeamReroll(G)     { return _resolveTeamReroll(G, true);  }
 function declineTeamReroll(G) { return _resolveTeamReroll(G, false); }
 
 if (typeof module !== 'undefined') {
-    module.exports = { pn, _applyOutcome, knockDown, _failTrait, _boneHeadCheck, _reallyStupidCheck, _animalSavageryCheck, resolveASHit, _traitChecks, _consumeTeamReroll, throwIn, scatterBall, tryPickup, checkTouchdown, _scatterNTimes, _catchAtSquare, _offerReroll, _resolveTeamReroll, useTeamReroll, declineTeamReroll };
+    module.exports = {
+        checkTrapdoor, pn, _applyOutcome, knockDown, _failTrait, _boneHeadCheck, _reallyStupidCheck, _animalSavageryCheck, resolveASHit, _traitChecks, _consumeTeamReroll, throwIn, scatterBall, tryPickup, checkTouchdown, _scatterNTimes, _catchAtSquare, _offerReroll, _resolveTeamReroll, useTeamReroll, declineTeamReroll };
 }

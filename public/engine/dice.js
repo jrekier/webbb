@@ -7,10 +7,12 @@ function d6() { return Math.floor(Math.random() * 6) + 1; }
 // One Go-For-It roll: needs 2+ to succeed.
 // Returns { roll, failed }.
 
-function rush() {
+// `mod` shifts the roll — Moles Under the Pitch imposes -1 on the opposition,
+// so a 2 fails as well as a 1.
+function rush(mod = 0) {
     const roll   = d6();
-    const failed = roll === 1;
-    return { roll, failed };
+    const failed = (roll + mod) <= 1;
+    return { roll, mod, failed };
 }
 
 // ── dodge ─────────────────────────────────────────────────────────
